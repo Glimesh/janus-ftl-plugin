@@ -6995,13 +6995,31 @@ static void *janus_streaming_relay_thread(void *data) {
 				break;
 			} else if(fds[i].revents & POLLIN) {
 				/* Got an RTP or data packet */
+
+				// Read the header to figure out what type of stream this packet
+				// is for.
+
+				addrlen = sizeof(remote);
+				bytes = recvfrom(audio_fd, buffer, 1500, 0, (struct sockaddr *)&remote, &addrlen);
+				if(bytes < 0 || !janus_is_rtp(buffer, bytes)) {
+					/* Failed to read or not an RTP packet? */
+					continue;
+				}
+				janus_rtp_header *rtp = (janus_rtp_header *)buffer;
+
+
+
+
+
 				if(pipe_fd != -1 && fds[i].fd == pipe_fd) {
 					/* We're done here */
 					int code = 0;
 					bytes = read(pipe_fd, &code, sizeof(int));
 					JANUS_LOG(LOG_VERB, "[%s] Interrupting mountpoint\n", mountpoint->name);
 					break;
-				} else if(audio_fd != -1 && fds[i].fd == audio_fd) {
+				}
+				// else if(audio_fd != -1 && fds[i].fd == audio_fd) {
+				else if(rtp->type == 97) { // FTL sends audio packets as payload type 97
 					/* Got something audio (RTP) */
 					if(mountpoint->active == FALSE)
 						mountpoint->active = TRUE;
@@ -7009,13 +7027,13 @@ static void *janus_streaming_relay_thread(void *data) {
 #ifdef HAVE_LIBCURL
 					source->reconnect_timer = now;
 #endif
-					addrlen = sizeof(remote);
-					bytes = recvfrom(audio_fd, buffer, 1500, 0, (struct sockaddr *)&remote, &addrlen);
-					if(bytes < 0 || !janus_is_rtp(buffer, bytes)) {
-						/* Failed to read or not an RTP packet? */
-						continue;
-					}
-					janus_rtp_header *rtp = (janus_rtp_header *)buffer;
+					// addrlen = sizeof(remote);
+					// bytes = recvfrom(audio_fd, buffer, 1500, 0, (struct sockaddr *)&remote, &addrlen);
+					// if(bytes < 0 || !janus_is_rtp(buffer, bytes)) {
+					// 	/* Failed to read or not an RTP packet? */
+					// 	continue;
+					// }
+					// janus_rtp_header *rtp = (janus_rtp_header *)buffer;
 					ssrc = ntohl(rtp->ssrc);
 					if(source->rtp_collision > 0 && a_last_ssrc && ssrc != a_last_ssrc &&
 							(now-source->last_received_audio) < (gint64)1000*source->rtp_collision) {
@@ -7086,30 +7104,33 @@ static void *janus_streaming_relay_thread(void *data) {
 						janus_mutex_unlock(&mountpoint->mutex);
 					}
 					continue;
-				} else if((video_fd[0] != -1 && fds[i].fd == video_fd[0]) ||
-						(video_fd[1] != -1 && fds[i].fd == video_fd[1]) ||
-						(video_fd[2] != -1 && fds[i].fd == video_fd[2])) {
+				} 
+				// else if((video_fd[0] != -1 && fds[i].fd == video_fd[0]) ||
+				// 		(video_fd[1] != -1 && fds[i].fd == video_fd[1]) ||
+				// 		(video_fd[2] != -1 && fds[i].fd == video_fd[2])) {
+				else if(rtp->type == 96) { // FTL sends audio packets as payload type 96
 					/* Got something video (RTP) */
-					int index = -1;
-					if(fds[i].fd == video_fd[0])
-						index = 0;
-					else if(fds[i].fd == video_fd[1])
-						index = 1;
-					else if(fds[i].fd == video_fd[2])
-						index = 2;
+					// int index = -1;
+					// if(fds[i].fd == video_fd[0])
+					// 	index = 0;
+					// else if(fds[i].fd == video_fd[1])
+					// 	index = 1;
+					// else if(fds[i].fd == video_fd[2])
+					// 	index = 2;
+					int index = 0;
 					if(mountpoint->active == FALSE)
 						mountpoint->active = TRUE;
 					gint64 now = janus_get_monotonic_time();
 #ifdef HAVE_LIBCURL
 					source->reconnect_timer = now;
 #endif
-					addrlen = sizeof(remote);
-					bytes = recvfrom(fds[i].fd, buffer, 1500, 0, (struct sockaddr *)&remote, &addrlen);
-					if(bytes < 0 || !janus_is_rtp(buffer, bytes)) {
-						/* Failed to read or not an RTP packet? */
-						continue;
-					}
-					janus_rtp_header *rtp = (janus_rtp_header *)buffer;
+					// addrlen = sizeof(remote);
+					// bytes = recvfrom(fds[i].fd, buffer, 1500, 0, (struct sockaddr *)&remote, &addrlen);
+					// if(bytes < 0 || !janus_is_rtp(buffer, bytes)) {
+					// 	/* Failed to read or not an RTP packet? */
+					// 	continue;
+					// }
+					// janus_rtp_header *rtp = (janus_rtp_header *)buffer;
 					ssrc = ntohl(rtp->ssrc);
 					if(source->rtp_collision > 0 && v_last_ssrc[index] && ssrc != v_last_ssrc[index] &&
 							(now-source->last_received_video) < (gint64)1000*source->rtp_collision) {
