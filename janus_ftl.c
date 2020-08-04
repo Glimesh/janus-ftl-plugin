@@ -7008,7 +7008,8 @@ static void *janus_streaming_relay_thread(void *data) {
 				janus_rtp_header *rtp = (janus_rtp_header *)buffer;
 
 
-
+				JANUS_LOG(LOG_VERB, " ... parsed RTP packet (ssrc=%u, pt=%u, seq=%u, ts=%u)...\n",
+						ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
 
 
 				if(pipe_fd != -1 && fds[i].fd == pipe_fd) {
