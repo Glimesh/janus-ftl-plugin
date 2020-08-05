@@ -7692,12 +7692,12 @@ static void *janus_streaming_relay_thread(void *data) {
 
 				if (rtp->type == 122)
 				{
-					JANUS_LOG(LOG_VERB, "skipping ping payload type...\n");
+					//JANUS_LOG(LOG_VERB, "skipping ping payload type...\n");
 					continue;
 				}
 
-				JANUS_LOG(LOG_VERB, " ... parsed RTP packet (ssrc=%u, pt=%u, seq=%u, ts=%u)...\n",
-						ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
+				// JANUS_LOG(LOG_VERB, " ... parsed RTP packet (ssrc=%u, pt=%u, seq=%u, ts=%u)...\n",
+				// 		ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
 
 
 				if(pipe_fd != -1 && fds[i].fd == pipe_fd) {
@@ -7799,13 +7799,14 @@ static void *janus_streaming_relay_thread(void *data) {
 				// 		(video_fd[2] != -1 && fds[i].fd == video_fd[2])) {
 				else if(rtp->type == 96) { // Video is payload type 96 for FTL
 					/* Got something video (RTP) */
-					int index = -1;
-					if(fds[i].fd == video_fd[0])
-						index = 0;
-					else if(fds[i].fd == video_fd[1])
-						index = 1;
-					else if(fds[i].fd == video_fd[2])
-						index = 2;
+					int index = 0;
+					// int index = -1;
+					// if(fds[i].fd == video_fd[0])
+					// 	index = 0;
+					// else if(fds[i].fd == video_fd[1])
+					// 	index = 1;
+					// else if(fds[i].fd == video_fd[2])
+					// 	index = 2;
 					if(mountpoint->active == FALSE)
 						mountpoint->active = TRUE;
 					gint64 now = janus_get_monotonic_time();
