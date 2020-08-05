@@ -1,9 +1,9 @@
 JANUS_PATH=/opt/janus
 CC=gcc
 RM=rm -f
-CFLAGS=-Wall -fPIC $(shell pkg-config --cflags glib-2.0 libsrtp2) -I$(JANUS_PATH)/include/janus -DHAVE_SRTP_2=1
+CFLAGS=-Wall -fPIC $(shell pkg-config --cflags glib-2.0 libsrtp2 libcurl) -I$(JANUS_PATH)/include/janus -DHAVE_SRTP_2=1 -DHAVE_LIBCURL=1
 LDFLAGS=-fPIC
-LDLIBS=$(shell pkg-config --libs glib-2.0) -L$(JANUS_PATH)/lib
+LDLIBS=$(shell pkg-config --libs glib-2.0 libcurl) -L$(JANUS_PATH)/lib
 DESTINATION_PATH=$(JANUS_PATH)/lib/janus/plugins
 
 SRCS=janus_ftl.c
