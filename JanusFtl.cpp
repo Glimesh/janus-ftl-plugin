@@ -1,3 +1,13 @@
+/**
+ * @file JanusFtl.cpp
+ * @author Hayden McAfee (hayden@outlook.com)
+ * @version 0.1
+ * @date 2020-08-09
+ * 
+ * @copyright Copyright (c) 2020 Hayden McAfee
+ * 
+ */
+
 #include "JanusFtl.h"
 #include <jansson.h>
 
@@ -6,9 +16,13 @@ int JanusFtl::Init(janus_callbacks* callback, const char* config_path)
 {
     this->janusCore = callback;
 
+    // TODO: Read configuration
     // TODO: Create mountpoints
 
-    JANUS_LOG(LOG_INFO, "FTL initialized!\n");
+    ingestServer = std::make_unique<IngestServer>(/* TODO: Configurable listen port */);
+    ingestServer->Start();
+
+    JANUS_LOG(LOG_INFO, "FTL Plugin initialized!\n");
     return 0;
 }
 

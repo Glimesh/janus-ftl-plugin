@@ -1,3 +1,13 @@
+/**
+ * @file JanusFtl.h
+ * @author Hayden McAfee (hayden@outlook.com)
+ * @version 0.1
+ * @date 2020-08-09
+ * 
+ * @copyright Copyright (c) 2020 Hayden McAfee
+ * 
+ */
+
 #pragma once
 
 extern "C"
@@ -5,12 +15,20 @@ extern "C"
     #include <plugins/plugin.h>
 }
 
+#include "IngestServer.h"
+#include <memory>
+
+/**
+ * @brief This class handles interactions with the Janus plugin API and Janus core.
+ */
 class JanusFtl
 {
 public:
+    /* Init/Destroy */
     int Init(janus_callbacks* callback, const char* config_path);
     void Destroy();
 
+    /* Public plugin methods */
     void CreateSession(janus_plugin_session* handle, int* error);
     struct janus_plugin_result* HandleMessage(
         janus_plugin_session* handle,
@@ -27,6 +45,10 @@ public:
     json_t* QuerySession(janus_plugin_session* handle);
 
 private:
-    // Members
+    /* Members */
     janus_callbacks* janusCore;
+    std::unique_ptr<IngestServer> ingestServer;
+
+    /* Private methods */
+
 };

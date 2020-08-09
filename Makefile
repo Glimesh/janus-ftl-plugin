@@ -6,7 +6,7 @@ LDFLAGS=-fPIC
 LDLIBS=$(shell pkg-config --libs glib-2.0 libcurl) -L$(JANUS_PATH)/lib
 DESTINATION_PATH=$(JANUS_PATH)/lib/janus/plugins
 
-SRCS=janus_ftl.cpp JanusFtl.cpp
+SRCS=janus_ftl.cpp JanusFtl.cpp IngestServer.cpp IngestConnection.cpp
 OBJS=$(subst .cpp,.lo,$(SRCS))
 
 all: libjanus_ftl.la
