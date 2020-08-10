@@ -11,9 +11,11 @@
 #pragma once
 
 #include "IngestConnection.h"
+#include "CredStore.h"
 #include <sys/socket.h>
 #include <vector>
 #include <thread>
+#include <memory>
 
 /**
  * @brief This class listens for incoming FTL ingest connections.
@@ -22,7 +24,10 @@ class IngestServer
 {
 public:
     /* Constructor/Destructor */
-    IngestServer(int listenPort = 8084, int socketQueueLimit = SOMAXCONN);
+    IngestServer(
+        std::shared_ptr<CredStore> credStore,
+        int listenPort = 8084,
+        int socketQueueLimit = SOMAXCONN);
 
     /* Public methods */
     void Start();
@@ -30,6 +35,8 @@ public:
 
 private:
     /* Private members */
+    bool stopping = false;
+    std::shared_ptr<CredStore> credStore;
     int listenPort;
     int socketQueueLimit;
     int listenSocketHandle;

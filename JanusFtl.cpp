@@ -9,6 +9,7 @@
  */
 
 #include "JanusFtl.h"
+#include "DummyCredStore.h"
 #include <jansson.h>
 
 #pragma region Init/Destroy
@@ -19,7 +20,10 @@ int JanusFtl::Init(janus_callbacks* callback, const char* config_path)
     // TODO: Read configuration
     // TODO: Create mountpoints
 
-    ingestServer = std::make_unique<IngestServer>(/* TODO: Configurable listen port */);
+    // TODO: Configurable cred store
+    credStore = std::make_shared<DummyCredStore>();
+
+    ingestServer = std::make_unique<IngestServer>(credStore);
     ingestServer->Start();
 
     JANUS_LOG(LOG_INFO, "FTL Plugin initialized!\n");
@@ -30,6 +34,7 @@ void JanusFtl::Destroy()
 {
     JANUS_LOG(LOG_INFO, "Tearing down FTL!\n");
     // TODO: Remove all mountpoints, kill threads, sessions, etc.
+    ingestServer->Stop();
 }
 #pragma endregion
 

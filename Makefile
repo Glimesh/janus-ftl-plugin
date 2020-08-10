@@ -6,7 +6,7 @@ LDFLAGS=-fPIC
 LDLIBS=$(shell pkg-config --libs glib-2.0 libcurl) -L$(JANUS_PATH)/lib
 DESTINATION_PATH=$(JANUS_PATH)/lib/janus/plugins
 
-SRCS=janus_ftl.cpp JanusFtl.cpp IngestServer.cpp IngestConnection.cpp
+SRCS=janus_ftl.cpp JanusFtl.cpp IngestServer.cpp IngestConnection.cpp DummyCredStore.cpp
 OBJS=$(subst .cpp,.lo,$(SRCS))
 
 all: libjanus_ftl.la
@@ -19,3 +19,6 @@ libjanus_ftl.la: $(OBJS)
 
 install: libjanus_ftl.la
 	libtool --mode=install install -m 644 libjanus_ftl.la $(DESTINATION_PATH)/libjanus_ftl.la
+
+clean: 
+	rm -Rf $(OBJS) $(subst .lo,.o,$(OBJS)) libjanus_ftl.la .libs/

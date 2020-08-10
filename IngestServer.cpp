@@ -17,9 +17,14 @@ extern "C"
 #include <cerrno>
 #include <stdexcept>
 #include <memory>
+#include <unistd.h>
 
 #pragma region Constructor/Destructor
-IngestServer::IngestServer(int listenPort, int socketQueueLimit) : 
+IngestServer::IngestServer(
+    std::shared_ptr<CredStore> credStore,
+    int listenPort,
+    int socketQueueLimit) : 
+    credStore(credStore),
     listenPort(listenPort),
     socketQueueLimit(socketQueueLimit)
 { }
@@ -65,13 +70,24 @@ void IngestServer::Start()
     }
 
     listenThread = std::thread(&IngestServer::startListenThread, this);
-    listenThread.detach();
+    //listenThread.detach();
 }
 
 void IngestServer::Stop()
 {
+    stopping = true;
     // TODO: kill listen thread
     // https://stackoverflow.com/questions/44259468/how-to-interrupt-accept-in-a-tcp-ip-server
+    for (const auto& ingestConnection : pendingConnections)
+    {
+        ingestConnection->Stop();
+    }
+    pendingConnections.clear();
+    shutdown(listenSocketHandle, SHUT_RDWR);
+    //close(listenSocketHandle);
+    JANUS_LOG(LOG_INFO, "FTL: Joining server thread\n");
+    listenThread.join();
+    JANUS_LOG(LOG_INFO, "FTL: Server thread joined\n");
 }
 #pragma endregion
 
@@ -84,11 +100,23 @@ void IngestServer::startListenThread()
         // Accept incoming connections, manage them as "pending" until the
         // FTL handshake is completed.
         int connectionHandle = accept(listenSocketHandle, nullptr, nullptr);
-        JANUS_LOG(LOG_INFO, "FTL: Ingest server accepted connection...\n");
-        std::shared_ptr<IngestConnection> connection = 
-            std::make_shared<IngestConnection>(connectionHandle);
-        pendingConnections.push_back(connection);
-        connection->Start();
+        if (connectionHandle == -1)
+        {
+            if (errno == EINVAL)
+            {
+                JANUS_LOG(LOG_INFO, "FTL: Ingest server is being shut down.\n");
+                break;
+            }
+        }
+        else
+        {
+            JANUS_LOG(LOG_INFO, "FTL: Ingest server accepted connection...\n");
+            std::shared_ptr<IngestConnection> connection = 
+                std::make_shared<IngestConnection>(connectionHandle, credStore);
+            pendingConnections.push_back(connection);
+            connection->Start();
+        }
     }
+    JANUS_LOG(LOG_INFO, "FTL: Ingest server listen thread terminating\n");
 }
 #pragma endregion

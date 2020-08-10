@@ -16,6 +16,7 @@ extern "C"
 }
 
 #include "IngestServer.h"
+#include "CredStore.h"
 #include <memory>
 
 /**
@@ -48,6 +49,7 @@ private:
     /* Members */
     janus_callbacks* janusCore;
     std::unique_ptr<IngestServer> ingestServer;
+    std::shared_ptr<CredStore> credStore;
 
     /* Private methods */
 
