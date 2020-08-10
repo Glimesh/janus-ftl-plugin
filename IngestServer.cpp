@@ -70,24 +70,17 @@ void IngestServer::Start()
     }
 
     listenThread = std::thread(&IngestServer::startListenThread, this);
-    //listenThread.detach();
 }
 
 void IngestServer::Stop()
 {
-    stopping = true;
-    // TODO: kill listen thread
-    // https://stackoverflow.com/questions/44259468/how-to-interrupt-accept-in-a-tcp-ip-server
     for (const auto& ingestConnection : pendingConnections)
     {
         ingestConnection->Stop();
     }
     pendingConnections.clear();
     shutdown(listenSocketHandle, SHUT_RDWR);
-    //close(listenSocketHandle);
-    JANUS_LOG(LOG_INFO, "FTL: Joining server thread\n");
     listenThread.join();
-    JANUS_LOG(LOG_INFO, "FTL: Server thread joined\n");
 }
 #pragma endregion
 
@@ -114,9 +107,84 @@ void IngestServer::startListenThread()
             std::shared_ptr<IngestConnection> connection = 
                 std::make_shared<IngestConnection>(connectionHandle, credStore);
             pendingConnections.push_back(connection);
+                
+            connection->SetOnStateChanged(std::bind(
+                &IngestServer::connectionStateChanged,
+                this,
+                std::placeholders::_1,
+                std::placeholders::_2));
+            connection->SetOnRequestMediaPort(std::bind(
+                &IngestServer::mediaPortRequested,
+                this,
+                std::placeholders::_1));
             connection->Start();
         }
     }
-    JANUS_LOG(LOG_INFO, "FTL: Ingest server listen thread terminating\n");
+}
+
+void IngestServer::removeConnection(IngestConnection& connection)
+{
+    for (auto it = pendingConnections.begin(); it != pendingConnections.end(); ++it)
+    {
+        const auto& pendingConnection = *it;
+        if (pendingConnection.get() == &connection)
+        {
+            pendingConnections.erase(it);
+            break;
+        }
+    }
+
+    for (auto it = authenticatedConnections.begin(); it != authenticatedConnections.end(); ++it)
+    {
+        const auto& connectionPair = *it;
+        if (connectionPair.second.get() == &connection)
+        {
+            authenticatedConnections.erase(it);
+            break;
+        }
+    }
+}
+
+void IngestServer::connectionStateChanged(
+    IngestConnection& connection,
+    IngestConnectionState newState)
+{
+    if (newState == IngestConnectionState::Authenticated)
+    {
+        // Find connection in our pending list
+        bool found = false;
+        for (auto it = pendingConnections.begin(); it != pendingConnections.end(); ++it)
+        {
+            const auto pendingConnection = *it; // we want a copy, otherwise when we erase
+                                                // the connection will be destroyed
+            if (pendingConnection.get() == &connection)
+            {
+                pendingConnections.erase(it);
+                uint32_t channelId = pendingConnection->GetChannelId();
+                authenticatedConnections[channelId] = pendingConnection;
+                found = true;
+                break;
+            }
+        }
+        if (!found)
+        {
+            JANUS_LOG(LOG_ERR, "FTL: Unknown connection was authenticated...\n");
+        }
+    }
+    else if (newState == IngestConnectionState::Closed)
+    {
+        // Stop and remove this connection
+        connection.Stop();
+        removeConnection(connection);
+
+        uint32_t connectionCount = pendingConnections.size() + authenticatedConnections.size();
+
+        JANUS_LOG(LOG_INFO, "FTL: Ingest connection removed. %d connections.\n", connectionCount);
+    }
+}
+
+uint16_t IngestServer::mediaPortRequested(IngestConnection& connection)
+{
+    return 8004; // TODO: logic to assign ports
 }
 #pragma endregion

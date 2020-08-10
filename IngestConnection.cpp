@@ -29,7 +29,24 @@ void IngestConnection::Stop()
 {
     // TODO: Try to tell the client nicely that we're outta here
     shutdown(connectionHandle, SHUT_RDWR);
-    //close(connectionHandle);
+    // connectionThread.join();
+}
+
+uint32_t IngestConnection::GetChannelId()
+{
+    return channelId;
+}
+
+void IngestConnection::SetOnStateChanged(
+    std::function<void (IngestConnection&, IngestConnectionState)> callback)
+{
+    onStateChanged = callback;
+}
+
+void IngestConnection::SetOnRequestMediaPort(
+    std::function<uint16_t (IngestConnection&)> callback)
+{
+    onRequestMediaPort = callback;
 }
 #pragma endregion
 
@@ -59,7 +76,7 @@ void IngestConnection::startConnectionThread()
         {
             // TODO: Handle client closing connection
             JANUS_LOG(LOG_INFO, "FTL: Client closed ingest connection.\n");
-            return;
+            break;
         }
         else
         {
@@ -88,12 +105,17 @@ void IngestConnection::startConnectionThread()
             }
         }
     }
+
+    if (onStateChanged != nullptr)
+    {
+        onStateChanged(*this, IngestConnectionState::Closed);
+    }
+
     JANUS_LOG(LOG_INFO, "FTL: Ingest connection thread terminating\n");
 }
 
 void IngestConnection::processCommand(std::string command)
 {
-    JANUS_LOG(LOG_INFO, "FTL: Processing ingest command: %s\n", command.c_str());
     if (command.compare("HMAC") == 0)
     {
         processHmacCommand();
@@ -109,6 +131,14 @@ void IngestConnection::processCommand(std::string command)
     else if (command.compare(".") == 0)
     {
         processDotCommand();
+    }
+    else if (command.substr(0,4).compare("PING") == 0)
+    {
+        processPingCommand();
+    }
+    else
+    {
+        JANUS_LOG(LOG_WARN, "FTL: Unknown ingest command: %s\n", command.c_str());
     }
 }
 
@@ -172,6 +202,11 @@ void IngestConnection::processConnectCommand(std::string command)
         {
             JANUS_LOG(LOG_INFO, "FTL: Hashes match!\n");
             write(connectionHandle, "200\n", 4);
+            isAuthenticated = true;
+            if (onStateChanged != nullptr)
+            {
+                onStateChanged(*this, IngestConnectionState::Authenticated);
+            }
         }
         else
         {
@@ -204,7 +239,33 @@ void IngestConnection::processAttributeCommand(std::string command)
 
 void IngestConnection::processDotCommand()
 {
+    if (!isAuthenticated)
+    {
+        JANUS_LOG(LOG_WARN, "FTL: Attempted handshake without valid authentication.\n");
+        // TODO: Throw error and kill connection
+        return;
+    }
+    else if (onRequestMediaPort == nullptr)
+    {
+        JANUS_LOG(LOG_ERR, "FTL: Ingest connection cannot request media ports.\n");
+        // TODO: Throw error and kill connection
+        return;
+    }
 
+    uint16_t assignedPort = onRequestMediaPort(*this);
+    std::stringstream response;
+    response << "200 hi. Use UDP port " << assignedPort << "\n";
+    std::string responseStr = response.str();
+    write(connectionHandle, responseStr.c_str(), responseStr.length());
+    if (onStateChanged != nullptr)
+    {
+        onStateChanged(*this, IngestConnectionState::Active);
+    }
+}
+
+void IngestConnection::processPingCommand()
+{
+    write(connectionHandle, "201\n", 4);
 }
 
 std::string IngestConnection::byteArrayToHexString(uint8_t* byteArray, uint32_t length)

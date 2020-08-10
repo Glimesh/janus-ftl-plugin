@@ -16,6 +16,7 @@
 #include <vector>
 #include <thread>
 #include <memory>
+#include <map>
 
 /**
  * @brief This class listens for incoming FTL ingest connections.
@@ -35,14 +36,17 @@ public:
 
 private:
     /* Private members */
-    bool stopping = false;
     std::shared_ptr<CredStore> credStore;
     int listenPort;
     int socketQueueLimit;
     int listenSocketHandle;
     std::thread listenThread;
     std::vector<std::shared_ptr<IngestConnection>> pendingConnections;
+    std::map<uint32_t, std::shared_ptr<IngestConnection>> authenticatedConnections;
 
     /* Private methods */
     void startListenThread();
+    void removeConnection(IngestConnection& connection);
+    void connectionStateChanged(IngestConnection& connection, IngestConnectionState newState);
+    uint16_t mediaPortRequested(IngestConnection& connection);
 };
