@@ -1,11 +1,14 @@
 /**
- * This is a plugin for Janus to support ingest of streams via the FTL (Faster-Than-Light)
- * protocol developed for the Mixer streaming platform.
+ * @file janus_ftl.cpp
+ * @author Hayden McAfee (hayden@outlook.com)
+ * @brief 
+ *  This is a plugin for Janus to support ingest of streams via the FTL (Faster-Than-Light)
+ *  protocol developed for the Mixer streaming platform.
+ * @version 0.1
+ * @date 2020-08-09
  * 
- * Hayden McAfee <hayden@outlook.com>
- *
- * As this plugin was heavily based off of the janus_streaming plugin written by Lorenzo Miniero
- * for janus-gateway, it shares the GPL General Public License v3.
+ * @copyright Copyright (c) 2020 Hayden McAfee
+ * 
  */
 
 extern "C" 

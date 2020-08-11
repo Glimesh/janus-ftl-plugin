@@ -41,7 +41,10 @@ void JanusFtl::Destroy()
 #pragma region Public plugin methods
 void JanusFtl::CreateSession(janus_plugin_session* handle, int* error)
 {
-    // TODO: Create internal representation of session and associated mountpoint
+    std::shared_ptr<JanusSession> session = std::make_shared<JanusSession>(handle);
+    handle->plugin_handle = session.get();
+    std::lock_guard<std::mutex> lock(sessionsMutex);
+    sessions[handle] = session;
 }
 
 struct janus_plugin_result* JanusFtl::HandleMessage(
@@ -66,7 +69,24 @@ json_t* JanusFtl::HandleAdminMessage(json_t* message)
 
 void JanusFtl::SetupMedia(janus_plugin_session* handle)
 {
-    // TODO
+    std::shared_ptr<JanusSession> session;
+    {
+        std::lock_guard<std::mutex> lock(sessionsMutex);
+        if (sessions.count(handle) <= 0)
+        {
+            JANUS_LOG(LOG_ERR, "FTL: No session associated with this handle...\n");
+            return;
+        }
+        session = sessions[handle];
+    }
+    std::shared_ptr<FtlStream> ftlStream = session->GetFtlStream();
+    if (ftlStream == nullptr)
+    {
+        JANUS_LOG(LOG_ERR, "FTL: No FTL stream associated with this session...\n");
+        return;
+    }
+
+
 }
 
 void JanusFtl::IncomingRtp(janus_plugin_session* handle, janus_plugin_rtp* packet)
@@ -91,7 +111,16 @@ void JanusFtl::HangUpMedia(janus_plugin_session* handle)
 
 void JanusFtl::DestroySession(janus_plugin_session* handle, int* error)
 {
-    // TODO
+    std::lock_guard<std::mutex> lock(sessionsMutex);
+    if (sessions.count(handle) == 0)
+    {
+        JANUS_LOG(LOG_ERR, "FTL: No session associated with this handle...\n");
+        *error = -2;
+        return;
+    }
+
+    // TODO: hang up media
+    sessions.erase(handle);
 }
 
 json_t* JanusFtl::QuerySession(janus_plugin_session* handle)

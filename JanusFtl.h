@@ -17,7 +17,10 @@ extern "C"
 
 #include "IngestServer.h"
 #include "CredStore.h"
+#include "JanusSession.h"
 #include <memory>
+#include <map>
+#include <mutex>
 
 /**
  * @brief This class handles interactions with the Janus plugin API and Janus core.
@@ -50,6 +53,8 @@ private:
     janus_callbacks* janusCore;
     std::unique_ptr<IngestServer> ingestServer;
     std::shared_ptr<CredStore> credStore;
+    std::mutex sessionsMutex;
+    std::map<janus_plugin_session*, std::shared_ptr<JanusSession>> sessions;
 
     /* Private methods */
 

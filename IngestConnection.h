@@ -53,7 +53,7 @@ public:
 private:
     /* Private members */
     bool isAuthenticated = false;
-    int channelId = 0;
+    uint32_t channelId = 0;
     int connectionHandle;
     std::shared_ptr<CredStore> credStore;
     std::thread connectionThread;
