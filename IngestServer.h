@@ -17,6 +17,7 @@
 #include <thread>
 #include <memory>
 #include <map>
+#include <functional>
 
 /**
  * @brief This class listens for incoming FTL ingest connections.
@@ -33,6 +34,8 @@ public:
     /* Public methods */
     void Start();
     void Stop();
+    // Callbacks
+    void SetOnRequestMediaPort(std::function<uint16_t (IngestConnection&)> callback);
 
 private:
     /* Private members */
@@ -41,8 +44,11 @@ private:
     int socketQueueLimit;
     int listenSocketHandle;
     std::thread listenThread;
+    // Stores connections that we don't yet have authentication information for
     std::vector<std::shared_ptr<IngestConnection>> pendingConnections;
+    // Stores connections that have authenticated with a user ID
     std::map<uint32_t, std::shared_ptr<IngestConnection>> authenticatedConnections;
+    std::function<uint16_t (IngestConnection&)> onRequestMediaPort;
 
     /* Private methods */
     void startListenThread();

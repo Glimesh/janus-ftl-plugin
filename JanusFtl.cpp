@@ -24,6 +24,10 @@ int JanusFtl::Init(janus_callbacks* callback, const char* config_path)
     credStore = std::make_shared<DummyCredStore>();
 
     ingestServer = std::make_unique<IngestServer>(credStore);
+    ingestServer->SetOnRequestMediaPort(std::bind(
+        &JanusFtl::ingestMediaPortRequested,
+        this,
+        std::placeholders::_1));
     ingestServer->Start();
 
     JANUS_LOG(LOG_INFO, "FTL Plugin initialized!\n");
@@ -128,5 +132,34 @@ json_t* JanusFtl::QuerySession(janus_plugin_session* handle)
     // TODO
 
     return json_object();
+}
+#pragma endregion
+
+#pragma region Private methods
+uint16_t JanusFtl::ingestMediaPortRequested(IngestConnection& connection)
+{
+    // Find a free port
+    std::lock_guard<std::mutex> lock(ftlStreamsMutex);
+    uint16_t targetPort = 0;
+    for (uint16_t i = minMediaPort; i < maxMediaPort; ++i)
+    {
+        if (ftlStreams.count(i) == 0)
+        {
+            targetPort = i;
+            break;
+        }
+    }
+    if (targetPort == 0)
+    {
+        throw std::runtime_error("No more free media ports could be found!");
+    }
+
+    // Spin up a new FTL stream
+    auto ftlStream = std::make_shared<FtlStream>(connection.GetChannelId(), targetPort);
+    ftlStreams[targetPort] = ftlStream;
+    ftlStream->Start();
+    
+    // Return the port back to the ingest connection
+    return targetPort;
 }
 #pragma endregion

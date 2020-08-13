@@ -82,6 +82,12 @@ void IngestServer::Stop()
     shutdown(listenSocketHandle, SHUT_RDWR);
     listenThread.join();
 }
+
+void IngestServer::SetOnRequestMediaPort(
+    std::function<uint16_t (IngestConnection&)> callback)
+{
+    onRequestMediaPort = callback;
+}
 #pragma endregion
 
 #pragma region Private methods
@@ -185,6 +191,13 @@ void IngestServer::connectionStateChanged(
 
 uint16_t IngestServer::mediaPortRequested(IngestConnection& connection)
 {
-    return 8004; // TODO: logic to assign ports
+    if (onRequestMediaPort != nullptr)
+    {
+        return onRequestMediaPort(connection);
+    }
+    else
+    {
+        throw std::runtime_error("Callback from IngestServer to request new media port failed.");
+    }
 }
 #pragma endregion

@@ -18,6 +18,7 @@ extern "C"
 #include "IngestServer.h"
 #include "CredStore.h"
 #include "JanusSession.h"
+#include "FtlStream.h"
 #include <memory>
 #include <map>
 #include <mutex>
@@ -55,7 +56,11 @@ private:
     std::shared_ptr<CredStore> credStore;
     std::mutex sessionsMutex;
     std::map<janus_plugin_session*, std::shared_ptr<JanusSession>> sessions;
+    uint16_t minMediaPort = 9000;
+    uint16_t maxMediaPort = 65535;
+    std::map<uint16_t, std::shared_ptr<FtlStream>> ftlStreams;
+    std::mutex ftlStreamsMutex;
 
     /* Private methods */
-
+    uint16_t ingestMediaPortRequested(IngestConnection& connection);
 };
