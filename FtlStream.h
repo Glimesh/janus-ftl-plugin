@@ -9,6 +9,9 @@
  */
 #pragma once
 
+#include "RtpRelayPacket.h"
+#include "JanusSession.h"
+
 extern "C"
 {
     #include <rtp.h>
@@ -17,6 +20,10 @@ extern "C"
 #include <string>
 #include <memory>
 #include <thread>
+#include <functional>
+#include <list>
+
+class JanusSession; // Forward declare, circular reference
 
 // Kind of a combo between janus_streaming_mountpoint and janus_streaming_rtp_source
 class FtlStream
@@ -28,6 +35,7 @@ public:
     /* Public methods */
     void Start();
     void Stop();
+    void AddViewer(std::shared_ptr<JanusSession> viewerSession);
 
 private:
     /* Private members */
@@ -36,7 +44,9 @@ private:
     janus_rtp_switching_context rtpSwitchingContext;
     int mediaSocketHandle;
     std::thread streamThread;
+    std::list<std::shared_ptr<JanusSession>> viewerSessions;
 
     /* Private methods */
     void startStreamThread();
+    void relayRtpPacket(RtpRelayPacket rtpPacket);
 };

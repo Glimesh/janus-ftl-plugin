@@ -11,6 +11,7 @@
 #pragma once
 
 #include "FtlStream.h"
+#include "RtpRelayPacket.h"
 extern "C"
 {
     #include <plugins/plugin.h>
@@ -22,11 +23,12 @@ class JanusSession
 public:
     /* Constructor/Destructor */
     JanusSession(janus_plugin_session* handle);
+
+    /* Public methods */
+    void RelayRtpPacket(RtpRelayPacket rtpPacket);
     
     /* Getters/setters */
-    std::shared_ptr<FtlStream> GetFtlStream();
-    void SetFtlStream(std::shared_ptr<FtlStream> ftlStream);
 private:
     janus_plugin_session* handle;
-    std::shared_ptr<FtlStream> ftlStream;
+    janus_rtp_switching_context rtpSwitchingContext;
 };

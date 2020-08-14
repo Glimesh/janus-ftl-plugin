@@ -16,14 +16,43 @@ JanusSession::JanusSession(janus_plugin_session* handle) :
 { }
 #pragma endregion
 
-#pragma region Getters/setters
-std::shared_ptr<FtlStream> JanusSession::GetFtlStream()
+#pragma region Public methods
+void JanusSession::RelayRtpPacket(RtpRelayPacket rtpPacket)
 {
-    return ftlStream;
+    if (rtpPacket.type == RtpRelayPacketKind::Video)
+    {
+        janus_rtp_header_update(rtpPacket.rtpHeader, &rtpSwitchingContext, TRUE, 0);
+        janus_plugin_rtp janusRtp = 
+        {
+            .video = true,
+            .buffer = reinterpret_cast<char*>(rtpPacket.rtpHeader),
+            .length = rtpPacket.rtpHeaderLength
+        };
+        janus_plugin_rtp_extensions_reset(&janusRtp.extensions);
+        if (handle->gateway_handle != nullptr)
+        {
+            janus_callbacks* gateway = reinterpret_cast<janus_callbacks*>(handle->gateway_handle);
+            gateway->relay_rtp(handle, &janusRtp);
+        }
+    }
+    else if (rtpPacket.type == RtpRelayPacketKind::Audio)
+    {
+        janus_rtp_header_update(rtpPacket.rtpHeader, &rtpSwitchingContext, FALSE, 0);
+        janus_plugin_rtp janusRtp = 
+        {
+            .video = false,
+            .buffer = reinterpret_cast<char*>(rtpPacket.rtpHeader),
+            .length = rtpPacket.rtpHeaderLength
+        };
+        janus_plugin_rtp_extensions_reset(&janusRtp.extensions);
+        if (handle->gateway_handle != nullptr)
+        {
+            janus_callbacks* gateway = reinterpret_cast<janus_callbacks*>(handle->gateway_handle);
+            gateway->relay_rtp(handle, &janusRtp);
+        }
+    }
 }
+#pragma endregion
 
-void JanusSession::SetFtlStream(std::shared_ptr<FtlStream> ftlStream)
-{
-    this->ftlStream = ftlStream;
-}
+#pragma region Getters/setters
 #pragma endregion

@@ -15,6 +15,7 @@ extern "C"
     #include <plugins/plugin.h>
 }
 
+#include "RtpRelayPacket.h"
 #include "IngestServer.h"
 #include "CredStore.h"
 #include "JanusSession.h"
@@ -22,6 +23,7 @@ extern "C"
 #include <memory>
 #include <map>
 #include <mutex>
+#include <list>
 
 /**
  * @brief This class handles interactions with the Janus plugin API and Janus core.
@@ -54,12 +56,14 @@ private:
     janus_callbacks* janusCore;
     std::unique_ptr<IngestServer> ingestServer;
     std::shared_ptr<CredStore> credStore;
-    std::mutex sessionsMutex;
-    std::map<janus_plugin_session*, std::shared_ptr<JanusSession>> sessions;
     uint16_t minMediaPort = 9000;
     uint16_t maxMediaPort = 65535;
-    std::map<uint16_t, std::shared_ptr<FtlStream>> ftlStreams;
+    std::mutex sessionsMutex;
+    std::map<janus_plugin_session*, std::shared_ptr<JanusSession>> sessions;
     std::mutex ftlStreamsMutex;
+    std::map<uint16_t, std::shared_ptr<FtlStream>> ftlStreams;
+    std::mutex sessionFtlStreamMutex;
+    std::map<janus_plugin_session*, std::shared_ptr<FtlStream>> sessionFtlStream;
 
     /* Private methods */
     uint16_t ingestMediaPortRequested(IngestConnection& connection);

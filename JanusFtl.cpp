@@ -83,14 +83,17 @@ void JanusFtl::SetupMedia(janus_plugin_session* handle)
         }
         session = sessions[handle];
     }
-    std::shared_ptr<FtlStream> ftlStream = session->GetFtlStream();
-    if (ftlStream == nullptr)
+
+    std::shared_ptr<FtlStream> ftlStream;
     {
-        JANUS_LOG(LOG_ERR, "FTL: No FTL stream associated with this session...\n");
-        return;
+        std::lock_guard<std::mutex> lock(sessionFtlStreamMutex);
+        if (sessionFtlStream.count(handle) <= 0)
+        {
+            JANUS_LOG(LOG_ERR, "FTL: No FTL stream associated with this session.");
+            return;
+        }
+        ftlStream = sessionFtlStream[handle];
     }
-
-
 }
 
 void JanusFtl::IncomingRtp(janus_plugin_session* handle, janus_plugin_rtp* packet)

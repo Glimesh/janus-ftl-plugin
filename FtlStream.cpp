@@ -33,6 +33,11 @@ void FtlStream::Stop()
 {
 
 }
+
+void FtlStream::AddViewer(std::shared_ptr<JanusSession> viewerSession)
+{
+    viewerSessions.push_back(viewerSession);
+}
 #pragma endregion
 
 #pragma region Private methods
@@ -121,14 +126,34 @@ void FtlStream::startStreamThread()
             // FTL designates payload type 97 as audio (Opus)
             if (rtpHeader->type == 97)
             {
-                JANUS_LOG(LOG_INFO, "FTL: Got audio packet.\n");
+                relayRtpPacket({
+                    .rtpHeader = rtpHeader,
+                    .rtpHeaderLength = static_cast<uint16_t>(bytesRead),
+                    .type = RtpRelayPacketKind::Audio,
+                });
             }
             // FTL designates payload type 96 as video (H264 or VP8)
             else if (rtpHeader->type == 96)
             {
-                JANUS_LOG(LOG_INFO, "FTL: Got video packet.\n");
+                relayRtpPacket({
+                    .rtpHeader = rtpHeader,
+                    .rtpHeaderLength = static_cast<uint16_t>(bytesRead),
+                    .type = RtpRelayPacketKind::Video,
+                });
+            }
+            else
+            {
+                JANUS_LOG(LOG_INFO, "FTL: Unknown RTP payload type %d", rtpHeader->type);
             }
         }
+    }
+}
+
+void FtlStream::relayRtpPacket(RtpRelayPacket rtpPacket)
+{
+    for (const std::shared_ptr<JanusSession>& session : viewerSessions)
+    {
+        session->RelayRtpPacket(rtpPacket);
     }
 }
 #pragma endregion
