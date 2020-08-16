@@ -10,6 +10,7 @@
 
 #include "FtlStream.h"
 #include <poll.h>
+#include <algorithm>
 extern "C"
 {
     #include <debug.h>
@@ -36,7 +37,23 @@ void FtlStream::Stop()
 
 void FtlStream::AddViewer(std::shared_ptr<JanusSession> viewerSession)
 {
+    std::lock_guard<std::mutex> lock(viewerSessionsMutex);
     viewerSessions.push_back(viewerSession);
+}
+
+void FtlStream::RemoveViewer(std::shared_ptr<JanusSession> viewerSession)
+{
+    std::lock_guard<std::mutex> lock(viewerSessionsMutex);
+    viewerSessions.erase(
+        std::remove(viewerSessions.begin(), viewerSessions.end(), viewerSession),
+        viewerSessions.end());
+}
+#pragma endregion
+
+#pragma region Getters/Setters
+uint64_t FtlStream::GetChannelId()
+{
+    return channelId;
 }
 #pragma endregion
 
@@ -135,6 +152,7 @@ void FtlStream::startStreamThread()
             // FTL designates payload type 96 as video (H264 or VP8)
             else if (rtpHeader->type == 96)
             {
+                
                 relayRtpPacket({
                     .rtpHeader = rtpHeader,
                     .rtpHeaderLength = static_cast<uint16_t>(bytesRead),
@@ -151,7 +169,7 @@ void FtlStream::startStreamThread()
 
 void FtlStream::relayRtpPacket(RtpRelayPacket rtpPacket)
 {
-    for (const std::shared_ptr<JanusSession>& session : viewerSessions)
+    for (const std::shared_ptr<JanusSession> session : viewerSessions)
     {
         session->RelayRtpPacket(rtpPacket);
     }

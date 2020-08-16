@@ -27,3 +27,13 @@ https://janus.conf.meetecho.com/docs/plugin_8h.html
         "HAVE_SRTP_2=1"
     ],
 ```
+
+## FTL Janus API
+
+### Watch request
+```json
+{
+    request: "watch",
+    channelId: 123456789
+}
+```

@@ -20,6 +20,7 @@ extern "C"
 #include "CredStore.h"
 #include "JanusSession.h"
 #include "FtlStream.h"
+#include "JanssonPtr.h"
 #include <memory>
 #include <map>
 #include <mutex>
@@ -31,6 +32,17 @@ extern "C"
 class JanusFtl
 {
 public:
+    /* Public Members */
+    static const unsigned int FTL_PLUGIN_ERROR_NO_MESSAGE        = 450;
+    static const unsigned int FTL_PLUGIN_ERROR_INVALID_JSON      = 451;
+    static const unsigned int FTL_PLUGIN_ERROR_INVALID_REQUEST   = 452;
+    static const unsigned int FTL_PLUGIN_ERROR_MISSING_ELEMENT   = 453;
+    static const unsigned int FTL_PLUGIN_ERROR_NO_SUCH_STREAM    = 455;
+    static const unsigned int FTL_PLUGIN_ERROR_UNKNOWN           = 470;
+
+    /* Constructor/Destructor */
+    JanusFtl(janus_plugin* plugin);
+
     /* Init/Destroy */
     int Init(janus_callbacks* callback, const char* config_path);
     void Destroy();
@@ -53,6 +65,7 @@ public:
 
 private:
     /* Members */
+    janus_plugin* pluginHandle;
     janus_callbacks* janusCore;
     std::unique_ptr<IngestServer> ingestServer;
     std::shared_ptr<CredStore> credStore;
@@ -60,11 +73,18 @@ private:
     uint16_t maxMediaPort = 65535;
     std::mutex sessionsMutex;
     std::map<janus_plugin_session*, std::shared_ptr<JanusSession>> sessions;
-    std::mutex ftlStreamsMutex;
-    std::map<uint16_t, std::shared_ptr<FtlStream>> ftlStreams;
+    std::mutex ftlStreamPortsMutex;
+    std::map<uint16_t, std::shared_ptr<FtlStream>> ftlStreamPorts;
+    std::mutex ftlStreamChannelIdsMutex;
+    std::map<uint32_t, std::shared_ptr<FtlStream>> ftlStreamChannelIds;
     std::mutex sessionFtlStreamMutex;
     std::map<janus_plugin_session*, std::shared_ptr<FtlStream>> sessionFtlStream;
 
     /* Private methods */
     uint16_t ingestMediaPortRequested(IngestConnection& connection);
+    // Message handling
+    janus_plugin_result* generateMessageErrorResponse(int errorCode, std::string errorMessage);
+    janus_plugin_result* handleWatchMessage(std::shared_ptr<JanusSession> session, JsonPtr message, char* transaction);
+    janus_plugin_result* handleStartMessage(std::shared_ptr<JanusSession> session, JsonPtr message, char* transaction);
+    std::string generateSdpOffer(std::shared_ptr<JanusSession> session, std::shared_ptr<FtlStream> ftlStream);
 };

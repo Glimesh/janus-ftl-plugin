@@ -18,17 +18,33 @@ extern "C"
 }
 #include <memory>
 
+class FtlStream; // Forward declare, circular reference
+
 class JanusSession
 {
 public:
     /* Constructor/Destructor */
-    JanusSession(janus_plugin_session* handle);
+    JanusSession(janus_plugin_session* handle, janus_callbacks* janusCore);
 
     /* Public methods */
     void RelayRtpPacket(RtpRelayPacket rtpPacket);
+    void ResetRtpSwitchingContext();
     
     /* Getters/setters */
+    bool GetIsStarted();
+    void SetIsStarted(bool value);
+    janus_plugin_session* GetJanusPluginSessionHandle();
+    int64_t GetSdpSessionId();
+    int64_t GetSdpVersion();
+    std::shared_ptr<FtlStream> GetViewingStream();
+    void SetViewingStream(std::shared_ptr<FtlStream> ftlStream);
+
 private:
+    bool isStarted = false;
     janus_plugin_session* handle;
+    janus_callbacks* janusCore;
     janus_rtp_switching_context rtpSwitchingContext;
+    int64_t sdpSessionId;
+    int64_t sdpVersion;
+    std::shared_ptr<FtlStream> viewingStream;
 };

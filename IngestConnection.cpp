@@ -212,6 +212,7 @@ void IngestConnection::processConnectCommand(std::string command)
         {
             JANUS_LOG(LOG_INFO, "FTL: Hashes match!\n");
             write(connectionHandle, "200\n", 4);
+            this->channelId = channelId;
             isAuthenticated = true;
             if (onStateChanged != nullptr)
             {

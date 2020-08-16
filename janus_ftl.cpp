@@ -16,8 +16,8 @@ extern "C"
     #include <plugins/plugin.h>
 }
 
-#include <memory>
 #include "JanusFtl.h"
+#include <memory>
 
 #pragma region Plugin metadata
 static const unsigned int FTL_PLUGIN_VERSION        = 1;
@@ -93,7 +93,7 @@ static janus_plugin janus_ftl_plugin =
 
 #pragma region Plugin creator
 extern "C" janus_plugin *create(void) {
-    janusFtl = std::make_unique<JanusFtl>();
+    janusFtl = std::make_unique<JanusFtl>(&janus_ftl_plugin);
     JANUS_LOG(LOG_VERB, "%s created!\n", FTL_PLUGIN_NAME);
     return &janus_ftl_plugin;
 }
@@ -170,7 +170,7 @@ static json_t* HandleAdminMessage(json_t* message)
 
 static void SetupMedia(janus_plugin_session* handle)
 {
-    return janusFtl->SetupMedia(handle);
+    janusFtl->SetupMedia(handle);
 }
 
 static void IncomingRtp(janus_plugin_session* handle, janus_plugin_rtp* packet)

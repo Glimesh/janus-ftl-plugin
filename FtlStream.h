@@ -22,6 +22,7 @@ extern "C"
 #include <thread>
 #include <functional>
 #include <list>
+#include <mutex>
 
 class JanusSession; // Forward declare, circular reference
 
@@ -36,6 +37,10 @@ public:
     void Start();
     void Stop();
     void AddViewer(std::shared_ptr<JanusSession> viewerSession);
+    void RemoveViewer(std::shared_ptr<JanusSession> viewerSession);
+    
+    /* Getters/Setters */
+    uint64_t GetChannelId();
 
 private:
     /* Private members */
@@ -44,6 +49,7 @@ private:
     janus_rtp_switching_context rtpSwitchingContext;
     int mediaSocketHandle;
     std::thread streamThread;
+    std::mutex viewerSessionsMutex;
     std::list<std::shared_ptr<JanusSession>> viewerSessions;
 
     /* Private methods */
