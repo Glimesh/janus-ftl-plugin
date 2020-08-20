@@ -21,6 +21,7 @@ extern "C"
 #include "JanusSession.h"
 #include "FtlStream.h"
 #include "JanssonPtr.h"
+#include "FtlStreamStore.h"
 #include <memory>
 #include <map>
 #include <mutex>
@@ -73,15 +74,12 @@ private:
     uint16_t maxMediaPort = 65535;
     std::mutex sessionsMutex;
     std::map<janus_plugin_session*, std::shared_ptr<JanusSession>> sessions;
-    std::mutex ftlStreamPortsMutex;
-    std::map<uint16_t, std::shared_ptr<FtlStream>> ftlStreamPorts;
-    std::mutex ftlStreamChannelIdsMutex;
-    std::map<uint32_t, std::shared_ptr<FtlStream>> ftlStreamChannelIds;
-    std::mutex sessionFtlStreamMutex;
-    std::map<janus_plugin_session*, std::shared_ptr<FtlStream>> sessionFtlStream;
+    std::unique_ptr<FtlStreamStore> ftlStreamStore;
+    std::mutex portAssignmentMutex;
 
     /* Private methods */
-    uint16_t ingestMediaPortRequested(IngestConnection& connection);
+    uint16_t newIngestFtlStream(std::shared_ptr<IngestConnection> connection);
+    void ftlStreamClosed(FtlStream& ftlStream);
     // Message handling
     janus_plugin_result* generateMessageErrorResponse(int errorCode, std::string errorMessage);
     janus_plugin_result* handleWatchMessage(std::shared_ptr<JanusSession> session, JsonPtr message, char* transaction);

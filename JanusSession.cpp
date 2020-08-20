@@ -97,19 +97,4 @@ int64_t JanusSession::GetSdpVersion()
 {
     return sdpVersion;
 }
-
-std::shared_ptr<FtlStream> JanusSession::GetViewingStream()
-{
-    return viewingStream;
-}
-
-void JanusSession::SetViewingStream(std::shared_ptr<FtlStream> ftlStream)
-{
-    if (viewingStream != nullptr)
-    {
-        viewingStream->RemoveViewer(std::shared_ptr<JanusSession>(this));
-    }
-    ftlStream->AddViewer(std::shared_ptr<JanusSession>(this));
-    viewingStream = ftlStream;
-}
 #pragma endregion

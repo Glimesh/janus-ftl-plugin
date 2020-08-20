@@ -83,10 +83,10 @@ void IngestServer::Stop()
     listenThread.join();
 }
 
-void IngestServer::SetOnRequestMediaPort(
-    std::function<uint16_t (IngestConnection&)> callback)
+void IngestServer::SetOnRequestMediaConnection(
+    std::function<uint16_t (std::shared_ptr<IngestConnection>)> callback)
 {
-    onRequestMediaPort = callback;
+    onRequestMediaConnection = callback;
 }
 #pragma endregion
 
@@ -114,13 +114,12 @@ void IngestServer::startListenThread()
                 std::make_shared<IngestConnection>(connectionHandle, credStore);
             pendingConnections.push_back(connection);
                 
-            connection->SetOnStateChanged(std::bind(
-                &IngestServer::connectionStateChanged,
+            connection->SetOnClosed(std::bind(
+                &IngestServer::connectionClosed,
                 this,
-                std::placeholders::_1,
-                std::placeholders::_2));
-            connection->SetOnRequestMediaPort(std::bind(
-                &IngestServer::mediaPortRequested,
+                std::placeholders::_1));
+            connection->SetOnRequestMediaConnection(std::bind(
+                &IngestServer::mediaConnectionRequested,
                 this,
                 std::placeholders::_1));
             connection->Start();
@@ -139,65 +138,51 @@ void IngestServer::removeConnection(IngestConnection& connection)
             break;
         }
     }
+}
 
-    for (auto it = authenticatedConnections.begin(); it != authenticatedConnections.end(); ++it)
+void IngestServer::connectionClosed(IngestConnection& connection)
+{
+    // Stop and remove this connection
+    connection.Stop();
+    removeConnection(connection);
+
+    uint32_t connectionCount = pendingConnections.size();
+
+    JANUS_LOG(LOG_INFO, "FTL: Pending ingest connection closed. %d pending ingest connections.\n",
+        connectionCount);
+}
+
+uint16_t IngestServer::mediaConnectionRequested(IngestConnection& connection)
+{
+    // Find our reference to this connection and remove it
+    std::shared_ptr<IngestConnection> connectionReference;
+    for (auto it = pendingConnections.begin(); it != pendingConnections.end(); ++it)
     {
-        const auto& connectionPair = *it;
-        if (connectionPair.second.get() == &connection)
+        std::shared_ptr<IngestConnection>& c = *it;
+        if (c.get() == &connection)
         {
-            authenticatedConnections.erase(it);
+            connectionReference = *it;
+            pendingConnections.erase(it);
             break;
         }
     }
-}
 
-void IngestServer::connectionStateChanged(
-    IngestConnection& connection,
-    IngestConnectionState newState)
-{
-    if (newState == IngestConnectionState::Authenticated)
+    if (connectionReference == nullptr)
     {
-        // Find connection in our pending list
-        bool found = false;
-        for (auto it = pendingConnections.begin(); it != pendingConnections.end(); ++it)
-        {
-            const auto pendingConnection = *it; // we want a copy, otherwise when we erase
-                                                // the connection will be destroyed
-            if (pendingConnection.get() == &connection)
-            {
-                pendingConnections.erase(it);
-                uint32_t channelId = pendingConnection->GetChannelId();
-                authenticatedConnections[channelId] = pendingConnection;
-                found = true;
-                break;
-            }
-        }
-        if (!found)
-        {
-            JANUS_LOG(LOG_ERR, "FTL: Unknown connection was authenticated...\n");
-        }
+        throw std::runtime_error("Could not find reference to connection.");
     }
-    else if (newState == IngestConnectionState::Closed)
+
+    // Pass this connection out to callback
+    if (onRequestMediaConnection != nullptr)
     {
-        // Stop and remove this connection
-        connection.Stop();
-        removeConnection(connection);
-
-        uint32_t connectionCount = pendingConnections.size() + authenticatedConnections.size();
-
-        JANUS_LOG(LOG_INFO, "FTL: Ingest connection removed. %d connections.\n", connectionCount);
-    }
-}
-
-uint16_t IngestServer::mediaPortRequested(IngestConnection& connection)
-{
-    if (onRequestMediaPort != nullptr)
-    {
-        return onRequestMediaPort(connection);
+        // Relinquish callbacks
+        connectionReference->SetOnClosed(nullptr);
+        connectionReference->SetOnRequestMediaConnection(nullptr);
+        return onRequestMediaConnection(connectionReference);
     }
     else
     {
-        throw std::runtime_error("Callback from IngestServer to request new media port failed.");
+        throw std::runtime_error("Callback from IngestServer to request new media connection failed.");
     }
 }
 #pragma endregion

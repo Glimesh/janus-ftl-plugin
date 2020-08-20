@@ -46,9 +46,8 @@ public:
     // Getters/Setters
     uint32_t GetChannelId();
     // Callbacks
-    void SetOnStateChanged(
-        std::function<void (IngestConnection&, IngestConnectionState)> callback);
-    void SetOnRequestMediaPort(std::function<uint16_t (IngestConnection&)> callback);
+    void SetOnClosed(std::function<void (IngestConnection&)> callback);
+    void SetOnRequestMediaConnection(std::function<uint16_t (IngestConnection&)> callback);
 
 private:
     /* Private members */
@@ -65,8 +64,8 @@ private:
     std::regex connectPattern = std::regex(R"~(CONNECT ([0-9]+) \$([0-9a-f]+))~");
     std::regex attributePattern = std::regex(R"~((.+): (.+))~");
     // Callbacks
-    std::function<void (IngestConnection&, IngestConnectionState)> onStateChanged;
-    std::function<uint16_t (IngestConnection&)> onRequestMediaPort;
+    std::function<void (IngestConnection&)> onClosed;
+    std::function<uint16_t (IngestConnection&)> onRequestMediaConnection;
 
     /* Private methods */
     void startConnectionThread();

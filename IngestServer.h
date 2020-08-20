@@ -35,7 +35,7 @@ public:
     void Start();
     void Stop();
     // Callbacks
-    void SetOnRequestMediaPort(std::function<uint16_t (IngestConnection&)> callback);
+    void SetOnRequestMediaConnection(std::function<uint16_t (std::shared_ptr<IngestConnection>)> callback);
 
 private:
     /* Private members */
@@ -46,13 +46,11 @@ private:
     std::thread listenThread;
     // Stores connections that we don't yet have authentication information for
     std::vector<std::shared_ptr<IngestConnection>> pendingConnections;
-    // Stores connections that have authenticated with a user ID
-    std::map<uint32_t, std::shared_ptr<IngestConnection>> authenticatedConnections;
-    std::function<uint16_t (IngestConnection&)> onRequestMediaPort;
+    std::function<uint16_t (std::shared_ptr<IngestConnection>)> onRequestMediaConnection;
 
     /* Private methods */
     void startListenThread();
     void removeConnection(IngestConnection& connection);
-    void connectionStateChanged(IngestConnection& connection, IngestConnectionState newState);
-    uint16_t mediaPortRequested(IngestConnection& connection);
+    void connectionClosed(IngestConnection& connection);
+    uint16_t mediaConnectionRequested(IngestConnection& connection);
 };

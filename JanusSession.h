@@ -36,8 +36,6 @@ public:
     janus_plugin_session* GetJanusPluginSessionHandle();
     int64_t GetSdpSessionId();
     int64_t GetSdpVersion();
-    std::shared_ptr<FtlStream> GetViewingStream();
-    void SetViewingStream(std::shared_ptr<FtlStream> ftlStream);
 
 private:
     bool isStarted = false;
@@ -46,5 +44,4 @@ private:
     janus_rtp_switching_context rtpSwitchingContext;
     int64_t sdpSessionId;
     int64_t sdpVersion;
-    std::shared_ptr<FtlStream> viewingStream;
 };

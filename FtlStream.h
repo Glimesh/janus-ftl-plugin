@@ -11,6 +11,7 @@
 
 #include "RtpRelayPacket.h"
 #include "JanusSession.h"
+#include "IngestConnection.h"
 
 extern "C"
 {
@@ -31,28 +32,34 @@ class FtlStream
 {
 public:
     /* Constructor/Destructor */
-    FtlStream(uint64_t channelId, uint16_t mediaPort);
+    FtlStream(const std::shared_ptr<IngestConnection> ingestConnection, const uint16_t mediaPort);
 
     /* Public methods */
     void Start();
     void Stop();
     void AddViewer(std::shared_ptr<JanusSession> viewerSession);
     void RemoveViewer(std::shared_ptr<JanusSession> viewerSession);
+    void SetOnClosed(std::function<void (FtlStream&)> callback);
     
     /* Getters/Setters */
     uint64_t GetChannelId();
+    uint16_t GetMediaPort();
+    std::list<std::shared_ptr<JanusSession>> GetViewers();
 
 private:
     /* Private members */
-    uint64_t channelId; // ID of the user who is streaming
-    uint16_t mediaPort; // Port that this stream is listening on
+    const std::shared_ptr<IngestConnection> ingestConnection;
+    const uint16_t mediaPort; // Port that this stream is listening on
     janus_rtp_switching_context rtpSwitchingContext;
     int mediaSocketHandle;
     std::thread streamThread;
     std::mutex viewerSessionsMutex;
     std::list<std::shared_ptr<JanusSession>> viewerSessions;
+    std::function<void (FtlStream&)> onClosed;
+    bool stopping = false;
 
     /* Private methods */
+    void ingestConnectionClosed(IngestConnection& connection);
     void startStreamThread();
     void relayRtpPacket(RtpRelayPacket rtpPacket);
 };

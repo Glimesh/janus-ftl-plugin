@@ -3,3 +3,5 @@
 *.o
 *.lo
 *.la
+test/test
+core

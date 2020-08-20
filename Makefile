@@ -1,15 +1,21 @@
 JANUS_PATH=/opt/janus
 CC=g++
 RM=rm -f
-CFLAGS=-g -Wall -Wno-unknown-pragmas -fPIC $(shell pkg-config --cflags glib-2.0 libsrtp2 libcurl) -I$(JANUS_PATH)/include/janus -DHAVE_SRTP_2=1 -DHAVE_LIBCURL=1
+CFLAGS=-g -Wall -Wno-unknown-pragmas -fPIC $(shell pkg-config --cflags glib-2.0 libsrtp2 libcurl openssl jansson) -I$(JANUS_PATH)/include/janus -DHAVE_SRTP_2=1 -DHAVE_LIBCURL=1
 LDFLAGS=-g -fPIC
-LDLIBS=$(shell pkg-config --libs glib-2.0 libcurl) -L$(JANUS_PATH)/lib
+LDLIBS=$(shell pkg-config --libs glib-2.0 libcurl openssl jansson) -L$(JANUS_PATH)/lib
 DESTINATION_PATH=$(JANUS_PATH)/lib/janus/plugins
 
-SRCS=janus_ftl.cpp JanusFtl.cpp IngestServer.cpp IngestConnection.cpp DummyCredStore.cpp JanusSession.cpp FtlStream.cpp
+SRCS=janus_ftl.cpp JanusFtl.cpp IngestServer.cpp IngestConnection.cpp DummyCredStore.cpp JanusSession.cpp FtlStream.cpp FtlStreamStore.cpp
 OBJS=$(subst .cpp,.lo,$(SRCS))
 
+TESTSRCS=test/JanusFtlTest.cpp
+TESTOBJS=$(subst .cpp,.o,$(TESTSRCS))
+
 all: libjanus_ftl.la
+
+test: libjanus_ftl.la $(TESTOBJS)
+	$(CC) $(CFLAGS) -o test/test.o 
 
 libjanus_ftl.la: $(OBJS)
 	libtool --mode=link $(CC) $(LDFLAGS) -o libjanus_ftl.la $(OBJS) $(LDLIBS) -rpath $(DESTINATION_PATH)

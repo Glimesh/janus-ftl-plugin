@@ -39,7 +39,6 @@ void IngestConnection::Stop()
 {
     // TODO: Try to tell the client nicely that we're outta here
     shutdown(connectionHandle, SHUT_RDWR);
-    // connectionThread.join();
 }
 
 uint32_t IngestConnection::GetChannelId()
@@ -47,16 +46,15 @@ uint32_t IngestConnection::GetChannelId()
     return channelId;
 }
 
-void IngestConnection::SetOnStateChanged(
-    std::function<void (IngestConnection&, IngestConnectionState)> callback)
+void IngestConnection::SetOnClosed(std::function<void (IngestConnection&)> callback)
 {
-    onStateChanged = callback;
+    onClosed = callback;
 }
 
-void IngestConnection::SetOnRequestMediaPort(
+void IngestConnection::SetOnRequestMediaConnection(
     std::function<uint16_t (IngestConnection&)> callback)
 {
-    onRequestMediaPort = callback;
+    onRequestMediaConnection = callback;
 }
 #pragma endregion
 
@@ -116,9 +114,9 @@ void IngestConnection::startConnectionThread()
         }
     }
 
-    if (onStateChanged != nullptr)
+    if (onClosed != nullptr)
     {
-        onStateChanged(*this, IngestConnectionState::Closed);
+        onClosed(*this);
     }
 
     JANUS_LOG(LOG_INFO, "FTL: Ingest connection thread terminating\n");
@@ -214,10 +212,6 @@ void IngestConnection::processConnectCommand(std::string command)
             write(connectionHandle, "200\n", 4);
             this->channelId = channelId;
             isAuthenticated = true;
-            if (onStateChanged != nullptr)
-            {
-                onStateChanged(*this, IngestConnectionState::Authenticated);
-            }
         }
         else
         {
@@ -256,22 +250,18 @@ void IngestConnection::processDotCommand()
         // TODO: Throw error and kill connection
         return;
     }
-    else if (onRequestMediaPort == nullptr)
+    else if (onRequestMediaConnection == nullptr)
     {
         JANUS_LOG(LOG_ERR, "FTL: Ingest connection cannot request media ports.\n");
         // TODO: Throw error and kill connection
         return;
     }
 
-    uint16_t assignedPort = onRequestMediaPort(*this);
+    uint16_t assignedPort = onRequestMediaConnection(*this);
     std::stringstream response;
     response << "200 hi. Use UDP port " << assignedPort << "\n";
     std::string responseStr = response.str();
     write(connectionHandle, responseStr.c_str(), responseStr.length());
-    if (onStateChanged != nullptr)
-    {
-        onStateChanged(*this, IngestConnectionState::Active);
-    }
 }
 
 void IngestConnection::processPingCommand()

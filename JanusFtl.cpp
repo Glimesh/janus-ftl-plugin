@@ -35,20 +35,22 @@ int JanusFtl::Init(janus_callbacks* callback, const char* config_path)
     // TODO: Configurable cred store
     credStore = std::make_shared<DummyCredStore>();
 
+    ftlStreamStore = std::make_unique<FtlStreamStore>();
+
     ingestServer = std::make_unique<IngestServer>(credStore);
-    ingestServer->SetOnRequestMediaPort(std::bind(
-        &JanusFtl::ingestMediaPortRequested,
+    ingestServer->SetOnRequestMediaConnection(std::bind(
+        &JanusFtl::newIngestFtlStream,
         this,
         std::placeholders::_1));
     ingestServer->Start();
 
-    JANUS_LOG(LOG_INFO, "FTL Plugin initialized!\n");
+    JANUS_LOG(LOG_INFO, "FTL: Plugin initialized!\n");
     return 0;
 }
 
 void JanusFtl::Destroy()
 {
-    JANUS_LOG(LOG_INFO, "Tearing down FTL!\n");
+    JANUS_LOG(LOG_INFO, "FTL: Tearing down FTL!\n");
     // TODO: Remove all mountpoints, kill threads, sessions, etc.
     ingestServer->Stop();
 }
@@ -148,15 +150,11 @@ void JanusFtl::SetupMedia(janus_plugin_session* handle)
         session = sessions[handle];
     }
 
-    std::shared_ptr<FtlStream> ftlStream;
+    std::shared_ptr<FtlStream> ftlStream = ftlStreamStore->GetStreamBySession(session);
+    if (ftlStream == nullptr)
     {
-        std::lock_guard<std::mutex> lock(sessionFtlStreamMutex);
-        if (sessionFtlStream.count(handle) <= 0)
-        {
-            JANUS_LOG(LOG_ERR, "FTL: No FTL stream associated with this session.");
-            return;
-        }
-        ftlStream = sessionFtlStream[handle];
+        JANUS_LOG(LOG_ERR, "FTL: No FTL stream associated with this session.");
+        return;
     }
 
     session->ResetRtpSwitchingContext();
@@ -193,6 +191,14 @@ void JanusFtl::DestroySession(janus_plugin_session* handle, int* error)
         return;
     }
 
+    // TODO: Mutex
+    std::shared_ptr<JanusSession> session = sessions.at(handle);
+    std::shared_ptr<FtlStream> viewingStream = ftlStreamStore->GetStreamBySession(session);
+    if (viewingStream != nullptr)
+    {
+        ftlStreamStore->RemoveViewer(viewingStream, session);
+    }
+
     // TODO: hang up media
     sessions.erase(handle);
 }
@@ -206,15 +212,14 @@ json_t* JanusFtl::QuerySession(janus_plugin_session* handle)
 #pragma endregion
 
 #pragma region Private methods
-uint16_t JanusFtl::ingestMediaPortRequested(IngestConnection& connection)
+uint16_t JanusFtl::newIngestFtlStream(std::shared_ptr<IngestConnection> connection)
 {
     // Find a free port
-    std::lock_guard<std::mutex> portsLock(ftlStreamPortsMutex);
-    std::lock_guard<std::mutex> channelIdsLock(ftlStreamChannelIdsMutex);
+    std::lock_guard<std::mutex> portAssignmentGuard(portAssignmentMutex);
     uint16_t targetPort = 0;
     for (uint16_t i = minMediaPort; i < maxMediaPort; ++i)
     {
-        if (ftlStreamPorts.count(i) == 0)
+        if (ftlStreamStore->GetStreamByMediaPort(i) == nullptr)
         {
             targetPort = i;
             break;
@@ -222,18 +227,38 @@ uint16_t JanusFtl::ingestMediaPortRequested(IngestConnection& connection)
     }
     if (targetPort == 0)
     {
+        // TODO: More gracefully handle this rather than crash...
         throw std::runtime_error("No more free media ports could be found!");
     }
 
     // Spin up a new FTL stream
-    uint32_t channelId = connection.GetChannelId();
-    auto ftlStream = std::make_shared<FtlStream>(channelId, targetPort);
-    ftlStreamPorts[targetPort] = ftlStream;
-    ftlStreamChannelIds[channelId] = ftlStream;
+    auto ftlStream = std::make_shared<FtlStream>(connection, targetPort);
+    ftlStream->SetOnClosed(std::bind(
+        &JanusFtl::ftlStreamClosed,
+        this,
+        std::placeholders::_1));
+    ftlStreamStore->AddStream(ftlStream);
     ftlStream->Start();
     
     // Return the port back to the ingest connection
     return targetPort;
+}
+
+void JanusFtl::ftlStreamClosed(FtlStream& ftlStream)
+{
+    // Try to find stream in stream store
+    std::shared_ptr<FtlStream> stream = 
+        ftlStreamStore->GetStreamByChannelId(ftlStream.GetChannelId());
+    if (stream == nullptr)
+    {
+        stream = ftlStreamStore->GetStreamByMediaPort(ftlStream.GetMediaPort());
+    }
+    if (stream == nullptr)
+    {
+        throw std::runtime_error("Stream reporting closed could not be found.");
+    }
+
+    ftlStreamStore->RemoveStream(stream);
 }
 
 janus_plugin_result* JanusFtl::generateMessageErrorResponse(int errorCode, std::string errorMessage)
@@ -260,14 +285,14 @@ janus_plugin_result* JanusFtl::handleWatchMessage(
 
     // Look up the stream associated with given channel ID
     uint32_t channelId = json_integer_value(channelIdJs);
-    if (ftlStreamChannelIds.count(channelId) == 0)
+    std::shared_ptr<FtlStream> ftlStream = ftlStreamStore->GetStreamByChannelId(channelId);
+    if (ftlStream == nullptr)
     {
-        JANUS_LOG(LOG_WARN, "FTL: Request to watch invliad channel id %d\n", channelId);
+        JANUS_LOG(LOG_WARN, "FTL: Request to watch invalid channel id %d\n", channelId);
         return generateMessageErrorResponse(
             FTL_PLUGIN_ERROR_NO_SUCH_STREAM,
             "Given channel ID does not exist.");
     }
-    std::shared_ptr<FtlStream> ftlStream = ftlStreamChannelIds[channelId];
 
     // TODO allow user to request ICE restart (new offer)
 
@@ -276,8 +301,7 @@ janus_plugin_result* JanusFtl::handleWatchMessage(
     JANUS_LOG(LOG_INFO, "FTL: Request to watch stream channel id %d\n", channelId);
 
     // Set this session as a viewer
-    sessionFtlStream[session->GetJanusPluginSessionHandle()] = ftlStream;
-    session->SetViewingStream(ftlStream);
+    ftlStreamStore->AddViewer(ftlStream, session);
 
     // Prepare JSEP paylaod
     std::string sdpOffer = generateSdpOffer(session, ftlStream);

@@ -17,10 +17,16 @@ extern "C"
 }
 
 #pragma region Constructor/Destructor
-FtlStream::FtlStream(uint64_t channelId, uint16_t mediaPort) : 
-    channelId(channelId),
+FtlStream::FtlStream(std::shared_ptr<IngestConnection> ingestConnection, uint16_t mediaPort) : 
+    ingestConnection(ingestConnection),
     mediaPort(mediaPort)
-{ }
+{
+    // Bind to ingest callbacks
+    ingestConnection->SetOnClosed(std::bind(
+        &FtlStream::ingestConnectionClosed,
+        this,
+        std::placeholders::_1));
+}
 #pragma endregion
 
 #pragma region Public methods
@@ -32,7 +38,8 @@ void FtlStream::Start()
 
 void FtlStream::Stop()
 {
-
+    // Stop the ingest connection, which will end up reporting closed to us
+    ingestConnection->Stop();
 }
 
 void FtlStream::AddViewer(std::shared_ptr<JanusSession> viewerSession)
@@ -48,16 +55,37 @@ void FtlStream::RemoveViewer(std::shared_ptr<JanusSession> viewerSession)
         std::remove(viewerSessions.begin(), viewerSessions.end(), viewerSession),
         viewerSessions.end());
 }
+
+void FtlStream::SetOnClosed(std::function<void (FtlStream&)> callback)
+{
+    onClosed = callback;
+}
 #pragma endregion
 
 #pragma region Getters/Setters
 uint64_t FtlStream::GetChannelId()
 {
-    return channelId;
+    return ingestConnection->GetChannelId();
+}
+
+uint16_t FtlStream::GetMediaPort()
+{
+    return mediaPort;
+}
+
+std::list<std::shared_ptr<JanusSession>> FtlStream::GetViewers()
+{
+    return viewerSessions;
 }
 #pragma endregion
 
 #pragma region Private methods
+void FtlStream::ingestConnectionClosed(IngestConnection& connection)
+{
+    // Ingest connection was closed, let's stop this stream.
+    stopping = true;
+}
+
 void FtlStream::startStreamThread()
 {
     struct sockaddr_in socketAddress;
@@ -99,6 +127,14 @@ void FtlStream::startStreamThread()
     fds[0].revents = 0;
     while (true)
     {
+        // Are we stopping?
+        if (stopping)
+        {
+            // Close the socket handle
+            close(mediaSocketHandle);
+            break;
+        }
+
         int pollResult = poll(fds, 1, 1000);
 
         if (pollResult < 0)
@@ -164,6 +200,13 @@ void FtlStream::startStreamThread()
                 JANUS_LOG(LOG_INFO, "FTL: Unknown RTP payload type %d", rtpHeader->type);
             }
         }
+    }
+
+    // We're no longer listening to incoming packets.
+    // TODO: Tell the sessions that we're going away
+    if (onClosed != nullptr)
+    {
+        onClosed(*this);
     }
 }
 
