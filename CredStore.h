@@ -18,6 +18,9 @@
 class CredStore
 {
 public:
+    virtual ~CredStore()
+    { }
+
     /**
      * @brief Get the private HMAC key for a given user ID
      * 

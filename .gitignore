@@ -5,3 +5,4 @@
 *.la
 test/test
 core
+build/
