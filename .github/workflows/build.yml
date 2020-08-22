@@ -1,0 +1,54 @@
+name: Build Validation
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Install Dependency Packages
+      run: sudo apt update && sudo apt install libmicrohttpd-dev libjansson-dev libssl-dev libsofia-sip-ua-dev libglib2.0-dev libopus-dev libogg-dev libcurl4-openssl-dev liblua5.3-dev libconfig-dev pkg-config gengetopt libtool automake python3 python3-pip python3-setuptools python3-dev python3-wheel ninja-build
+    - name: Install meson
+      run: sudo -H pip3 install meson
+    - name: Clone libnice
+      uses: actions/checkout@v2
+      with:
+        repository: libnice/libnice
+        ref: 0.1.17
+        path: libnice
+    - name: Build and Install libnice
+      run: cd libnice && meson --prefix=/usr build/ && ninja -C build && sudo ninja -C build install
+    - name: Clone libsrtp
+      uses: actions/checkout@v2
+      with:
+        repository: cisco/libsrtp
+        ref: v2.3.0
+        path: libsrtp
+    - name: Build and Install libsrtp
+      run: cd libsrtp && ./configure --prefix=/usr --enable-openssl && make shared_library && sudo make install
+    - name: Clone Janus
+      uses: actions/checkout@v2
+      with:
+        repository: meetecho/janus-gateway
+        ref: v0.10.4
+        path: janus
+    - name: Build and Install Janus
+      run: cd janus && sh autogen.sh && ./configure --prefix=/opt/janus && make && sudo make install
+    - name: Clone FTL
+      uses: actions/checkout@v2
+      with:
+        path: janus-ftl-plugin
+    - name: Build FTL
+      run: cd janus-ftl-plugin && meson build/ && cd build/ && ninja
+    - name: Upload Build Artifact
+      uses: actions/upload-artifact@v2
+      with:
+        name: libjanus_ftl
+        path: janus-ftl-plugin/build/libjanus_ftl.so
+        if-no-files-found: error
