@@ -19,6 +19,8 @@ extern "C"
 #include <openssl/hmac.h>
 #include <sys/socket.h>
 
+const std::array<char, 4> IngestConnection::commandDelimiter = { '\r', '\n', '\r', '\n' };
+
 #pragma region Constructor/Destructor
 IngestConnection::IngestConnection(
     int connectionHandle,
@@ -44,6 +46,46 @@ void IngestConnection::Stop()
 uint32_t IngestConnection::GetChannelId()
 {
     return channelId;
+}
+
+bool IngestConnection::GetHasVideo()
+{
+    return hasVideo;
+}
+
+bool IngestConnection::GetHasAudio()
+{
+    return hasAudio;
+}
+
+VideoCodecKind IngestConnection::GetVideoCodec()
+{
+    return videoCodec;
+}
+
+AudioCodecKind IngestConnection::GetAudioCodec()
+{
+    return audioCodec;
+}
+
+uint32_t IngestConnection::GetAudioSsrc()
+{
+    return audioSsrc;
+}
+
+uint32_t IngestConnection::GetVideoSsrc()
+{
+    return videoSsrc;
+}
+
+uint8_t IngestConnection::GetAudioPayloadType()
+{
+    return audioPayloadType;
+}
+
+uint8_t IngestConnection::GetVideoPayloadType()
+{
+    return videoPayloadType;
 }
 
 void IngestConnection::SetOnClosed(std::function<void (IngestConnection&)> callback)
@@ -228,6 +270,14 @@ void IngestConnection::processConnectCommand(std::string command)
 
 void IngestConnection::processAttributeCommand(std::string command)
 {
+    if (isStreaming)
+    {
+        // We're already streaming, can't change attributes now.
+        // TODO: Send feedback to client.
+        JANUS_LOG(LOG_WARN, "FTL: Client attempted to update attributes after stream started.");
+        return;
+    }
+
     std::smatch matches;
 
     if (std::regex_match(command, matches, attributePattern) &&
@@ -236,17 +286,93 @@ void IngestConnection::processAttributeCommand(std::string command)
         std::string key = matches[1].str();
         std::string value = matches[2].str();
 
-        attributes[key] = value;
-
         JANUS_LOG(LOG_INFO, "FTL: Updated attribute `%s`: `%s`\n", key.c_str(), value.c_str());
+
+        if (key.compare("VendorName") == 0)
+        {
+            vendorName = value;
+        }
+        else if (key.compare("VendorVersion") == 0)
+        {
+            vendorVersion = value;
+        }
+        else if (key.compare("Video") == 0)
+        {
+            hasVideo = (value.compare("true") == 0);
+        }
+        else if (key.compare("Audio") == 0)
+        {
+            hasAudio = (value.compare("true") == 0);
+        }
+        else if (key.compare("VideoCodec") == 0)
+        {
+            videoCodec = SupportedVideoCodecs::ParseVideoCodec(value);
+        }
+        else if (key.compare("AudioCodec") == 0)
+        {
+            audioCodec = SupportedAudioCodecs::ParseAudioCodec(value);
+        }
+        else if (key.compare("VideoWidth") == 0)
+        {
+            // TODO: Handle exceptions and kill the connection
+            videoWidth = std::stoul(value);
+        }
+        else if (key.compare("VideoHeight") == 0)
+        {
+            // TODO: Handle exceptions and kill the connection
+            videoHeight = std::stoul(value);
+        }
+        else if (key.compare("VideoIngestSSRC") == 0)
+        {
+            // TODO: Handle exceptions and kill the connection
+            videoSsrc = std::stoul(value);
+        }
+        else if (key.compare("AudioIngestSSRC") == 0)
+        {
+            // TODO: Handle exceptions and kill the connection
+            audioSsrc = std::stoul(value);
+        }
+        else if (key.compare("VideoPayloadType") == 0)
+        {
+            // TODO: Handle exceptions and kill the connection
+            videoPayloadType = std::stoul(value);
+        }
+        else if (key.compare("AudioPayloadType") == 0)
+        {
+            // TODO: Handle exceptions and kill the connection
+            audioPayloadType = std::stoul(value);
+        }
     }
 }
 
 void IngestConnection::processDotCommand()
 {
+    // Validate our state before we fire up a stream
     if (!isAuthenticated)
     {
         JANUS_LOG(LOG_WARN, "FTL: Attempted handshake without valid authentication.\n");
+        // TODO: Throw error and kill connection
+        return;
+    }
+    else if (!hasAudio && !hasVideo)
+    {
+        JANUS_LOG(LOG_WARN, "FTL: Stream requires at least one audio and/or video stream.");
+        // TODO: Throw error and kill connection
+        return;
+    }
+    else if (hasAudio && 
+        (audioPayloadType == 0 || audioSsrc == 0 || audioCodec == AudioCodecKind::Unsupported))
+    {
+        JANUS_LOG(LOG_WARN, "FTL: Audio stream requires AudioPayloadType, AudioIngestSSRC,"
+            " and valid AudioCodec.");
+        // TODO: Throw error and kill connection
+        return;
+    }
+    else if (hasVideo && 
+        (videoPayloadType == 0 || videoSsrc == 0 || videoCodec == VideoCodecKind::Unsupported))
+    {
+        JANUS_LOG(LOG_WARN, "FTL: Video stream requires VideoPayloadType, VideoIngestSSRC,"
+            " and valid VideoCodec.");
         // TODO: Throw error and kill connection
         return;
     }
@@ -258,6 +384,7 @@ void IngestConnection::processDotCommand()
     }
 
     uint16_t assignedPort = onRequestMediaConnection(*this);
+    isStreaming = true;
     std::stringstream response;
     response << "200 hi. Use UDP port " << assignedPort << "\n";
     std::string responseStr = response.str();

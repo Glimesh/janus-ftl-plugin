@@ -56,6 +56,8 @@ private:
     /* Private members */
     const std::shared_ptr<IngestConnection> ingestConnection;
     const uint16_t mediaPort; // Port that this stream is listening on
+    const uint8_t audioPayloadType = 0;
+    const uint8_t videoPayloadType = 0;
     janus_rtp_switching_context rtpSwitchingContext;
     int mediaSocketHandle;
     std::thread streamThread;

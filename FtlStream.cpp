@@ -20,7 +20,9 @@ extern "C"
 #pragma region Constructor/Destructor
 FtlStream::FtlStream(std::shared_ptr<IngestConnection> ingestConnection, uint16_t mediaPort) : 
     ingestConnection(ingestConnection),
-    mediaPort(mediaPort)
+    mediaPort(mediaPort),
+    audioPayloadType(ingestConnection->GetAudioPayloadType()),
+    videoPayloadType(ingestConnection->GetVideoPayloadType())
 {
     // Bind to ingest callbacks
     ingestConnection->SetOnClosed(std::bind(
@@ -178,8 +180,11 @@ void FtlStream::startStreamThread()
             // Parse out RTP packet
             janus_rtp_header* rtpHeader = (janus_rtp_header*)buffer;
 
-            // FTL designates payload type 97 as audio (Opus)
-            if (rtpHeader->type == 97)
+            // TODO: Send nacks for missing sequence numbers
+            // see https://tools.ietf.org/html/rfc4585 Section 6.1
+
+            // Process audio packets
+            if (rtpHeader->type == audioPayloadType)
             {
                 relayRtpPacket({
                     .rtpHeader = rtpHeader,
@@ -187,8 +192,8 @@ void FtlStream::startStreamThread()
                     .type = RtpRelayPacketKind::Audio,
                 });
             }
-            // FTL designates payload type 96 as video (H264 or VP8)
-            else if (rtpHeader->type == 96)
+            // Process video packets
+            else if (rtpHeader->type == videoPayloadType)
             {
                 relayRtpPacket({
                     .rtpHeader = rtpHeader,
@@ -201,7 +206,8 @@ void FtlStream::startStreamThread()
                 // FTL implementation uses the marker bit space for payload types above 127
                 // when the payload type is not audio or video. So we need to reconstruct it.
                 uint8_t payloadType = 
-                    ((static_cast<uint8_t>(rtpHeader->markerbit) << 7) | static_cast<uint8_t>(rtpHeader->type));
+                    ((static_cast<uint8_t>(rtpHeader->markerbit) << 7) | 
+                    static_cast<uint8_t>(rtpHeader->type));
                 
                 if (payloadType == FTL_PAYLOAD_TYPE_PING)
                 {
@@ -267,6 +273,7 @@ void FtlStream::handleSenderReport(janus_rtp_header* rtpHeader, uint16_t length)
     uint64_t ntpTimestamp = (static_cast<uint64_t>(ntpTimestampHigh) << 32) | 
         static_cast<uint64_t>(ntpTimestampLow);
 
-    //JANUS_LOG(LOG_INFO, "FTL: Sender report:\n\tssrc:     %u\n\trtp time: %u\n\tntp time: %lu\n\tpkt cnt:   %u\n\toct cnt:  %u\n", ssrc, rtpTimestamp, ntpTimestamp, senderPacketCount, senderOctetCount);
+    // TODO: We don't do anything with this information right now, but we ought to log
+    // it away somewhere.
 }
 #pragma endregion

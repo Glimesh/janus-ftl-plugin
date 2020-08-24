@@ -11,6 +11,8 @@
 #pragma once
 
 #include "CredStore.h"
+#include "AudioCodec.h"
+#include "VideoCodec.h"
 
 #include <thread>
 #include <random>
@@ -45,21 +47,43 @@ public:
     void Stop();
     // Getters/Setters
     uint32_t GetChannelId();
+    bool GetHasVideo();
+    bool GetHasAudio();
+    VideoCodecKind GetVideoCodec();
+    AudioCodecKind GetAudioCodec();
+    uint32_t GetAudioSsrc();
+    uint32_t GetVideoSsrc();
+    uint8_t GetAudioPayloadType();
+    uint8_t GetVideoPayloadType();
     // Callbacks
     void SetOnClosed(std::function<void (IngestConnection&)> callback);
     void SetOnRequestMediaConnection(std::function<uint16_t (IngestConnection&)> callback);
 
 private:
+    /* Private static members */
+    static const std::array<char, 4> commandDelimiter;
     /* Private members */
     bool isAuthenticated = false;
+    bool isStreaming = false;
     uint32_t channelId = 0;
     int connectionHandle;
     std::shared_ptr<CredStore> credStore;
     std::thread connectionThread;
-    const std::array<char, 4> commandDelimiter = { '\r', '\n', '\r', '\n' };
     std::array<uint8_t, 128> hmacPayload;
     std::default_random_engine randomEngine { std::random_device()() };
-    std::map<std::string, std::string> attributes;
+    // Stream metadata
+    std::string vendorName;
+    std::string vendorVersion;
+    bool hasVideo = false;
+    bool hasAudio = false;
+    VideoCodecKind videoCodec;
+    AudioCodecKind audioCodec;
+    uint16_t videoWidth;
+    uint16_t videoHeight;
+    uint32_t audioSsrc = 0;
+    uint32_t videoSsrc = 0;
+    uint8_t audioPayloadType = 0;
+    uint8_t videoPayloadType = 0;
     // Regex patterns
     std::regex connectPattern = std::regex(R"~(CONNECT ([0-9]+) \$([0-9a-f]+))~");
     std::regex attributePattern = std::regex(R"~((.+): (.+))~");
