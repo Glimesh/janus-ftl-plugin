@@ -14,12 +14,15 @@
 extern "C"
 {
     #include <debug.h>
+    #include <sys/time.h>
 }
 
 #pragma region Constructor/Destructor
 FtlStream::FtlStream(std::shared_ptr<IngestConnection> ingestConnection, uint16_t mediaPort) : 
     ingestConnection(ingestConnection),
-    mediaPort(mediaPort)
+    mediaPort(mediaPort),
+    audioPayloadType(ingestConnection->GetAudioPayloadType()),
+    videoPayloadType(ingestConnection->GetVideoPayloadType())
 {
     // Bind to ingest callbacks
     ingestConnection->SetOnClosed(std::bind(
@@ -167,17 +170,21 @@ void FtlStream::startStreamThread()
                 (struct sockaddr*)&remote,
                 &addrlen);
 
-            if (bytesRead < 0 || !janus_is_rtp(buffer, bytesRead))
+            if (bytesRead < 12)
             {
-                // We don't care about non-RTP packets
+                // This packet is too small to have an RTP header.
+                JANUS_LOG(LOG_WARN, "FTL: Received non-RTP packet.");
                 continue;
             }
 
             // Parse out RTP packet
             janus_rtp_header* rtpHeader = (janus_rtp_header*)buffer;
 
-            // FTL designates payload type 97 as audio (Opus)
-            if (rtpHeader->type == 97)
+            // TODO: Send nacks for missing sequence numbers
+            // see https://tools.ietf.org/html/rfc4585 Section 6.1
+
+            // Process audio packets
+            if (rtpHeader->type == audioPayloadType)
             {
                 relayRtpPacket({
                     .rtpHeader = rtpHeader,
@@ -185,10 +192,9 @@ void FtlStream::startStreamThread()
                     .type = RtpRelayPacketKind::Audio,
                 });
             }
-            // FTL designates payload type 96 as video (H264 or VP8)
-            else if (rtpHeader->type == 96)
+            // Process video packets
+            else if (rtpHeader->type == videoPayloadType)
             {
-                
                 relayRtpPacket({
                     .rtpHeader = rtpHeader,
                     .rtpHeaderLength = static_cast<uint16_t>(bytesRead),
@@ -197,7 +203,28 @@ void FtlStream::startStreamThread()
             }
             else
             {
-                JANUS_LOG(LOG_INFO, "FTL: Unknown RTP payload type %d", rtpHeader->type);
+                // FTL implementation uses the marker bit space for payload types above 127
+                // when the payload type is not audio or video. So we need to reconstruct it.
+                uint8_t payloadType = 
+                    ((static_cast<uint8_t>(rtpHeader->markerbit) << 7) | 
+                    static_cast<uint8_t>(rtpHeader->type));
+                
+                if (payloadType == FTL_PAYLOAD_TYPE_PING)
+                {
+                    handlePing(rtpHeader, bytesRead);
+                }
+                else if (payloadType == FTL_PAYLOAD_TYPE_SENDER_REPORT)
+                {
+                    handleSenderReport(rtpHeader, bytesRead);
+                }
+                else
+                {
+                    JANUS_LOG(
+                        LOG_WARN,
+                        "FTL: Unknown RTP payload type %d (orig %d)\n",
+                        payloadType,
+                        rtpHeader->type);
+                }
             }
         }
     }
@@ -216,5 +243,37 @@ void FtlStream::relayRtpPacket(RtpRelayPacket rtpPacket)
     {
         session->RelayRtpPacket(rtpPacket);
     }
+}
+
+void FtlStream::handlePing(janus_rtp_header* rtpHeader, uint16_t length)
+{
+    // These pings are useless - FTL tries to determine 'ping' by having a timestamp
+    // sent across and compared against the remote's clock. This assumes that there is
+    // no time difference between the client and server, which is practically never true.
+
+    // We'll just ignore these pings, since they wouldn't give us any useful information
+    // anyway.
+}
+
+void FtlStream::handleSenderReport(janus_rtp_header* rtpHeader, uint16_t length)
+{
+    // We expect this packet to be 28 bytes big.
+    if (length != 28)
+    {
+        JANUS_LOG(LOG_WARN, "Invalid sender report packet of length %d (expect 28)\n", length);
+    }
+    char* packet = reinterpret_cast<char*>(rtpHeader);
+    uint32_t ssrc              = ntohl(*reinterpret_cast<uint32_t*>(packet + 4));
+    uint32_t ntpTimestampHigh  = ntohl(*reinterpret_cast<uint32_t*>(packet + 8));
+    uint32_t ntpTimestampLow   = ntohl(*reinterpret_cast<uint32_t*>(packet + 12));
+    uint32_t rtpTimestamp      = ntohl(*reinterpret_cast<uint32_t*>(packet + 16));
+    uint32_t senderPacketCount = ntohl(*reinterpret_cast<uint32_t*>(packet + 20));
+    uint32_t senderOctetCount  = ntohl(*reinterpret_cast<uint32_t*>(packet + 24));
+
+    uint64_t ntpTimestamp = (static_cast<uint64_t>(ntpTimestampHigh) << 32) | 
+        static_cast<uint64_t>(ntpTimestampLow);
+
+    // TODO: We don't do anything with this information right now, but we ought to log
+    // it away somewhere.
 }
 #pragma endregion

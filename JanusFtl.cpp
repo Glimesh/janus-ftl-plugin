@@ -362,9 +362,10 @@ std::string JanusFtl::generateSdpOffer(
         "m=video 1 RTP/SAVPF 96\r\n" <<
         "c=IN IP4 1.1.1.1\r\n" <<
         "a=rtpmap:96 H264/90000\r\n" <<       // TODO: We only support H264 right now.
-        "a=rtcp-fb:96 nack\r\n" <<            // Send us NACK's
-        "a=rtcp-fb:96 nack pli\r\n" <<        // Send us picture-loss-indicators
-        "a=rtcp-fb:96 nack goog-remb\r\n" <<  // Send some congestion indicator thing
+        "a=fmtp:96 profile-level-id=42e01f;packetization-mode=0;"
+        //"a=rtcp-fb:96 nack\r\n" <<            // Send us NACK's
+        //"a=rtcp-fb:96 nack pli\r\n" <<        // Send us picture-loss-indicators
+        //"a=rtcp-fb:96 nack goog-remb\r\n" <<  // Send some congestion indicator thing
         "a=sendonly\r\n" <<
         "a=extmap:1 urn:ietf:params:rtp-hdrext:sdes:mid\r\n";
 

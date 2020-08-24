@@ -47,9 +47,17 @@ public:
     std::list<std::shared_ptr<JanusSession>> GetViewers();
 
 private:
+    /* Constants */
+    static constexpr uint64_t MICROSECONDS_PER_SECOND        = 1000000;
+    static constexpr float    MICROSECONDS_PER_MILLISECOND   = 1000.0f;
+    static constexpr uint8_t  FTL_PAYLOAD_TYPE_SENDER_REPORT = 200;
+    static constexpr uint8_t  FTL_PAYLOAD_TYPE_PING          = 250;
+
     /* Private members */
     const std::shared_ptr<IngestConnection> ingestConnection;
     const uint16_t mediaPort; // Port that this stream is listening on
+    const uint8_t audioPayloadType = 0;
+    const uint8_t videoPayloadType = 0;
     janus_rtp_switching_context rtpSwitchingContext;
     int mediaSocketHandle;
     std::thread streamThread;
@@ -62,4 +70,6 @@ private:
     void ingestConnectionClosed(IngestConnection& connection);
     void startStreamThread();
     void relayRtpPacket(RtpRelayPacket rtpPacket);
+    void handlePing(janus_rtp_header* rtpHeader, uint16_t length);
+    void handleSenderReport(janus_rtp_header* rtpHeader, uint16_t length);
 };
