@@ -36,4 +36,16 @@ public:
         }
         return VideoCodecKind::Unsupported;
     }
+
+    static std::string VideoCodecString(const VideoCodecKind codec)
+    {
+        switch (codec)
+        {
+        case VideoCodecKind::H264:
+            return "H264";
+        case VideoCodecKind::Unsupported:
+        default:
+            return "";
+        }
+    }
 };

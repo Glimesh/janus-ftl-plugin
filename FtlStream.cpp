@@ -20,9 +20,7 @@ extern "C"
 #pragma region Constructor/Destructor
 FtlStream::FtlStream(std::shared_ptr<IngestConnection> ingestConnection, uint16_t mediaPort) : 
     ingestConnection(ingestConnection),
-    mediaPort(mediaPort),
-    audioPayloadType(ingestConnection->GetAudioPayloadType()),
-    videoPayloadType(ingestConnection->GetVideoPayloadType())
+    mediaPort(mediaPort)
 {
     // Bind to ingest callbacks
     ingestConnection->SetOnClosed(std::bind(
@@ -74,6 +72,46 @@ uint64_t FtlStream::GetChannelId()
 uint16_t FtlStream::GetMediaPort()
 {
     return mediaPort;
+}
+
+bool FtlStream::GetHasVideo()
+{
+    return ingestConnection->GetHasVideo();
+}
+
+bool FtlStream::GetHasAudio()
+{
+    return ingestConnection->GetHasAudio();
+}
+
+VideoCodecKind FtlStream::GetVideoCodec()
+{
+    return ingestConnection->GetVideoCodec();
+}
+
+AudioCodecKind FtlStream::GetAudioCodec()
+{
+    return ingestConnection->GetAudioCodec();
+}
+
+uint32_t FtlStream::GetAudioSsrc()
+{
+    return ingestConnection->GetAudioSsrc();
+}
+
+uint32_t FtlStream::GetVideoSsrc()
+{
+    return ingestConnection->GetVideoSsrc();
+}
+
+uint8_t FtlStream::GetAudioPayloadType()
+{
+    return ingestConnection->GetAudioPayloadType();
+}
+
+uint8_t FtlStream::GetVideoPayloadType()
+{
+    return ingestConnection->GetVideoPayloadType();
 }
 
 std::list<std::shared_ptr<JanusSession>> FtlStream::GetViewers()
@@ -184,7 +222,7 @@ void FtlStream::startStreamThread()
             // see https://tools.ietf.org/html/rfc4585 Section 6.1
 
             // Process audio packets
-            if (rtpHeader->type == audioPayloadType)
+            if (rtpHeader->type == GetAudioPayloadType())
             {
                 relayRtpPacket({
                     .rtpHeader = rtpHeader,
@@ -193,7 +231,7 @@ void FtlStream::startStreamThread()
                 });
             }
             // Process video packets
-            else if (rtpHeader->type == videoPayloadType)
+            else if (rtpHeader->type == GetVideoPayloadType())
             {
                 relayRtpPacket({
                     .rtpHeader = rtpHeader,
@@ -239,6 +277,7 @@ void FtlStream::startStreamThread()
 
 void FtlStream::relayRtpPacket(RtpRelayPacket rtpPacket)
 {
+    // BUG: Seeing a race condition seg fault here.
     for (const std::shared_ptr<JanusSession> session : viewerSessions)
     {
         session->RelayRtpPacket(rtpPacket);
