@@ -239,6 +239,17 @@ uint16_t JanusFtl::newIngestFtlStream(std::shared_ptr<IngestConnection> connecti
         std::placeholders::_1));
     ftlStreamStore->AddStream(ftlStream);
     ftlStream->Start();
+
+    // Add any pending viewers
+    std::set<std::shared_ptr<JanusSession>> pendingViewers = 
+        ftlStreamStore->ClearPendingViewersForChannelId(ftlStream->GetChannelId());
+    for (const auto& pendingViewer : pendingViewers)
+    {
+        ftlStreamStore->AddViewer(ftlStream, pendingViewer);
+
+        // Start er up!
+        sendJsep(pendingViewer, ftlStream, nullptr);
+    }
     
     // Return the port back to the ingest connection
     return targetPort;
@@ -256,6 +267,18 @@ void JanusFtl::ftlStreamClosed(FtlStream& ftlStream)
     if (stream == nullptr)
     {
         throw std::runtime_error("Stream reporting closed could not be found.");
+    }
+
+    uint16_t channelId = stream->GetChannelId();
+    
+    // Remove viewers from stream and place them back into pending status
+    std::list<std::shared_ptr<JanusSession>> viewers = stream->GetViewers();
+    for (const std::shared_ptr<JanusSession>& viewer : viewers)
+    {
+        ftlStreamStore->RemoveViewer(stream, viewer);
+        ftlStreamStore->AddPendingViewerForChannelId(channelId, viewer);
+
+        // TODO: Tell the viewers that this stream has stopped
     }
 
     ftlStreamStore->RemoveStream(stream);
@@ -286,24 +309,62 @@ janus_plugin_result* JanusFtl::handleWatchMessage(
     // Look up the stream associated with given channel ID
     uint32_t channelId = json_integer_value(channelIdJs);
     std::shared_ptr<FtlStream> ftlStream = ftlStreamStore->GetStreamByChannelId(channelId);
+    JANUS_LOG(LOG_INFO, "FTL: Request to watch stream channel id %d.\n", channelId);
+
     if (ftlStream == nullptr)
     {
-        JANUS_LOG(LOG_WARN, "FTL: Request to watch invalid channel id %d\n", channelId);
-        return generateMessageErrorResponse(
-            FTL_PLUGIN_ERROR_NO_SUCH_STREAM,
-            "Given channel ID does not exist.");
+        // This channel doesn't have a stream running!
+        // Add this session to a pending viewership list.
+        JANUS_LOG(
+            LOG_INFO,
+            "FTL: No current stream for channel %d - session is pending.\n",
+            channelId);
+        ftlStreamStore->AddPendingViewerForChannelId(channelId, session);
+
+        // Tell the client that we're pending an active stream
+        JsonPtr eventPtr(json_object());
+        json_object_set_new(eventPtr.get(), "streaming", json_string("event"));
+        json_t* result = json_object();
+        json_object_set_new(result, "status", json_string("pending"));
+        json_object_set_new(eventPtr.get(), "result", result);
+
+        janusCore->push_event(
+            session->GetJanusPluginSessionHandle(),
+            pluginHandle,
+            transaction,
+            eventPtr.get(),
+            nullptr);
+
+        return janus_plugin_result_new(JANUS_PLUGIN_OK_WAIT, NULL, NULL);
     }
 
     // TODO allow user to request ICE restart (new offer)
 
     // TODO if they're already watching, handle it
 
-    JANUS_LOG(LOG_INFO, "FTL: Request to watch stream channel id %d\n", channelId);
-
     // Set this session as a viewer
     ftlStreamStore->AddViewer(ftlStream, session);
 
-    // Prepare JSEP paylaod
+    // Send the JSEP to initiate the media connection
+    sendJsep(session, ftlStream, transaction);
+
+    return janus_plugin_result_new(JANUS_PLUGIN_OK_WAIT, NULL, NULL);
+}
+
+janus_plugin_result* JanusFtl::handleStartMessage(
+    std::shared_ptr<JanusSession> session,
+    JsonPtr message,
+    char* transaction)
+{
+    return janus_plugin_result_new(JANUS_PLUGIN_OK_WAIT, NULL, NULL);
+}
+
+int JanusFtl::sendJsep(
+    std::shared_ptr<JanusSession> session,
+    std::shared_ptr<FtlStream> ftlStream,
+    char* transaction)
+{
+    // Prepare JSEP payload
     std::string sdpOffer = generateSdpOffer(session, ftlStream);
     JsonPtr jsepPtr(json_pack("{ssss}", "type", "offer", "sdp", sdpOffer.c_str()));
 
@@ -315,24 +376,12 @@ janus_plugin_result* JanusFtl::handleWatchMessage(
     json_object_set_new(eventPtr.get(), "result", result);
 
     // Push response
-    int ret = janusCore->push_event(
+    return janusCore->push_event(
         session->GetJanusPluginSessionHandle(),
         pluginHandle,
         transaction,
         eventPtr.get(),
         jsepPtr.get());
-
-    JANUS_LOG(LOG_INFO, "  >> Pushing event: %d (%s)\n", ret, janus_get_api_error(ret));
-
-    return janus_plugin_result_new(JANUS_PLUGIN_OK_WAIT, NULL, NULL);
-}
-
-janus_plugin_result* JanusFtl::handleStartMessage(
-    std::shared_ptr<JanusSession> session,
-    JsonPtr message,
-    char* transaction)
-{
-    return janus_plugin_result_new(JANUS_PLUGIN_OK_WAIT, NULL, NULL);
 }
 
 std::string JanusFtl::generateSdpOffer(
@@ -350,25 +399,34 @@ std::string JanusFtl::generateSdpOffer(
         "s=Channel " << ftlStream->GetChannelId() << "\r\n";
 
     // Audio media description
-    offerStream <<  
-        "m=audio 1 RTP/SAVPF 97\r\n" <<
-        "c=IN IP4 1.1.1.1\r\n" <<
-        "a=rtpmap:97 opus/48000/2\r\n" << // TODO: We only support Opus right now.
-        "a=sendonly\r\n" <<
-        "a=extmap:1 urn:ietf:params:rtp-hdrext:sdes:mid\r\n";
+    if (ftlStream->GetHasAudio())
+    {
+        std::string audioPayloadType = std::to_string(ftlStream->GetAudioPayloadType());
+        std::string audioCodec = SupportedAudioCodecs::AudioCodecString(ftlStream->GetAudioCodec());
+        offerStream <<  
+            "m=audio 1 RTP/SAVPF " << audioPayloadType << "\r\n" <<
+            "c=IN IP4 1.1.1.1\r\n" <<
+            "a=rtpmap:" << audioPayloadType << " " << audioCodec << "/48000/2\r\n" <<
+            "a=sendonly\r\n" <<
+            "a=extmap:1 urn:ietf:params:rtp-hdrext:sdes:mid\r\n";
+    }
 
     // Video media description
-    offerStream <<  
-        "m=video 1 RTP/SAVPF 96\r\n" <<
-        "c=IN IP4 1.1.1.1\r\n" <<
-        "a=rtpmap:96 H264/90000\r\n" <<       // TODO: We only support H264 right now.
-        "a=fmtp:96 profile-level-id=42e01f;packetization-mode=0;"
-        //"a=rtcp-fb:96 nack\r\n" <<            // Send us NACK's
-        //"a=rtcp-fb:96 nack pli\r\n" <<        // Send us picture-loss-indicators
-        //"a=rtcp-fb:96 nack goog-remb\r\n" <<  // Send some congestion indicator thing
-        "a=sendonly\r\n" <<
-        "a=extmap:1 urn:ietf:params:rtp-hdrext:sdes:mid\r\n";
-
+    if (ftlStream->GetHasVideo())
+    {
+        std::string videoPayloadType = std::to_string(ftlStream->GetVideoPayloadType());
+        std::string videoCodec = SupportedVideoCodecs::VideoCodecString(ftlStream->GetVideoCodec());
+        offerStream <<  
+            "m=video 1 RTP/SAVPF " << videoPayloadType << "\r\n" <<
+            "c=IN IP4 1.1.1.1\r\n" <<
+            "a=rtpmap:" << videoPayloadType << " " << videoCodec << "/90000\r\n" <<
+            "a=fmtp:" << videoPayloadType << " profile-level-id=42e01f;packetization-mode=1;"
+            //"a=rtcp-fb:96 nack\r\n" <<            // Send us NACK's
+            //"a=rtcp-fb:96 nack pli\r\n" <<        // Send us picture-loss-indicators
+            //"a=rtcp-fb:96 nack goog-remb\r\n" <<  // Send some congestion indicator thing
+            "a=sendonly\r\n" <<
+            "a=extmap:1 urn:ietf:params:rtp-hdrext:sdes:mid\r\n";
+    }
     return offerStream.str();
 }
 #pragma endregion

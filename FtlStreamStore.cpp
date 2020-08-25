@@ -149,4 +149,97 @@ void FtlStreamStore::RemoveViewer(
     // Update map
     ftlStreamsBySession.erase(session);
 }
+
+void FtlStreamStore::AddPendingViewerForChannelId(
+    uint16_t channelId,
+    std::shared_ptr<JanusSession> session)
+{
+    std::lock_guard<std::mutex> lock(pendingSessionMutex);
+
+    // We shouldn't be able to request viewership of multiple channels at once.
+    // But make sure anyway.
+    if (pendingSessionChannelId.count(session) > 0)
+    {
+        JANUS_LOG(LOG_WARN, "FTL: Session requesting pending viewership is already pending "
+            "viewingship for another channel. Channel ID %d. Re-assigning...",
+            channelId);
+        uint16_t existingChannelId = pendingSessionChannelId[session];
+        if (pendingChannelIdSessions.count(existingChannelId) > 0)
+        {
+            pendingChannelIdSessions[existingChannelId].erase(session);
+        }
+        else
+        {
+            JANUS_LOG(LOG_WARN, "FTL: Session had an existing pending channel ID, but "
+                "channel ID set didn't contain session. Stream store is in a bad state.");
+        }
+    }
+    pendingSessionChannelId[session] = channelId;
+
+    if (pendingChannelIdSessions.count(channelId) <= 0)
+    {
+        pendingChannelIdSessions[channelId] = std::set<std::shared_ptr<JanusSession>>();
+    }
+    pendingChannelIdSessions[channelId].insert(session);
+}
+
+std::set<std::shared_ptr<JanusSession>> FtlStreamStore::GetPendingViewersForChannelId(
+    uint16_t channelId)
+{
+    std::lock_guard<std::mutex> lock(pendingSessionMutex);
+
+    if (pendingChannelIdSessions.count(channelId) > 0)
+    {
+        return pendingChannelIdSessions[channelId];
+    }
+    return std::set<std::shared_ptr<JanusSession>>(); // Empty set
+}
+
+std::set<std::shared_ptr<JanusSession>> FtlStreamStore::ClearPendingViewersForChannelId(
+    uint16_t channelId)
+{
+    std::lock_guard<std::mutex> lock(pendingSessionMutex);
+
+    // Grab a copy to return
+    std::set<std::shared_ptr<JanusSession>> returnVal;
+    if (pendingChannelIdSessions.count(channelId) > 0)
+    {
+        returnVal = pendingChannelIdSessions[channelId];
+    }
+
+    for (const std::shared_ptr<JanusSession>& session : returnVal)
+    {
+        pendingSessionChannelId.erase(session);
+    }
+
+    pendingChannelIdSessions.erase(channelId);
+
+    return returnVal;
+}
+
+void FtlStreamStore::RemovePendingViewershipForSession(std::shared_ptr<JanusSession> session)
+{
+    std::lock_guard<std::mutex> lock(pendingSessionMutex);
+
+    // Look up the channel ID
+    if (pendingSessionChannelId.count(session) <= 0)
+    {
+        JANUS_LOG(LOG_WARN, "FTL: Attempt to remove viewership for session that is not pending "
+            "any channel ID.");
+        return;
+    }
+    uint16_t channelId = pendingSessionChannelId[session];
+    pendingSessionChannelId.erase(session);
+
+    if (pendingChannelIdSessions.count(channelId) <= 0)
+    {
+        JANUS_LOG(LOG_WARN, "FTL: Session had an existing pending channel ID, but "
+            "channel ID set didn't contain session. Stream store is in a bad state.");
+        return;
+    }
+    if (pendingChannelIdSessions[channelId].erase(session) != 1)
+    {
+        JANUS_LOG(LOG_WARN, "FTL: Failed to erase session from pending channel ID session set.");
+    }
+}
 #pragma endregion

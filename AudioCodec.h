@@ -36,4 +36,16 @@ public:
         }
         return AudioCodecKind::Unsupported;
     }
+
+    static std::string AudioCodecString(const AudioCodecKind codec)
+    {
+        switch (codec)
+        {
+        case AudioCodecKind::Opus:
+            return "opus";
+        case AudioCodecKind::Unsupported:
+        default:
+            return "";
+        }
+    }
 };
