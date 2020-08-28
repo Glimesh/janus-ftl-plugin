@@ -30,12 +30,14 @@ int JanusFtl::Init(janus_callbacks* callback, const char* config_path)
     this->janusCore = callback;
 
     // TODO: Read configuration
-    // TODO: Create mountpoints
 
     // TODO: Configurable cred store
     credStore = std::make_shared<DummyCredStore>();
 
-    ftlStreamStore = std::make_unique<FtlStreamStore>();
+    ftlStreamStore = std::make_shared<FtlStreamStore>();
+
+    relayThreadPool = std::make_shared<RelayThreadPool>(ftlStreamStore);
+    relayThreadPool->Start();
 
     ingestServer = std::make_unique<IngestServer>(credStore);
     ingestServer->SetOnRequestMediaConnection(std::bind(
@@ -53,6 +55,7 @@ void JanusFtl::Destroy()
     JANUS_LOG(LOG_INFO, "FTL: Tearing down FTL!\n");
     // TODO: Remove all mountpoints, kill threads, sessions, etc.
     ingestServer->Stop();
+    relayThreadPool->Stop();
 }
 #pragma endregion
 
@@ -232,7 +235,7 @@ uint16_t JanusFtl::newIngestFtlStream(std::shared_ptr<IngestConnection> connecti
     }
 
     // Spin up a new FTL stream
-    auto ftlStream = std::make_shared<FtlStream>(connection, targetPort);
+    auto ftlStream = std::make_shared<FtlStream>(connection, targetPort, relayThreadPool);
     ftlStream->SetOnClosed(std::bind(
         &JanusFtl::ftlStreamClosed,
         this,

@@ -18,9 +18,13 @@ extern "C"
 }
 
 #pragma region Constructor/Destructor
-FtlStream::FtlStream(std::shared_ptr<IngestConnection> ingestConnection, uint16_t mediaPort) : 
+FtlStream::FtlStream(
+    const std::shared_ptr<IngestConnection> ingestConnection,
+    const uint16_t mediaPort,
+    const std::shared_ptr<RelayThreadPool> relayThreadPool) : 
     ingestConnection(ingestConnection),
-    mediaPort(mediaPort)
+    mediaPort(mediaPort),
+    relayThreadPool(relayThreadPool)
 {
     // Bind to ingest callbacks
     ingestConnection->SetOnClosed(std::bind(
@@ -116,6 +120,7 @@ uint8_t FtlStream::GetVideoPayloadType()
 
 std::list<std::shared_ptr<JanusSession>> FtlStream::GetViewers()
 {
+    std::lock_guard<std::mutex> lock(viewerSessionsMutex);
     return viewerSessions;
 }
 #pragma endregion
@@ -215,28 +220,25 @@ void FtlStream::startStreamThread()
                 continue;
             }
 
+
             // Parse out RTP packet
             janus_rtp_header* rtpHeader = (janus_rtp_header*)buffer;
 
             // TODO: Send nacks for missing sequence numbers
             // see https://tools.ietf.org/html/rfc4585 Section 6.1
 
-            // Process audio packets
-            if (rtpHeader->type == GetAudioPayloadType())
+            // Process audio/video packets
+            if ((rtpHeader->type == GetAudioPayloadType()) || 
+                (rtpHeader->type == GetVideoPayloadType()))
             {
-                relayRtpPacket({
-                    .rtpHeader = rtpHeader,
-                    .rtpHeaderLength = static_cast<uint16_t>(bytesRead),
-                    .type = RtpRelayPacketKind::Audio,
-                });
-            }
-            // Process video packets
-            else if (rtpHeader->type == GetVideoPayloadType())
-            {
-                relayRtpPacket({
-                    .rtpHeader = rtpHeader,
-                    .rtpHeaderLength = static_cast<uint16_t>(bytesRead),
-                    .type = RtpRelayPacketKind::Video,
+                RtpRelayPacketKind packetKind = rtpHeader->type == GetVideoPayloadType() ? 
+                    RtpRelayPacketKind::Video : RtpRelayPacketKind::Audio;
+                std::shared_ptr<std::vector<unsigned char>> rtpPacket =
+                    std::make_shared<std::vector<unsigned char>>(buffer, buffer + bytesRead);
+                relayThreadPool->RelayPacket({
+                    .rtpPacketPayload = rtpPacket,
+                    .type = packetKind,
+                    .channelId = GetChannelId()
                 });
             }
             else
@@ -275,15 +277,6 @@ void FtlStream::startStreamThread()
     }
 }
 
-void FtlStream::relayRtpPacket(RtpRelayPacket rtpPacket)
-{
-    // BUG: Seeing a race condition seg fault here.
-    for (const std::shared_ptr<JanusSession> session : viewerSessions)
-    {
-        session->RelayRtpPacket(rtpPacket);
-    }
-}
-
 void FtlStream::handlePing(janus_rtp_header* rtpHeader, uint16_t length)
 {
     // These pings are useless - FTL tries to determine 'ping' by having a timestamp
@@ -301,16 +294,16 @@ void FtlStream::handleSenderReport(janus_rtp_header* rtpHeader, uint16_t length)
     {
         JANUS_LOG(LOG_WARN, "Invalid sender report packet of length %d (expect 28)\n", length);
     }
-    char* packet = reinterpret_cast<char*>(rtpHeader);
-    uint32_t ssrc              = ntohl(*reinterpret_cast<uint32_t*>(packet + 4));
-    uint32_t ntpTimestampHigh  = ntohl(*reinterpret_cast<uint32_t*>(packet + 8));
-    uint32_t ntpTimestampLow   = ntohl(*reinterpret_cast<uint32_t*>(packet + 12));
-    uint32_t rtpTimestamp      = ntohl(*reinterpret_cast<uint32_t*>(packet + 16));
-    uint32_t senderPacketCount = ntohl(*reinterpret_cast<uint32_t*>(packet + 20));
-    uint32_t senderOctetCount  = ntohl(*reinterpret_cast<uint32_t*>(packet + 24));
+    // char* packet = reinterpret_cast<char*>(rtpHeader);
+    // uint32_t ssrc              = ntohl(*reinterpret_cast<uint32_t*>(packet + 4));
+    // uint32_t ntpTimestampHigh  = ntohl(*reinterpret_cast<uint32_t*>(packet + 8));
+    // uint32_t ntpTimestampLow   = ntohl(*reinterpret_cast<uint32_t*>(packet + 12));
+    // uint32_t rtpTimestamp      = ntohl(*reinterpret_cast<uint32_t*>(packet + 16));
+    // uint32_t senderPacketCount = ntohl(*reinterpret_cast<uint32_t*>(packet + 20));
+    // uint32_t senderOctetCount  = ntohl(*reinterpret_cast<uint32_t*>(packet + 24));
 
-    uint64_t ntpTimestamp = (static_cast<uint64_t>(ntpTimestampHigh) << 32) | 
-        static_cast<uint64_t>(ntpTimestampLow);
+    // uint64_t ntpTimestamp = (static_cast<uint64_t>(ntpTimestampHigh) << 32) | 
+    //     static_cast<uint64_t>(ntpTimestampLow);
 
     // TODO: We don't do anything with this information right now, but we ought to log
     // it away somewhere.

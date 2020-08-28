@@ -10,13 +10,13 @@
 
 #pragma once
 
-#include "FtlStream.h"
-#include "JanusSession.h"
-
 #include <memory>
 #include <map>
 #include <set>
 #include <mutex>
+
+class FtlStream;
+class JanusSession;
 
 /**
  * @brief Handles storage and retrieval of FTL stream instances and associated viewer sessions

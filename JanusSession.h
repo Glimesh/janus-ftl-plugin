@@ -10,13 +10,15 @@
 
 #pragma once
 
-#include "FtlStream.h"
 #include "RtpRelayPacket.h"
+
 extern "C"
 {
     #include <plugins/plugin.h>
 }
 #include <memory>
+#include <queue>
+#include <condition_variable>
 
 class FtlStream; // Forward declare, circular reference
 
@@ -27,7 +29,7 @@ public:
     JanusSession(janus_plugin_session* handle, janus_callbacks* janusCore);
 
     /* Public methods */
-    void RelayRtpPacket(RtpRelayPacket rtpPacket);
+    void SendRtpPacket(RtpRelayPacket rtpPacket);
     void ResetRtpSwitchingContext();
     
     /* Getters/setters */
@@ -39,6 +41,7 @@ public:
 
 private:
     bool isStarted = false;
+    bool isStopping = false;
     janus_plugin_session* handle;
     janus_callbacks* janusCore;
     janus_rtp_switching_context rtpSwitchingContext;

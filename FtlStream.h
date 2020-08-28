@@ -12,6 +12,7 @@
 #include "RtpRelayPacket.h"
 #include "JanusSession.h"
 #include "IngestConnection.h"
+#include "RelayThreadPool.h"
 
 extern "C"
 {
@@ -32,7 +33,10 @@ class FtlStream
 {
 public:
     /* Constructor/Destructor */
-    FtlStream(const std::shared_ptr<IngestConnection> ingestConnection, const uint16_t mediaPort);
+    FtlStream(
+        const std::shared_ptr<IngestConnection> ingestConnection,
+        const uint16_t mediaPort,
+        const std::shared_ptr<RelayThreadPool> relayThreadPool);
 
     /* Public methods */
     void Start();
@@ -64,6 +68,7 @@ private:
     /* Private members */
     const std::shared_ptr<IngestConnection> ingestConnection;
     const uint16_t mediaPort; // Port that this stream is listening on
+    const std::shared_ptr<RelayThreadPool> relayThreadPool;
     janus_rtp_switching_context rtpSwitchingContext;
     int mediaSocketHandle;
     std::thread streamThread;
@@ -75,7 +80,6 @@ private:
     /* Private methods */
     void ingestConnectionClosed(IngestConnection& connection);
     void startStreamThread();
-    void relayRtpPacket(RtpRelayPacket rtpPacket);
     void handlePing(janus_rtp_header* rtpHeader, uint16_t length);
     void handleSenderReport(janus_rtp_header* rtpHeader, uint16_t length);
 };
