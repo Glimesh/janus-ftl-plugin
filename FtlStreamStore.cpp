@@ -8,6 +8,7 @@
  */
 
 #include "FtlStreamStore.h"
+#include "FtlStream.h"
 
 #include <stdexcept>
 

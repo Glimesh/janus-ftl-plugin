@@ -12,7 +12,8 @@ sources = files([
     'IngestServer.cpp',
     'janus_ftl.cpp',
     'JanusSession.cpp',
-    'JanusFtl.cpp'
+    'JanusFtl.cpp',
+    'RelayThreadPool.cpp'
 ])
 
 deps = [

@@ -68,13 +68,14 @@ private:
     /* Members */
     janus_plugin* pluginHandle;
     janus_callbacks* janusCore;
-    std::unique_ptr<IngestServer> ingestServer;
     std::shared_ptr<CredStore> credStore;
+    std::shared_ptr<FtlStreamStore> ftlStreamStore;
+    std::shared_ptr<RelayThreadPool> relayThreadPool;
+    std::unique_ptr<IngestServer> ingestServer;
     uint16_t minMediaPort = 9000;
     uint16_t maxMediaPort = 65535;
     std::mutex sessionsMutex;
     std::map<janus_plugin_session*, std::shared_ptr<JanusSession>> sessions;
-    std::unique_ptr<FtlStreamStore> ftlStreamStore;
     std::mutex portAssignmentMutex;
 
     /* Private methods */

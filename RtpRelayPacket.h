@@ -14,6 +14,8 @@ extern "C"
 {
     #include <rtp.h>
 }
+#include <memory>
+#include <vector>
 
 enum class RtpRelayPacketKind
 {
@@ -23,7 +25,7 @@ enum class RtpRelayPacketKind
 
 struct RtpRelayPacket
 {
-    janus_rtp_header* rtpHeader;
-    uint16_t rtpHeaderLength;
+    std::shared_ptr<std::vector<unsigned char>> rtpPacketPayload;
     RtpRelayPacketKind type;
+    uint64_t channelId;
 };

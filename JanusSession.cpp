@@ -26,43 +26,27 @@ JanusSession::JanusSession(janus_plugin_session* handle, janus_callbacks* janusC
 #pragma endregion
 
 #pragma region Public methods
-void JanusSession::RelayRtpPacket(RtpRelayPacket rtpPacket)
+void JanusSession::SendRtpPacket(RtpRelayPacket rtpPacket)
 {
-    // Don't try to relay packets if we're not started yet
     if (!isStarted)
     {
         return;
     }
-
-    if (rtpPacket.type == RtpRelayPacketKind::Video)
+    
+    janus_rtp_header* rtpHeader = 
+        reinterpret_cast<janus_rtp_header*>(rtpPacket.rtpPacketPayload->data());
+    bool isVideoPacket = (rtpPacket.type == RtpRelayPacketKind::Video);
+    janus_rtp_header_update(rtpHeader, &rtpSwitchingContext, isVideoPacket, 0);
+    janus_plugin_rtp janusRtp = 
     {
-        janus_rtp_header_update(rtpPacket.rtpHeader, &rtpSwitchingContext, TRUE, 0);
-        janus_plugin_rtp janusRtp = 
-        {
-            .video = true,
-            .buffer = reinterpret_cast<char*>(rtpPacket.rtpHeader),
-            .length = rtpPacket.rtpHeaderLength
-        };
-        janus_plugin_rtp_extensions_reset(&janusRtp.extensions);
-        if (handle->gateway_handle != nullptr)
-        {
-            janusCore->relay_rtp(handle, &janusRtp);
-        }
-    }
-    else if (rtpPacket.type == RtpRelayPacketKind::Audio)
+        .video = isVideoPacket,
+        .buffer = reinterpret_cast<char*>(rtpPacket.rtpPacketPayload->data()),
+        .length = static_cast<uint16_t>(rtpPacket.rtpPacketPayload->size())
+    };
+    janus_plugin_rtp_extensions_reset(&janusRtp.extensions);
+    if (handle->gateway_handle != nullptr)
     {
-        janus_rtp_header_update(rtpPacket.rtpHeader, &rtpSwitchingContext, FALSE, 0);
-        janus_plugin_rtp janusRtp = 
-        {
-            .video = false,
-            .buffer = reinterpret_cast<char*>(rtpPacket.rtpHeader),
-            .length = rtpPacket.rtpHeaderLength
-        };
-        janus_plugin_rtp_extensions_reset(&janusRtp.extensions);
-        if (handle->gateway_handle != nullptr)
-        {
-            janusCore->relay_rtp(handle, &janusRtp);
-        }
+        janusCore->relay_rtp(handle, &janusRtp);
     }
 }
 
