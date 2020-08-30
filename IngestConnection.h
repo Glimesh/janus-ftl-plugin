@@ -13,6 +13,7 @@
 #include "CredStore.h"
 #include "AudioCodec.h"
 #include "VideoCodec.h"
+#include "FtlRtp.h"
 
 #include <thread>
 #include <random>
@@ -20,6 +21,11 @@
 #include <memory>
 #include <map>
 #include <functional>
+
+extern "C"
+{
+    #include <netinet/in.h>
+}
 
 /**
  * @brief Enum value describing the current state of the ingest connection
@@ -40,21 +46,25 @@ class IngestConnection
 {
 public:
     /* Constructor/Destructor */
-    IngestConnection(int connectionHandle, std::shared_ptr<CredStore> credStore);
+    IngestConnection(
+        int connectionHandle,
+        sockaddr_in acceptAddress,
+        std::shared_ptr<CredStore> credStore);
 
     /* Public methods */
     void Start();
     void Stop();
     // Getters/Setters
-    uint32_t GetChannelId();
+    sockaddr_in GetAcceptAddress();
+    ftl_channel_id_t GetChannelId();
     bool GetHasVideo();
     bool GetHasAudio();
     VideoCodecKind GetVideoCodec();
     AudioCodecKind GetAudioCodec();
-    uint32_t GetAudioSsrc();
-    uint32_t GetVideoSsrc();
-    uint8_t GetAudioPayloadType();
-    uint8_t GetVideoPayloadType();
+    rtp_ssrc_t GetAudioSsrc();
+    rtp_ssrc_t GetVideoSsrc();
+    rtp_payload_type_t GetAudioPayloadType();
+    rtp_payload_type_t GetVideoPayloadType();
     // Callbacks
     void SetOnClosed(std::function<void (IngestConnection&)> callback);
     void SetOnRequestMediaConnection(std::function<uint16_t (IngestConnection&)> callback);
@@ -66,8 +76,9 @@ private:
     bool isAuthenticated = false;
     bool isStreaming = false;
     uint32_t channelId = 0;
-    int connectionHandle;
-    std::shared_ptr<CredStore> credStore;
+    const int connectionHandle;
+    const sockaddr_in acceptAddress;
+    const std::shared_ptr<CredStore> credStore;
     std::thread connectionThread;
     std::array<uint8_t, 128> hmacPayload;
     std::default_random_engine randomEngine { std::random_device()() };
@@ -80,10 +91,10 @@ private:
     AudioCodecKind audioCodec;
     uint16_t videoWidth;
     uint16_t videoHeight;
-    uint32_t audioSsrc = 0;
-    uint32_t videoSsrc = 0;
-    uint8_t audioPayloadType = 0;
-    uint8_t videoPayloadType = 0;
+    rtp_ssrc_t audioSsrc = 0;
+    rtp_ssrc_t videoSsrc = 0;
+    rtp_payload_type_t audioPayloadType = 0;
+    rtp_payload_type_t videoPayloadType = 0;
     // Regex patterns
     std::regex connectPattern = std::regex(R"~(CONNECT ([0-9]+) \$([0-9a-f]+))~");
     std::regex attributePattern = std::regex(R"~((.+): (.+))~");

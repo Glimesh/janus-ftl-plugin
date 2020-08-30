@@ -9,6 +9,10 @@
 
 #include "FtlStreamStore.h"
 #include "FtlStream.h"
+extern "C"
+{
+    #include <debug.h>
+}
 
 #include <stdexcept>
 

@@ -11,6 +11,7 @@
 #include "RelayThreadPool.h"
 #include "FtlStreamStore.h"
 #include "FtlStream.h"
+#include "JanusSession.h"
 
 extern "C"
 {
@@ -56,17 +57,21 @@ void RelayThreadPool::RelayPacket(RtpRelayPacket packet)
 
 void RelayThreadPool::SetThreadCount(unsigned int newThreadCount)
 {
-    std::lock_guard<std::mutex> lock(threadVectorMutex);
-    if (isStarted && (newThreadCount > threadCount))
     {
-        for (unsigned int i = threadCount; i < newThreadCount; ++i)
+        std::lock_guard<std::mutex> lock(threadVectorMutex);
+        if (isStarted && (newThreadCount > threadCount))
         {
-            auto thread = std::thread(&RelayThreadPool::relayThreadMethod, this, i);
-            thread.detach();
-            relayThreads[i] = std::move(thread);
+            for (unsigned int i = threadCount; i < newThreadCount; ++i)
+            {
+                auto thread = std::thread(&RelayThreadPool::relayThreadMethod, this, i);
+                thread.detach();
+                relayThreads[i] = std::move(thread);
+            }
         }
+        threadCount = newThreadCount;
     }
-    threadCount = newThreadCount;
+    // Notify threads if they need to shut down
+    relayThreadCondition.notify_all();
 }
 #pragma endregion
 
@@ -84,11 +89,11 @@ void RelayThreadPool::relayThreadMethod(unsigned int threadNumber)
         relayThreadCondition.wait(lock,
             [this, threadNumber]()
             {
-                return (packetRelayQueue.size() > 0) || (threadCount < threadNumber);
+                return (packetRelayQueue.size() > 0) || (threadCount < threadNumber + 1);
             });
 
         // If we're stopping, release the lock and exit the thread.
-        if (threadCount < threadNumber)
+        if (threadCount < threadNumber + 1)
         {
             break;
         }

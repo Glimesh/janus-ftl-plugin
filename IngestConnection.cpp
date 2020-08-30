@@ -13,6 +13,7 @@
 extern "C"
 {
     #include <debug.h>
+    #include <arpa/inet.h>
 }
 #include <sstream>
 #include <iomanip>
@@ -24,8 +25,10 @@ const std::array<char, 4> IngestConnection::commandDelimiter = { '\r', '\n', '\r
 #pragma region Constructor/Destructor
 IngestConnection::IngestConnection(
     int connectionHandle,
+    sockaddr_in acceptAddress,
     std::shared_ptr<CredStore> credStore) : 
     connectionHandle(connectionHandle),
+    acceptAddress(acceptAddress),
     credStore(credStore)
 { }
 #pragma endregion
@@ -43,7 +46,12 @@ void IngestConnection::Stop()
     shutdown(connectionHandle, SHUT_RDWR);
 }
 
-uint32_t IngestConnection::GetChannelId()
+sockaddr_in IngestConnection::GetAcceptAddress()
+{
+    return acceptAddress;
+}
+
+ftl_channel_id_t IngestConnection::GetChannelId()
 {
     return channelId;
 }
@@ -68,22 +76,22 @@ AudioCodecKind IngestConnection::GetAudioCodec()
     return audioCodec;
 }
 
-uint32_t IngestConnection::GetAudioSsrc()
+rtp_ssrc_t IngestConnection::GetAudioSsrc()
 {
     return audioSsrc;
 }
 
-uint32_t IngestConnection::GetVideoSsrc()
+rtp_ssrc_t IngestConnection::GetVideoSsrc()
 {
     return videoSsrc;
 }
 
-uint8_t IngestConnection::GetAudioPayloadType()
+rtp_payload_type_t IngestConnection::GetAudioPayloadType()
 {
     return audioPayloadType;
 }
 
-uint8_t IngestConnection::GetVideoPayloadType()
+rtp_payload_type_t IngestConnection::GetVideoPayloadType()
 {
     return videoPayloadType;
 }
@@ -103,7 +111,11 @@ void IngestConnection::SetOnRequestMediaConnection(
 #pragma region Private methods
 void IngestConnection::startConnectionThread()
 {
-    JANUS_LOG(LOG_INFO, "FTL: Starting ingest connection thread\n");
+    char ipBuf[32];
+    inet_ntop(AF_INET, &acceptAddress.sin_addr.s_addr, &ipBuf[0], sizeof(ipBuf));
+
+    JANUS_LOG(LOG_INFO, "FTL: Starting ingest connection thread for %s\n", ipBuf);
+
 
     char buffer[512];
     std::stringstream cmdStrStream;
