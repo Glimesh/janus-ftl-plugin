@@ -70,7 +70,6 @@ private:
     const std::shared_ptr<IngestConnection> ingestConnection;
     const uint16_t mediaPort; // Port that this stream is listening on
     const std::shared_ptr<RelayThreadPool> relayThreadPool;
-    sockaddr_in rtcpAddress;
     janus_rtp_switching_context rtpSwitchingContext;
     int mediaSocketHandle;
     std::thread streamThread;

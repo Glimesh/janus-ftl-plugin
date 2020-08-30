@@ -39,11 +39,6 @@ FtlStream::FtlStream(
 #pragma region Public methods
 void FtlStream::Start()
 {
-    // Set up rtcp address
-    rtcpAddress.sin_family = AF_INET;
-    rtcpAddress.sin_addr.s_addr = ingestConnection->GetAcceptAddress().sin_addr.s_addr;
-    rtcpAddress.sin_port = htons(mediaPort);
-
     // Start listening for incoming packets
     streamThread = std::thread(&FtlStream::startStreamThread, this);
     streamThread.detach();
@@ -154,11 +149,7 @@ void FtlStream::startStreamThread()
         (const sockaddr*)&socketAddress,
         sizeof(socketAddress));
 
-    sockaddr_in ingestAddress = ingestConnection->GetAcceptAddress();
-    char ipBuf[32];
-    inet_ntop(AF_INET, &ingestAddress.sin_addr.s_addr, &ipBuf[0], sizeof(ipBuf));
-
-    JANUS_LOG(LOG_INFO, "FTL: Started media connection for %s on port %d\n", ipBuf, mediaPort);
+    JANUS_LOG(LOG_INFO, "FTL: Started media connection for %d on port %d\n", GetChannelId(), mediaPort);
     switch (bindResult)
     {
     case 0:
@@ -245,13 +236,11 @@ void FtlStream::startStreamThread()
             janus_rtp_header* rtpHeader = (janus_rtp_header*)buffer;
             rtp_sequence_num_t sequenceNumber = ntohs(rtpHeader->seq_number);
 
-            // TODO: Send nacks for missing sequence numbers
-            // see https://tools.ietf.org/html/rfc4585 Section 6.1
-
             // Process audio/video packets
             if ((rtpHeader->type == GetAudioPayloadType()) || 
                 (rtpHeader->type == GetVideoPayloadType()))
             {
+                // Relay the packet
                 RtpRelayPacketKind packetKind = rtpHeader->type == GetVideoPayloadType() ? 
                     RtpRelayPacketKind::Video : RtpRelayPacketKind::Audio;
                 std::shared_ptr<std::vector<unsigned char>> rtpPacket =
@@ -261,6 +250,8 @@ void FtlStream::startStreamThread()
                     .type = packetKind,
                     .channelId = GetChannelId()
                 });
+
+                // Check for any lost packets
                 markReceivedSequence(rtpHeader->type, sequenceNumber);
                 processLostPackets(remote, rtpHeader->type, sequenceNumber, rtpHeader->timestamp);
             }
@@ -331,13 +322,6 @@ void FtlStream::markReceivedSequence(
         auto lastSequence = latestSequence[payloadType];
         if (lastSequence < receivedSequence)
         {
-            // JANUS_LOG(
-            //     LOG_INFO,
-            //     "FTL: %u old: %u new: %u lost: %u.\n",
-            //     payloadType,
-            //     lastSequence,
-            //     receivedSequence,
-            //     (receivedSequence - lastSequence + 1));
             // Identify any lost packets between the last sequence
             if (lostPackets.count(payloadType) <= 0)
             {
@@ -347,15 +331,14 @@ void FtlStream::markReceivedSequence(
             {
                 lostPackets[payloadType].insert(seq);
             }
-            if (receivedSequence - lastSequence > 1)
+            if ((receivedSequence - lastSequence) > 1)
             {
                 JANUS_LOG(
                     LOG_WARN,
-                    "FTL: Channel %u PL %u lost %u packets. %lu total lost.\n",
+                    "FTL: Channel %u PL %u lost %u packets.\n",
                     GetChannelId(),
                     payloadType,
-                    (receivedSequence - (lastSequence + 1)),
-                    lostPackets[payloadType].size());
+                    (receivedSequence - (lastSequence + 1)));
             }
             latestSequence[payloadType] = receivedSequence;
         }
@@ -382,12 +365,29 @@ void FtlStream::processLostPackets(
                 continue;
             }
 
-            // TODO: Otherwise, ask for re-transmission
-            rtp_ssrc_t ssrc = GetVideoSsrc();
-            if (payloadType == GetAudioPayloadType())
+            // Otherwise, ask for re-transmission
+            rtp_ssrc_t ssrc;
+            if (payloadType == GetVideoPayloadType())
+            {
+                ssrc = GetVideoSsrc();
+            }
+            else if (payloadType == GetAudioPayloadType())
             {
                 ssrc = GetAudioSsrc();
             }
+            else
+            {
+                JANUS_LOG(
+                    LOG_ERR,
+                    "FTL: Channel %u cannot NACK unknown payload type %u\n",
+                    GetChannelId(),
+                    payloadType);
+                it = lostPayloadPackets.erase(it);
+                continue;
+            }
+
+            // See https://tools.ietf.org/html/rfc4585 Section 6.1
+            // for information on how the nack packet is formed
             char nackBuf[120];
             janus_rtcp_header *rtcpHeader = reinterpret_cast<janus_rtcp_header*>(nackBuf);
             rtcpHeader->version = 2;
@@ -417,19 +417,15 @@ void FtlStream::processLostPackets(
                     payloadType,
                     errno);
             }
-            
-            char ipBuf[32];
-            inet_ntop(AF_INET, &remote.sin_addr.s_addr, &ipBuf[0], sizeof(ipBuf));
 
             // Sent! Take it out of the list for now.
             it = lostPayloadPackets.erase(it);
 
             JANUS_LOG(
                     LOG_INFO,
-                    "FTL: Channel %u PL %u sent NACK to %s for seq %u\n",
+                    "FTL: Channel %u PL %u sent NACK for seq %u\n",
                     GetChannelId(),
                     payloadType,
-                    ipBuf,
                     lostPacketSequence);
         }
     }
