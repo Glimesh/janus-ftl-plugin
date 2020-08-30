@@ -13,8 +13,10 @@
 #include <algorithm>
 extern "C"
 {
+    #include <unistd.h>
     #include <debug.h>
     #include <sys/time.h>
+    #include <rtcp.h>
 }
 
 #pragma region Constructor/Destructor
@@ -37,6 +39,12 @@ FtlStream::FtlStream(
 #pragma region Public methods
 void FtlStream::Start()
 {
+    // Set up rtcp address
+    rtcpAddress.sin_family = AF_INET;
+    rtcpAddress.sin_addr.s_addr = ingestConnection->GetAcceptAddress().sin_addr.s_addr;
+    rtcpAddress.sin_port = htons(mediaPort);
+
+    // Start listening for incoming packets
     streamThread = std::thread(&FtlStream::startStreamThread, this);
     streamThread.detach();
 }
@@ -68,7 +76,7 @@ void FtlStream::SetOnClosed(std::function<void (FtlStream&)> callback)
 #pragma endregion
 
 #pragma region Getters/Setters
-uint64_t FtlStream::GetChannelId()
+ftl_channel_id_t FtlStream::GetChannelId()
 {
     return ingestConnection->GetChannelId();
 }
@@ -134,7 +142,7 @@ void FtlStream::ingestConnectionClosed(IngestConnection& connection)
 
 void FtlStream::startStreamThread()
 {
-    struct sockaddr_in socketAddress;
+    sockaddr_in socketAddress;
     socketAddress.sin_family = AF_INET;
     socketAddress.sin_addr.s_addr = htonl(INADDR_ANY);
     socketAddress.sin_port = htons(mediaPort);
@@ -146,7 +154,11 @@ void FtlStream::startStreamThread()
         (const sockaddr*)&socketAddress,
         sizeof(socketAddress));
 
-    JANUS_LOG(LOG_INFO, "FTL: Started media connection on port %d\n", mediaPort);
+    sockaddr_in ingestAddress = ingestConnection->GetAcceptAddress();
+    char ipBuf[32];
+    inet_ntop(AF_INET, &ingestAddress.sin_addr.s_addr, &ipBuf[0], sizeof(ipBuf));
+
+    JANUS_LOG(LOG_INFO, "FTL: Started media connection for %s on port %d\n", ipBuf, mediaPort);
     switch (bindResult)
     {
     case 0:
@@ -163,7 +175,7 @@ void FtlStream::startStreamThread()
 
     // Set up some values we'll be using in our read thread
     socklen_t addrlen;
-    struct sockaddr_storage remote;
+    sockaddr_in remote;
     char buffer[1500] = { 0 };
     int bytesRead = 0;
     // Set up poll
@@ -213,16 +225,25 @@ void FtlStream::startStreamThread()
                 (struct sockaddr*)&remote,
                 &addrlen);
 
-            if (bytesRead < 12)
+            if (remote.sin_addr.s_addr != ingestConnection->GetAcceptAddress().sin_addr.s_addr)
             {
-                // This packet is too small to have an RTP header.
-                JANUS_LOG(LOG_WARN, "FTL: Received non-RTP packet.");
+                JANUS_LOG(
+                    LOG_ERR,
+                    "FTL: Channel %u received packet from unexpected address.\n",
+                    GetChannelId());
                 continue;
             }
 
+            if (bytesRead < 12)
+            {
+                // This packet is too small to have an RTP header.
+                JANUS_LOG(LOG_WARN, "FTL: Channel %u received non-RTP packet.\n", GetChannelId());
+                continue;
+            }
 
             // Parse out RTP packet
             janus_rtp_header* rtpHeader = (janus_rtp_header*)buffer;
+            rtp_sequence_num_t sequenceNumber = ntohs(rtpHeader->seq_number);
 
             // TODO: Send nacks for missing sequence numbers
             // see https://tools.ietf.org/html/rfc4585 Section 6.1
@@ -240,6 +261,8 @@ void FtlStream::startStreamThread()
                     .type = packetKind,
                     .channelId = GetChannelId()
                 });
+                markReceivedSequence(rtpHeader->type, sequenceNumber);
+                processLostPackets(remote, rtpHeader->type, sequenceNumber, rtpHeader->timestamp);
             }
             else
             {
@@ -277,6 +300,141 @@ void FtlStream::startStreamThread()
     }
 }
 
+void FtlStream::markReceivedSequence(
+    rtp_payload_type_t payloadType,
+    rtp_sequence_num_t receivedSequence)
+{
+    // If this sequence was previously marked as lost, remove it
+    if (lostPackets.count(payloadType) > 0)
+    {
+        auto& lostPayloadPackets = lostPackets[payloadType];
+        if (lostPayloadPackets.count(receivedSequence) > 0)
+        {
+            lostPayloadPackets.erase(receivedSequence);
+        }
+    }
+
+    // If this is the first sequence, record it
+    if (latestSequence.count(payloadType) <= 0)
+    {
+        latestSequence[payloadType] = receivedSequence;
+        JANUS_LOG(
+            LOG_INFO,
+            "FTL: Channel %u first %u sequence: %u\n",
+            GetChannelId(),
+            payloadType,
+            receivedSequence);
+    }
+    else
+    {
+        // Make sure we're actually the latest
+        auto lastSequence = latestSequence[payloadType];
+        if (lastSequence < receivedSequence)
+        {
+            // JANUS_LOG(
+            //     LOG_INFO,
+            //     "FTL: %u old: %u new: %u lost: %u.\n",
+            //     payloadType,
+            //     lastSequence,
+            //     receivedSequence,
+            //     (receivedSequence - lastSequence + 1));
+            // Identify any lost packets between the last sequence
+            if (lostPackets.count(payloadType) <= 0)
+            {
+                lostPackets[payloadType] = std::set<rtp_sequence_num_t>();
+            }
+            for (auto seq = lastSequence + 1; seq < receivedSequence; ++seq)
+            {
+                lostPackets[payloadType].insert(seq);
+            }
+            if (receivedSequence - lastSequence > 1)
+            {
+                JANUS_LOG(
+                    LOG_WARN,
+                    "FTL: Channel %u PL %u lost %u packets. %lu total lost.\n",
+                    GetChannelId(),
+                    payloadType,
+                    (receivedSequence - (lastSequence + 1)),
+                    lostPackets[payloadType].size());
+            }
+            latestSequence[payloadType] = receivedSequence;
+        }
+    }
+}
+
+void FtlStream::processLostPackets(
+    sockaddr_in remote,
+    rtp_payload_type_t payloadType,
+    rtp_sequence_num_t currentSequence,
+    rtp_timestamp_t currentTimestamp)
+{
+    if (lostPackets.count(payloadType) > 0)
+    {
+        auto& lostPayloadPackets = lostPackets[payloadType];
+        for (auto it = lostPayloadPackets.cbegin(); it != lostPayloadPackets.cend();)
+        {
+            const auto& lostPacketSequence = *it;
+
+            // If this 'lost' packet came from the future, get rid of it
+            if (lostPacketSequence > currentSequence)
+            {
+                it = lostPayloadPackets.erase(it);
+                continue;
+            }
+
+            // TODO: Otherwise, ask for re-transmission
+            rtp_ssrc_t ssrc = GetVideoSsrc();
+            if (payloadType == GetAudioPayloadType())
+            {
+                ssrc = GetAudioSsrc();
+            }
+            char nackBuf[120];
+            janus_rtcp_header *rtcpHeader = reinterpret_cast<janus_rtcp_header*>(nackBuf);
+            rtcpHeader->version = 2;
+            rtcpHeader->type = RTCP_RTPFB;
+            rtcpHeader->rc = 1;
+            janus_rtcp_fb* rtcpFeedback = reinterpret_cast<janus_rtcp_fb*>(rtcpHeader);
+            rtcpFeedback->media = htonl(ssrc);
+            rtcpFeedback->ssrc = htonl(ssrc);
+            janus_rtcp_nack* rtcpNack = reinterpret_cast<janus_rtcp_nack*>(rtcpFeedback->fci);
+            rtcpNack->pid = htons(lostPacketSequence);
+            rtcpNack->blp = 0;
+            rtcpHeader->length = htons(3);
+
+            int res = sendto(
+                mediaSocketHandle,
+                nackBuf,
+                16,
+                0,
+                reinterpret_cast<sockaddr*>(&remote),
+                sizeof(remote));
+            if (res == -1)
+            {
+                JANUS_LOG(
+                    LOG_ERR,
+                    "FTL: Channel %u PL %u NACK failed: %d\n",
+                    GetChannelId(),
+                    payloadType,
+                    errno);
+            }
+            
+            char ipBuf[32];
+            inet_ntop(AF_INET, &remote.sin_addr.s_addr, &ipBuf[0], sizeof(ipBuf));
+
+            // Sent! Take it out of the list for now.
+            it = lostPayloadPackets.erase(it);
+
+            JANUS_LOG(
+                    LOG_INFO,
+                    "FTL: Channel %u PL %u sent NACK to %s for seq %u\n",
+                    GetChannelId(),
+                    payloadType,
+                    ipBuf,
+                    lostPacketSequence);
+        }
+    }
+}
+
 void FtlStream::handlePing(janus_rtp_header* rtpHeader, uint16_t length)
 {
     // These pings are useless - FTL tries to determine 'ping' by having a timestamp
@@ -292,7 +450,7 @@ void FtlStream::handleSenderReport(janus_rtp_header* rtpHeader, uint16_t length)
     // We expect this packet to be 28 bytes big.
     if (length != 28)
     {
-        JANUS_LOG(LOG_WARN, "Invalid sender report packet of length %d (expect 28)\n", length);
+        JANUS_LOG(LOG_WARN, "FTL: Invalid sender report packet of length %d (expect 28)\n", length);
     }
     // char* packet = reinterpret_cast<char*>(rtpHeader);
     // uint32_t ssrc              = ntohl(*reinterpret_cast<uint32_t*>(packet + 4));

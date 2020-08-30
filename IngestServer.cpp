@@ -33,7 +33,7 @@ IngestServer::IngestServer(
 #pragma region Public methods
 void IngestServer::Start()
 {
-    struct sockaddr_in socketAddress;
+    sockaddr_in socketAddress;
     socketAddress.sin_family = AF_INET;
     socketAddress.sin_addr.s_addr = htonl(INADDR_ANY);
     socketAddress.sin_port = htons(listenPort);
@@ -98,6 +98,7 @@ void IngestServer::startListenThread()
     {
         // Accept incoming connections, manage them as "pending" until the
         // FTL handshake is completed.
+        
         int connectionHandle = accept(listenSocketHandle, nullptr, nullptr);
         if (connectionHandle == -1)
         {
@@ -109,9 +110,15 @@ void IngestServer::startListenThread()
         }
         else
         {
+            sockaddr_in acceptAddress;
+            socklen_t acceptLen = sizeof(acceptAddress);
+            getpeername(connectionHandle, reinterpret_cast<sockaddr*>(&acceptAddress), &acceptLen);
             JANUS_LOG(LOG_INFO, "FTL: Ingest server accepted connection...\n");
             std::shared_ptr<IngestConnection> connection = 
-                std::make_shared<IngestConnection>(connectionHandle, credStore);
+                std::make_shared<IngestConnection>(
+                    connectionHandle,
+                    acceptAddress,
+                    credStore);
             pendingConnections.push_back(connection);
                 
             connection->SetOnClosed(std::bind(
