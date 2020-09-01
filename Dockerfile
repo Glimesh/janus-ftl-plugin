@@ -53,9 +53,18 @@ RUN \
     ninja && \
     ninja install
 
+# Janus API HTTP
 EXPOSE 8088/tcp
+# Janus API HTTPS
 EXPOSE 8089/tcp
+# FTL Ingest Handshake
 EXPOSE 8084/tcp
-EXPOSE 9000-10000/udp
+# FTL Media
+EXPOSE 9000-9100/udp
+# RTP Media
+EXPOSE 20000-20100/udp
+# NOTE: Usually we'd want a way larger Media/RTP port range
+# but Docker is extremely slow at opening huge port ranges
+# (see moby/moby#14288)
 
-CMD ["/opt/janus/bin/janus"]
+CMD exec /opt/janus/bin/janus --rtp-port-range=20000-20100 --nat-1-1=${DOCKER_IP}
