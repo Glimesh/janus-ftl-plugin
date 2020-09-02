@@ -55,6 +55,11 @@ See `DummyCredStore.cpp` for the default stream key retrieval mechanism.
 
 For watching your stream from a browser, see [janus-ftl-player](https://github.com/haydenmc/janus-ftl-player).
 
+# Dockering
+
+    docker build -t janus-ftl
+    docker run --rm -p 8084:8084/tcp -p 8088:8088/tcp -p 9000-9100:9000-9100/udp -p 20000-20100:20000-20100/udp -e "DOCKER_IP=HOST.IP.ADDRESS.HERE" janus-ftl
+
 # Misc Notes
 
 ## Include paths
