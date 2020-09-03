@@ -75,7 +75,7 @@ struct janus_plugin_result* JanusFtl::HandleMessage(
         json_t* jsep)
 {
     JsonPtr messagePtr(message);
-    JsonPtr jsepPtr(message);
+    JsonPtr jsepPtr(jsep);
 
     // Look up the session
     std::shared_ptr<JanusSession> session;

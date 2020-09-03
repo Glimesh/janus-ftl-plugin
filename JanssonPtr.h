@@ -15,7 +15,12 @@
 struct JanssonUnref
 {
     void operator() (json_t* json)
-        { json_decref(json); }
+    {
+        if (json != nullptr)
+        {
+            json_decref(json);
+        }
+    }
 };
 
 typedef
