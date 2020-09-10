@@ -17,6 +17,7 @@ extern "C"
     #include <debug.h>
     #include <sys/time.h>
     #include <rtcp.h>
+    #include <utils.h>
 }
 
 #pragma region Constructor/Destructor
@@ -270,6 +271,17 @@ void FtlStream::startStreamThread()
                 // Count it!
                 ++numPacketsReceived;
                 
+                // Is this a keyframe?
+                if (rtpHeader->type == GetVideoPayloadType())
+                {
+                    if (isKeyframePacket(rtpHeader, bytesRead))
+                    {
+                        uint32_t timestamp = ntohl(rtpHeader->timestamp);
+                        uint16_t seq = ntohs(rtpHeader->seq_number);
+                        JANUS_LOG(LOG_INFO, "FTL: Packet %u is a keyframe!\n", seq);
+                    }
+                }
+
                 // Relay the packet
                 RtpRelayPacketKind packetKind = rtpHeader->type == GetVideoPayloadType() ? 
                     RtpRelayPacketKind::Video : RtpRelayPacketKind::Audio;
@@ -359,6 +371,23 @@ void FtlStream::startStreamMetadataReportingThread()
                 .videoHeight                  = 720,
             });
     }
+}
+
+bool FtlStream::isKeyframePacket(janus_rtp_header* rtpHeader, uint16_t length)
+{
+    if (rtpHeader == nullptr)
+    {
+        return false;
+    }
+
+    // Extract RTP payload
+    int payloadLength = 0;
+    char* payload = janus_rtp_payload(reinterpret_cast<char*>(rtpHeader), length, &payloadLength);
+    if (payload != nullptr)
+    {
+        return janus_h264_is_keyframe(payload, payloadLength);
+    }
+    return false;
 }
 
 void FtlStream::markReceivedSequence(

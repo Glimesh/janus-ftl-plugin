@@ -102,6 +102,7 @@ private:
     void ingestConnectionClosed(IngestConnection& connection);
     void startStreamThread();
     void startStreamMetadataReportingThread();
+    bool isKeyframePacket(janus_rtp_header* rtpHeader, uint16_t length);
     void markReceivedSequence(rtp_payload_type_t payloadType, rtp_sequence_num_t receivedSequence);
     void processLostPackets(sockaddr_in remoteAddr, rtp_payload_type_t payloadType, rtp_sequence_num_t currentSequence, rtp_timestamp_t currentTimestamp);
     void handlePing(janus_rtp_header* rtpHeader, uint16_t length);
