@@ -14,6 +14,7 @@
 #include "IngestConnection.h"
 #include "RelayThreadPool.h"
 #include "StreamMetadata.h"
+#include "Keyframe.h"
 
 extern "C"
 {
@@ -50,6 +51,7 @@ public:
     void AddViewer(std::shared_ptr<JanusSession> viewerSession);
     void RemoveViewer(std::shared_ptr<JanusSession> viewerSession);
     void SetOnClosed(std::function<void (FtlStream&)> callback);
+    void SendKeyframeToViewer(std::shared_ptr<JanusSession> viewerSession);
     
     /* Getters/Setters */
     ftl_channel_id_t GetChannelId();
@@ -97,12 +99,15 @@ private:
     std::atomic<uint16_t> streamerToIngestPingMs;
     std::mutex streamMetadataMutex;
     std::thread streamMetadataReportingThread;
+    std::mutex keyframeMutex;
+    Keyframe keyframe;
+    Keyframe pendingKeyframe;
 
     /* Private methods */
     void ingestConnectionClosed(IngestConnection& connection);
     void startStreamThread();
     void startStreamMetadataReportingThread();
-    bool isKeyframePacket(janus_rtp_header* rtpHeader, uint16_t length);
+    void processKeyframePacket(std::shared_ptr<std::vector<unsigned char>> rtpPacket);
     void markReceivedSequence(rtp_payload_type_t payloadType, rtp_sequence_num_t receivedSequence);
     void processLostPackets(sockaddr_in remoteAddr, rtp_payload_type_t payloadType, rtp_sequence_num_t currentSequence, rtp_timestamp_t currentTimestamp);
     void handlePing(janus_rtp_header* rtpHeader, uint16_t length);

@@ -142,7 +142,7 @@ json_t* JanusFtl::HandleAdminMessage(json_t* message)
 
 void JanusFtl::SetupMedia(janus_plugin_session* handle)
 {
-    JANUS_LOG(LOG_INFO, "FTL: SetupMedia");
+    JANUS_LOG(LOG_INFO, "FTL: SetupMedia\n");
 
     std::shared_ptr<JanusSession> session;
     {
@@ -164,6 +164,7 @@ void JanusFtl::SetupMedia(janus_plugin_session* handle)
 
     session->ResetRtpSwitchingContext();
     session->SetIsStarted(true);
+    ftlStream->SendKeyframeToViewer(session);
 }
 
 void JanusFtl::IncomingRtp(janus_plugin_session* handle, janus_plugin_rtp* packet)
@@ -179,6 +180,7 @@ void JanusFtl::IncomingRtcp(janus_plugin_session* handle, janus_plugin_rtcp* pac
 void JanusFtl::DataReady(janus_plugin_session* handle)
 {
     // TODO
+    JANUS_LOG(LOG_INFO, "FTL: DataReady\n");
 }
 
 void JanusFtl::HangUpMedia(janus_plugin_session* handle)
