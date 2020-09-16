@@ -17,7 +17,7 @@ extern "C"
 
 #include "RtpRelayPacket.h"
 #include "IngestServer.h"
-#include "CredStore.h"
+#include "ServiceConnection.h"
 #include "JanusSession.h"
 #include "FtlStream.h"
 #include "JanssonPtr.h"
@@ -68,7 +68,7 @@ private:
     /* Members */
     janus_plugin* pluginHandle;
     janus_callbacks* janusCore;
-    std::shared_ptr<CredStore> credStore;
+    std::shared_ptr<ServiceConnection> serviceConnection;
     std::shared_ptr<FtlStreamStore> ftlStreamStore;
     std::shared_ptr<RelayThreadPool> relayThreadPool;
     std::unique_ptr<IngestServer> ingestServer;

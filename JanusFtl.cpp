@@ -9,7 +9,7 @@
  */
 
 #include "JanusFtl.h"
-#include "DummyCredStore.h"
+#include "DummyServiceConnection.h"
 #include "JanssonPtr.h"
 #include <jansson.h>
 extern "C"
@@ -32,14 +32,14 @@ int JanusFtl::Init(janus_callbacks* callback, const char* config_path)
     // TODO: Read configuration
 
     // TODO: Configurable cred store
-    credStore = std::make_shared<DummyCredStore>();
+    serviceConnection = std::make_shared<DummyServiceConnection>();
 
     ftlStreamStore = std::make_shared<FtlStreamStore>();
 
     relayThreadPool = std::make_shared<RelayThreadPool>(ftlStreamStore);
     relayThreadPool->Start();
 
-    ingestServer = std::make_unique<IngestServer>(credStore);
+    ingestServer = std::make_unique<IngestServer>(serviceConnection);
     ingestServer->SetOnRequestMediaConnection(std::bind(
         &JanusFtl::newIngestFtlStream,
         this,

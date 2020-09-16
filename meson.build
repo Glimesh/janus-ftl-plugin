@@ -5,9 +5,10 @@ janusincludepath = get_variable('JANUS_INC_PATH', (januspath + '/include/janus')
 installdir = get_variable('INSTALL_PATH', (januspath + '/lib/janus/plugins'))
 
 sources = files([
-    'DummyCredStore.cpp',
+    'DummyServiceConnection.cpp',
     'FtlStream.cpp',
     'FtlStreamStore.cpp',
+    'GlimeshServiceConnection.cpp',
     'IngestConnection.cpp',
     'IngestServer.cpp',
     'janus_ftl.cpp',
@@ -24,7 +25,8 @@ deps = [
 ]
 
 incdir = include_directories(
-    janusincludepath
+    janusincludepath,
+    './cpp-httplib'
 )
 
 cppargs = '-Wno-unknown-pragmas'

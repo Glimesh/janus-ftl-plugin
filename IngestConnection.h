@@ -10,7 +10,7 @@
 
 #pragma once
 
-#include "CredStore.h"
+#include "ServiceConnection.h"
 #include "AudioCodec.h"
 #include "VideoCodec.h"
 #include "FtlRtp.h"
@@ -49,7 +49,7 @@ public:
     IngestConnection(
         int connectionHandle,
         sockaddr_in acceptAddress,
-        std::shared_ptr<CredStore> credStore);
+        std::shared_ptr<ServiceConnection> serviceConnection);
 
     /* Public methods */
     void Start();
@@ -78,7 +78,7 @@ private:
     uint32_t channelId = 0;
     const int connectionHandle;
     const sockaddr_in acceptAddress;
-    const std::shared_ptr<CredStore> credStore;
+    const std::shared_ptr<ServiceConnection> serviceConnection;
     std::thread connectionThread;
     std::array<uint8_t, 128> hmacPayload;
     std::default_random_engine randomEngine { std::random_device()() };

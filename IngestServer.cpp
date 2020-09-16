@@ -21,10 +21,10 @@ extern "C"
 
 #pragma region Constructor/Destructor
 IngestServer::IngestServer(
-    std::shared_ptr<CredStore> credStore,
+    std::shared_ptr<ServiceConnection> serviceConnection,
     int listenPort,
     int socketQueueLimit) : 
-    credStore(credStore),
+    serviceConnection(serviceConnection),
     listenPort(listenPort),
     socketQueueLimit(socketQueueLimit)
 { }
@@ -118,7 +118,7 @@ void IngestServer::startListenThread()
                 std::make_shared<IngestConnection>(
                     connectionHandle,
                     acceptAddress,
-                    credStore);
+                    serviceConnection);
             pendingConnections.push_back(connection);
                 
             connection->SetOnClosed(std::bind(
