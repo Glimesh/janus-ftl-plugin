@@ -11,6 +11,9 @@
 #pragma once
 
 #include <string>
+#include <chrono>
+#include <ctime>
+#include <httplib.h>
 #include "ServiceConnection.h"
 
 /**
@@ -23,9 +26,15 @@ class GlimeshServiceConnection :
 {
 public:
     /* Constructor/Destructor */
-    GlimeshServiceConnection(std::string hostname, bool useHttps);
+    GlimeshServiceConnection(
+        std::string hostname,
+        uint16_t port,
+        bool useHttps,
+        std::string clientId,
+        std::string clientSecret);
 
     /* ServiceConnection */
+    void Init() override;
     std::string GetHmacKey(uint32_t userId) override;
     uint32_t CreateStream(uint32_t userId) override;
     void StartStream(uint32_t streamId) override;
@@ -35,5 +44,14 @@ public:
 private:
     /* Private members */
     std::string hostname;
+    uint16_t port;
     bool useHttps;
+    std::string clientId;
+    std::string clientSecret;
+    std::unique_ptr<httplib::Client> httpClient;
+    std::string accessToken;
+    std::time_t accessTokenExpirationTime;
+
+    /* Private methods */
+    void ensureAuth();
 };

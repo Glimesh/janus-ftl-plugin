@@ -26,6 +26,11 @@ public:
     { }
 
     /**
+     * @brief Perform any initialization tasks that are required before utilizing the connection
+     */
+    virtual void Init() = 0;
+
+    /**
      * @brief Get the private HMAC key for a given user ID
      * 
      * @param userId The user ID to fetch the key for
@@ -46,7 +51,7 @@ public:
      * 
      * @param streamId ID of stream to start
      */
-    virtual void StartStream(uint32_t streamId);
+    virtual void StartStream(uint32_t streamId) = 0;
 
     /**
      * @brief Updates the service with additional metadata about a stream

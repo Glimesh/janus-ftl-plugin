@@ -10,6 +10,9 @@
 
 #include "DummyServiceConnection.h"
 
+void DummyServiceConnection::Init()
+{ }
+
 std::string DummyServiceConnection::GetHmacKey(uint32_t userId)
 {
     return "aBcDeFgHiJkLmNoPqRsTuVwXyZ123456";

@@ -21,6 +21,7 @@ class DummyServiceConnection :
     public ServiceConnection
 {
 public:
+    void Init() override;
     std::string GetHmacKey(uint32_t userId) override;
     uint32_t CreateStream(uint32_t userId) override;
     void StartStream(uint32_t streamId) override;
