@@ -5,6 +5,7 @@ janusincludepath = get_variable('JANUS_INC_PATH', (januspath + '/include/janus')
 installdir = get_variable('INSTALL_PATH', (januspath + '/lib/janus/plugins'))
 
 sources = files([
+    'Configuration.cpp',
     'DummyServiceConnection.cpp',
     'FtlStream.cpp',
     'FtlStreamStore.cpp',

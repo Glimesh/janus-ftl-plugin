@@ -12,7 +12,7 @@
 #include "RtpRelayPacket.h"
 #include "IngestConnection.h"
 #include "RelayThreadPool.h"
-#include "FtlRtp.h"
+#include "FtlTypes.h"
 
 extern "C"
 {
@@ -37,7 +37,8 @@ public:
     FtlStream(
         const std::shared_ptr<IngestConnection> ingestConnection,
         const uint16_t mediaPort,
-        const std::shared_ptr<RelayThreadPool> relayThreadPool);
+        const std::shared_ptr<RelayThreadPool> relayThreadPool,
+        const std::shared_ptr<ServiceConnection> serviceConnection);
 
     /* Public methods */
     void Start();
@@ -70,6 +71,8 @@ private:
     const std::shared_ptr<IngestConnection> ingestConnection;
     const uint16_t mediaPort; // Port that this stream is listening on
     const std::shared_ptr<RelayThreadPool> relayThreadPool;
+    const std::shared_ptr<ServiceConnection> serviceConnection;
+    ftl_stream_id_t streamId;
     janus_rtp_switching_context rtpSwitchingContext;
     int mediaSocketHandle;
     std::thread streamThread;

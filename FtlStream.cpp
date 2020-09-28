@@ -23,10 +23,12 @@ extern "C"
 FtlStream::FtlStream(
     const std::shared_ptr<IngestConnection> ingestConnection,
     const uint16_t mediaPort,
-    const std::shared_ptr<RelayThreadPool> relayThreadPool) : 
+    const std::shared_ptr<RelayThreadPool> relayThreadPool,
+    const std::shared_ptr<ServiceConnection> serviceConnection) : 
     ingestConnection(ingestConnection),
     mediaPort(mediaPort),
-    relayThreadPool(relayThreadPool)
+    relayThreadPool(relayThreadPool),
+    serviceConnection(serviceConnection)
 {
     // Bind to ingest callbacks
     ingestConnection->SetOnClosed(std::bind(
@@ -164,6 +166,9 @@ void FtlStream::startStreamThread()
         throw std::runtime_error("FTL stream could not bind to media socket.");
     }
 
+    // Let the service know that we're streaming!
+    streamId = serviceConnection->StartStream(GetChannelId());
+
     // Set up some values we'll be using in our read thread
     socklen_t addrlen;
     sockaddr_in remote;
@@ -284,6 +289,10 @@ void FtlStream::startStreamThread()
     }
 
     // We're no longer listening to incoming packets.
+
+    // Tell the service this stream has ended.
+    serviceConnection->EndStream(streamId);
+
     // TODO: Tell the sessions that we're going away
     if (onClosed != nullptr)
     {

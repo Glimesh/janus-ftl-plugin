@@ -13,21 +13,18 @@
 void DummyServiceConnection::Init()
 { }
 
-std::string DummyServiceConnection::GetHmacKey(uint32_t userId)
+std::string DummyServiceConnection::GetHmacKey(ftl_channel_id_t channelId)
 {
     return "aBcDeFgHiJkLmNoPqRsTuVwXyZ123456";
 }
 
-uint32_t DummyServiceConnection::CreateStream(uint32_t userId)
+ftl_stream_id_t DummyServiceConnection::StartStream(ftl_channel_id_t channelId)
 {
-    return 1;
+    return channelId;
 }
 
-void DummyServiceConnection::StartStream(uint32_t streamId)
+void DummyServiceConnection::UpdateStreamMetadata(ftl_stream_id_t streamId, StreamMetadata metadata)
 { }
 
-void DummyServiceConnection::UpdateStreamMetadata(uint32_t streamId, StreamMetadata metadata)
-{ }
-
-void DummyServiceConnection::EndStream(uint32_t streamId)
+void DummyServiceConnection::EndStream(ftl_stream_id_t streamId)
 { }

@@ -36,49 +36,123 @@ void GlimeshServiceConnection::Init()
 {
     std::stringstream baseUri;
     baseUri << (useHttps ? "https" : "http") << "://" << hostname << ":" << port;
-    httpClient = std::make_unique<httplib::Client>(baseUri.str().c_str());
     JANUS_LOG(LOG_INFO, "FTL: Using Glimesh Service Connection @ %s\n", baseUri.str().c_str());
 
     // Try to auth
     ensureAuth();
 }
 
-std::string GlimeshServiceConnection::GetHmacKey(uint32_t userId)
+std::string GlimeshServiceConnection::GetHmacKey(uint32_t channelId)
 {
-    ensureAuth();
-    return "aBcDeFgHiJkLmNoPqRsTuVwXyZ123456";
+    std::stringstream query;
+    query << "query { channel(id: \"" << channelId << "\") { streamKey } }";
+
+    JsonPtr queryResult = runGraphQlQuery(query.str());
+    json_t* jsonData = json_object_get(queryResult.get(), "data");
+    if (jsonData != nullptr)
+    {
+        json_t* jsonChannel = json_object_get(jsonData, "channel");
+        if (jsonChannel != nullptr)
+        {
+            json_t* jsonStreamKey = json_object_get(jsonChannel, "streamKey");
+            if (jsonStreamKey != nullptr)
+            {
+                return std::string(json_string_value(jsonStreamKey));
+            }
+        }
+    }
+
+    return std::string(); // Empty string means we couldn't find one
 }
 
-uint32_t GlimeshServiceConnection::CreateStream(uint32_t userId)
+ftl_stream_id_t GlimeshServiceConnection::StartStream(ftl_channel_id_t channelId)
 {
-    ensureAuth();
-    return 1;
+    std::stringstream query;
+    query << "mutation { startStream(channelId: \"" << channelId << "\") { id } }";
+
+    JsonPtr queryResult = runGraphQlQuery(query.str());
+    json_t* jsonData = json_object_get(queryResult.get(), "data");
+    if (jsonData != nullptr)
+    {
+        json_t* jsonStream = json_object_get(jsonData, "startStream");
+        if (jsonStream != nullptr)
+        {
+            json_t* jsonStreamId = json_object_get(jsonStream, "id");
+            if (jsonStreamId != nullptr)
+            {
+                uint32_t streamId = json_integer_value(jsonStreamId);
+                // NOTE: Right now, the API doesn't accept references to stream IDs,
+                // only channel IDs. So we'll fudge it and store the channel ID as the stream ID.
+                return channelId;
+            }
+        }
+    }
+
+    return 0;
 }
 
-void GlimeshServiceConnection::StartStream(uint32_t streamId)
+void GlimeshServiceConnection::UpdateStreamMetadata(ftl_stream_id_t streamId, StreamMetadata metadata)
 {
-    ensureAuth();
+    // TODO
 }
 
-void GlimeshServiceConnection::UpdateStreamMetadata(uint32_t streamId, StreamMetadata metadata)
+void GlimeshServiceConnection::EndStream(ftl_stream_id_t streamId)
 {
-    ensureAuth();
-}
+    // NOTE: Right now, the API doesn't accept references to stream IDs,
+    // only channel IDs. So we're fudging it and storing the channel ID as the stream ID.
+    std::stringstream query;
+    query << "mutation { endStream(channelId: \"" << streamId << "\") { id } }";
 
-void GlimeshServiceConnection::EndStream(uint32_t streamId)
-{
-    ensureAuth();
+    JsonPtr queryResult = runGraphQlQuery(query.str());
+    json_t* jsonData = json_object_get(queryResult.get(), "data");
+    if (jsonData != nullptr)
+    {
+        json_t* jsonStream = json_object_get(jsonData, "endStream");
+        if (jsonStream != nullptr)
+        {
+            json_t* jsonStreamId = json_object_get(jsonStream, "id");
+            if (jsonStreamId != nullptr)
+            {
+                uint32_t endedStreamId = json_integer_value(jsonStreamId);
+            }
+        }
+    }
 }
 #pragma endregion
 
 #pragma region Private methods
+httplib::Client GlimeshServiceConnection::getHttpClient()
+{
+    std::stringstream baseUri;
+    baseUri << (useHttps ? "https" : "http") << "://" << hostname << ":" << port;
+    httplib::Client client = httplib::Client(baseUri.str().c_str());
+
+    if (accessToken.length() > 0)
+    {
+        httplib::Headers headers
+        {
+            {"Authorization", "Bearer " + accessToken}
+        };
+        client.set_default_headers(headers);
+    }
+
+    return client;
+}
+
 void GlimeshServiceConnection::ensureAuth()
 {
+    std::lock_guard<std::mutex> lock(authMutex);
+
     // Do we already have an access token that hasn't expired?
     // TODO: Check expiration
     if (accessToken.length() > 0)
     {
-        return;
+        std::time_t currentTime = std::time(nullptr);
+        JANUS_LOG(LOG_INFO, "FTL: Expiration %lu < %lu ?\n", currentTime, accessTokenExpirationTime);
+        if (currentTime < accessTokenExpirationTime)
+        {
+            return;
+        }
     }
     
     // No? Let's fetch one.
@@ -90,7 +164,8 @@ void GlimeshServiceConnection::ensureAuth()
         { "scope", "streamkey" }
     };
 
-    if (httplib::Result res = httpClient->Post("/api/oauth/token", params))
+    httplib::Client httpClient = getHttpClient();
+    if (httplib::Result res = httpClient.Post("/api/oauth/token", params))
     {
         if (res->status == 200)
         {
@@ -100,19 +175,93 @@ void GlimeshServiceConnection::ensureAuth()
             JsonPtr jsonBody(json_loads(res->body.c_str(), 0, &error));
             if (jsonBody.get() != nullptr)
             {
+                // Extract access token
                 json_t* accessTokenJson = json_object_get(jsonBody.get(), "access_token");
                 accessToken = std::string(json_string_value(accessTokenJson));
                 JANUS_LOG(LOG_INFO, "FTL: Received access token: %s\n", accessToken.c_str());
+
+                // Extract time to expiration
+                json_t* expiresInJson = json_object_get(jsonBody.get(), "expires_in");
+                uint32_t expiresIn = json_integer_value(expiresInJson);
+
+                // Extract creation time
+                json_t* createdAtJson = json_object_get(jsonBody.get(), "created_at");
+                std::string createdAtStr = std::string(json_string_value(createdAtJson));
+                tm createdAtTime = parseIso8601DateTime(createdAtStr);
+
+                // Calculate expiration time
+                std::time_t expirationTime(std::mktime(&createdAtTime));
+                expirationTime += expiresIn;
+                accessTokenExpirationTime = expirationTime;
                 return;
             }
         }
     }
+
+    // TODO: Retry logic based on failure/status code
+    throw std::runtime_error("Access token request failed!");
+}
+
+JsonPtr GlimeshServiceConnection::runGraphQlQuery(std::string query)
+{
+    // Make sure we have a valid access token
+    ensureAuth();
+
+    // Create a JSON blob for our GraphQL query
+    JsonPtr queryJson(json_pack("{s:s}", "query", query.c_str()));
+    char* queryStr = json_dumps(queryJson.get(), 0);
+    std::string queryString(queryStr);
+    free(queryStr);
+
+    // Make the request
+    httplib::Client httpClient = getHttpClient();
+    if (httplib::Result res = httpClient.Post("/api", queryString, "application/json"))
+    {
+        if (res->status == 200)
+        {
+            // Try to parse out the response
+            json_error_t error;
+            JsonPtr jsonBody(json_loads(res->body.c_str(), 0, &error));
+            if (jsonBody.get() == nullptr)
+            {
+                throw std::runtime_error("Could not parse GraphQL JSON response.");
+            }
+            return jsonBody;
+        }
+        else
+        {
+            // TODO: Retry/re-auth logic based on status code
+            throw std::runtime_error("GraphQL HTTP request received unexpected status code!");
+        }
+    }
     else
     {
-        httplib::Error err = res.error();
-        throw std::runtime_error("HTTP request failed!");
+        throw std::runtime_error("GraphQL HTTP request failed!");
+    }
+}
+
+// Thanks StackOverflow friends
+// https://stackoverflow.com/a/26896792/2874534
+tm GlimeshServiceConnection::parseIso8601DateTime(std::string dateTimeString)
+{
+    int y, M, d, h, m, tzh, tzm;
+    float s;
+    if (6 < sscanf(dateTimeString.c_str(), "%d-%d-%dT%d:%d:%f%d:%dZ", &y, &M, &d, &h, &m, &s, &tzh, &tzm))
+    {
+        if (tzh < 0)
+        {
+            tzm = -tzm; // Fix the sign on minutes.
+        }
     }
 
-    throw std::runtime_error("Access token request failed!");
+    tm time;
+    time.tm_year = y - 1900; // Year since 1900
+    time.tm_mon = M - 1;     // 0-11
+    time.tm_mday = d;        // 1-31
+    time.tm_hour = h;        // 0-23
+    time.tm_min = m;         // 0-59
+    time.tm_sec = (int)s;    // 0-60
+
+    return time;
 }
 #pragma endregion

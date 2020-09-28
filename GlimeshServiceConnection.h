@@ -14,7 +14,9 @@
 #include <chrono>
 #include <ctime>
 #include <httplib.h>
+#include <mutex>
 #include "ServiceConnection.h"
+#include "JanssonPtr.h"
 
 /**
  * @brief
@@ -35,11 +37,10 @@ public:
 
     /* ServiceConnection */
     void Init() override;
-    std::string GetHmacKey(uint32_t userId) override;
-    uint32_t CreateStream(uint32_t userId) override;
-    void StartStream(uint32_t streamId) override;
-    void UpdateStreamMetadata(uint32_t streamId, StreamMetadata metadata) override;
-    void EndStream(uint32_t streamId) override;
+    std::string GetHmacKey(ftl_channel_id_t channelId) override;
+    ftl_stream_id_t StartStream(ftl_channel_id_t channelId) override;
+    void UpdateStreamMetadata(ftl_stream_id_t streamId, StreamMetadata metadata) override;
+    void EndStream(ftl_stream_id_t streamId) override;
 
 private:
     /* Private members */
@@ -48,10 +49,13 @@ private:
     bool useHttps;
     std::string clientId;
     std::string clientSecret;
-    std::unique_ptr<httplib::Client> httpClient;
     std::string accessToken;
     std::time_t accessTokenExpirationTime;
+    std::mutex authMutex;
 
     /* Private methods */
+    httplib::Client getHttpClient();
     void ensureAuth();
+    JsonPtr runGraphQlQuery(std::string query);
+    tm parseIso8601DateTime(std::string dateTimeString);
 };

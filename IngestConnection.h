@@ -13,7 +13,7 @@
 #include "ServiceConnection.h"
 #include "AudioCodec.h"
 #include "VideoCodec.h"
-#include "FtlRtp.h"
+#include "FtlTypes.h"
 
 #include <thread>
 #include <random>
@@ -26,17 +26,6 @@ extern "C"
 {
     #include <netinet/in.h>
 }
-
-/**
- * @brief Enum value describing the current state of the ingest connection
- */
-enum class IngestConnectionState
-{
-    Pending,       // Someone has connected, but hasn't yet completed the authentication process.
-    Authenticated, // Someone has connected and authenticated, but has not completed the handshake.
-    Active,        // Handshake has been completed and this connection is active.
-    Closed         // Connection has been closed.
-};
 
 /**
  * @brief This class manages the FTL ingest connection.

@@ -1,5 +1,5 @@
 /**
- * @file FtlRtp.h
+ * @file FtlTypes.h
  * @author Hayden McAfee(hayden@outlook.com)
  * @brief A few utility type defs for FTL/RTP data
  * @version 0.1
@@ -14,6 +14,7 @@
 
 /* FTL data types */
 typedef uint32_t ftl_channel_id_t;
+typedef uint32_t ftl_stream_id_t;
 
 /* RTP data types */
 typedef uint8_t rtp_payload_type_t;

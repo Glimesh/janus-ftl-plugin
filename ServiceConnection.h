@@ -11,6 +11,7 @@
 #pragma once
 
 #include "StreamMetadata.h"
+#include "FtlTypes.h"
 
 #include <string>
 
@@ -31,27 +32,20 @@ public:
     virtual void Init() = 0;
 
     /**
-     * @brief Get the private HMAC key for a given user ID
+     * @brief Get the private HMAC key for a given channel ID
      * 
-     * @param userId The user ID to fetch the key for
-     * @return std::string The HMAC key
+     * @param channelId The channel ID to fetch the key for
+     * @return The HMAC key
      */
-    virtual std::string GetHmacKey(uint32_t userId) = 0;
+    virtual std::string GetHmacKey(ftl_channel_id_t channelId) = 0;
 
     /**
-     * @brief Create a new Stream on the service for the given user ID
+     * @brief Starts a stream for a given channel
      * 
-     * @param userId the user to create the stream for
-     * @return uint32_t the ID for the created stream
+     * @param channelId ID of channel to start stream on
+     * @return The ID of the new stream
      */
-    virtual uint32_t CreateStream(uint32_t userId) = 0;
-
-    /**
-     * @brief Marks the given stream ID as live on the service
-     * 
-     * @param streamId ID of stream to start
-     */
-    virtual void StartStream(uint32_t streamId) = 0;
+    virtual ftl_stream_id_t StartStream(ftl_channel_id_t channelId) = 0;
 
     /**
      * @brief Updates the service with additional metadata about a stream
@@ -59,12 +53,12 @@ public:
      * @param streamId ID of stream to update
      * @param metadata metadata of stream
      */
-    virtual void UpdateStreamMetadata(uint32_t streamId, StreamMetadata metadata) = 0;
+    virtual void UpdateStreamMetadata(ftl_stream_id_t streamId, StreamMetadata metadata) = 0;
 
     /**
      * @brief Marks the given stream ID as ended on the service
      * 
      * @param streamId ID of stream to end
      */
-    virtual void EndStream(uint32_t streamId) = 0;
+    virtual void EndStream(ftl_stream_id_t streamId) = 0;
 };

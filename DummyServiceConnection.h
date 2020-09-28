@@ -22,9 +22,8 @@ class DummyServiceConnection :
 {
 public:
     void Init() override;
-    std::string GetHmacKey(uint32_t userId) override;
-    uint32_t CreateStream(uint32_t userId) override;
-    void StartStream(uint32_t streamId) override;
-    void UpdateStreamMetadata(uint32_t streamId, StreamMetadata metadata) override;
-    void EndStream(uint32_t streamId) override;
+    std::string GetHmacKey(ftl_channel_id_t channelId) override;
+    ftl_stream_id_t StartStream(ftl_channel_id_t channelId) override;
+    void UpdateStreamMetadata(ftl_stream_id_t streamId, StreamMetadata metadata) override;
+    void EndStream(ftl_stream_id_t streamId) override;
 };
