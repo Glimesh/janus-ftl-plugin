@@ -44,6 +44,7 @@ jobs:
       uses: actions/checkout@v2
       with:
         path: janus-ftl-plugin
+        submodules: true
     - name: Build FTL
       run: cd janus-ftl-plugin && meson build/ && cd build/ && ninja
     - name: Upload Build Artifact
