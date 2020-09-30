@@ -9,13 +9,26 @@
  */
 
 #include "Configuration.h"
-#include <cstdlib>
-#include <string>
 #include <algorithm>
+#include <cstdlib>
+#include <limits.h>
+#include <string>
+#include <unistd.h>
 
 #pragma region Public methods
 void Configuration::Load()
 {
+    // Get default hostname
+    char hostname[HOST_NAME_MAX];
+    gethostname(hostname, HOST_NAME_MAX);
+    myHostname = std::string(hostname);
+
+    // FTL_HOSTNAME -> MyHostname
+    if (char* varVal = std::getenv("FTL_HOSTNAME"))
+    {
+        myHostname = std::string(varVal);
+    }
+
     // FTL_SERVICE_CONNECTION -> ServiceConnectionKind
     if (char* serviceConnectionEnv = std::getenv("FTL_SERVICE_CONNECTION"))
     {
@@ -33,6 +46,12 @@ void Configuration::Load()
         {
             serviceConnectionKind = ServiceConnectionKind::GlimeshServiceConnection;
         }
+    }
+
+    // FTL_SERVICE_METADATAREPORTINTERVALMS -> ServiceConnectionMetadataReportIntervalMs
+    if (char* varVal = std::getenv("FTL_SERVICE_METADATAREPORTINTERVALMS"))
+    {
+        serviceConnectionMetadataReportIntervalMs = std::stoi(varVal);
     }
 
     // FTL_SERVICE_GLIMESH_HOSTNAME -> GlimeshServiceHostname
@@ -68,9 +87,19 @@ void Configuration::Load()
 #pragma endregion
 
 #pragma region Configuration values
+std::string Configuration::GetMyHostname()
+{
+    return myHostname;
+}
+
 ServiceConnectionKind Configuration::GetServiceConnectionKind()
 {
     return serviceConnectionKind;
+}
+
+uint16_t Configuration::GetServiceConnectionMetadataReportIntervalMs()
+{
+    return serviceConnectionMetadataReportIntervalMs;
 }
 
 std::string Configuration::GetGlimeshServiceHostname()

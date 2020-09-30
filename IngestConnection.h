@@ -46,6 +46,8 @@ public:
     // Getters/Setters
     sockaddr_in GetAcceptAddress();
     ftl_channel_id_t GetChannelId();
+    std::string GetVendorName();
+    std::string GetVendorVersion();
     bool GetHasVideo();
     bool GetHasAudio();
     VideoCodecKind GetVideoCodec();

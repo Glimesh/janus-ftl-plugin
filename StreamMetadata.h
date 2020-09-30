@@ -15,6 +15,8 @@
 
 struct StreamMetadata
 {
+    std::string ingestServerHostname;
+    uint32_t streamTimeSeconds;
     uint32_t numActiveViewers;
     uint32_t currentSourceBitrateBps;
     uint32_t numPacketsReceived;

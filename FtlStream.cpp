@@ -24,11 +24,15 @@ FtlStream::FtlStream(
     const std::shared_ptr<IngestConnection> ingestConnection,
     const uint16_t mediaPort,
     const std::shared_ptr<RelayThreadPool> relayThreadPool,
-    const std::shared_ptr<ServiceConnection> serviceConnection) : 
+    const std::shared_ptr<ServiceConnection> serviceConnection,
+    const uint16_t metadataReportIntervalMs,
+    const std::string myHostname) : 
     ingestConnection(ingestConnection),
     mediaPort(mediaPort),
     relayThreadPool(relayThreadPool),
-    serviceConnection(serviceConnection)
+    serviceConnection(serviceConnection),
+    metadataReportIntervalMs(metadataReportIntervalMs),
+    myHostname(myHostname)
 {
     // Bind to ingest callbacks
     ingestConnection->SetOnClosed(std::bind(
@@ -41,15 +45,33 @@ FtlStream::FtlStream(
 #pragma region Public methods
 void FtlStream::Start()
 {
+    // Mark our start time
+    streamStartTime = std::time(nullptr);
+
     // Start listening for incoming packets
     streamThread = std::thread(&FtlStream::startStreamThread, this);
     streamThread.detach();
+
+    // Start thread for reporting stream metadata out
+    streamMetadataReportingThread = 
+        std::thread(&FtlStream::startStreamMetadataReportingThread, this);
+    streamMetadataReportingThread.detach();
 }
 
 void FtlStream::Stop()
 {
     // Stop the ingest connection, which will end up reporting closed to us
     ingestConnection->Stop();
+    
+    // Join our outstanding threads
+    if (streamThread.joinable())
+    {
+        streamThread.join();
+    }
+    if (streamMetadataReportingThread.joinable())
+    {
+        streamMetadataReportingThread.join();
+    }
 }
 
 void FtlStream::AddViewer(std::shared_ptr<JanusSession> viewerSession)
@@ -245,6 +267,9 @@ void FtlStream::startStreamThread()
             if ((rtpHeader->type == GetAudioPayloadType()) || 
                 (rtpHeader->type == GetVideoPayloadType()))
             {
+                // Count it!
+                ++numPacketsReceived;
+                
                 // Relay the packet
                 RtpRelayPacketKind packetKind = rtpHeader->type == GetVideoPayloadType() ? 
                     RtpRelayPacketKind::Video : RtpRelayPacketKind::Audio;
@@ -300,6 +325,42 @@ void FtlStream::startStreamThread()
     }
 }
 
+void FtlStream::startStreamMetadataReportingThread()
+{
+    while (true)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(metadataReportIntervalMs));
+
+        // Are we stopping?
+        if (stopping)
+        {
+            break;
+        }
+
+        std::time_t currentTime = std::time(nullptr);
+        uint32_t streamTimeSeconds = currentTime - streamStartTime;
+
+        serviceConnection->UpdateStreamMetadata(
+            streamId,
+            {
+                .ingestServerHostname         = myHostname,
+                .streamTimeSeconds            = streamTimeSeconds,
+                .numActiveViewers             = static_cast<uint32_t>(viewerSessions.size()),
+                .currentSourceBitrateBps      = currentSourceBitrateBps,
+                .numPacketsReceived           = numPacketsReceived,
+                .numPacketsNacked             = numPacketsNacked,
+                .numPacketsLost               = numPacketsLost,
+                .streamerToIngestPingMs       = streamerToIngestPingMs,
+                .streamerClientVendorName     = ingestConnection->GetVendorName(),
+                .streamerClientVendorVersion  = ingestConnection->GetVendorVersion(),
+                .videoCodec                   = SupportedVideoCodecs::VideoCodecString(ingestConnection->GetVideoCodec()),
+                .audioCodec                   = SupportedAudioCodecs::AudioCodecString(ingestConnection->GetAudioCodec()),
+                .videoWidth                   = 1280,
+                .videoHeight                  = 720,
+            });
+    }
+}
+
 void FtlStream::markReceivedSequence(
     rtp_payload_type_t payloadType,
     rtp_sequence_num_t receivedSequence)
@@ -348,6 +409,9 @@ void FtlStream::markReceivedSequence(
                     GetChannelId(),
                     payloadType,
                     (receivedSequence - (lastSequence + 1)));
+
+                // Count em!
+                numPacketsLost += (receivedSequence - lastSequence);
             }
             latestSequence[payloadType] = receivedSequence;
         }
@@ -436,6 +500,9 @@ void FtlStream::processLostPackets(
                     GetChannelId(),
                     payloadType,
                     lostPacketSequence);
+
+            // Count number of packets we NACK
+            ++numPacketsNacked;
         }
     }
 }

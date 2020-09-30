@@ -262,7 +262,9 @@ uint16_t JanusFtl::newIngestFtlStream(std::shared_ptr<IngestConnection> connecti
         connection,
         targetPort,
         relayThreadPool,
-        serviceConnection);
+        serviceConnection,
+        configuration->GetServiceConnectionMetadataReportIntervalMs(),
+        configuration->GetMyHostname());
     ftlStream->SetOnClosed(std::bind(
         &JanusFtl::ftlStreamClosed,
         this,

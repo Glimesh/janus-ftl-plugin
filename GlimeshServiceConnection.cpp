@@ -10,7 +10,6 @@
 
 #include "GlimeshServiceConnection.h"
 #include <jansson.h>
-#include "JanssonPtr.h"
 extern "C"
 {
     #include <debug.h>
@@ -93,7 +92,44 @@ ftl_stream_id_t GlimeshServiceConnection::StartStream(ftl_channel_id_t channelId
 
 void GlimeshServiceConnection::UpdateStreamMetadata(ftl_stream_id_t streamId, StreamMetadata metadata)
 {
-    // TODO
+    // TODO: channelId -> streamId
+    std::stringstream query;
+    query << "mutation($channelId: ID!, $streamMetadata: StreamMetadataInput!) " << 
+        "{ logStreamMetadata(channelId: $channelId, metadata: $streamMetadata) { id } }";
+
+    // Create a json object to contain query variables
+    JsonPtr queryVariables(json_pack(
+        "{s:s, s:s, s:i, s:i, s:i, s:i, s:i, s:i, s:i, s:s, s:s, s:s, s:i, s:i}",
+        "audioCodec",        metadata.audioCodec.c_str(),
+        "ingestServer",      metadata.ingestServerHostname.c_str(),
+        "ingestViewers",     metadata.numActiveViewers,
+        "lostPackets",       metadata.numPacketsLost,
+        "nackPackets",       metadata.numPacketsNacked,
+        "recvPackets",       metadata.numPacketsReceived,
+        "sourceBitrate",     metadata.currentSourceBitrateBps,
+        "sourcePing",        metadata.streamerToIngestPingMs,
+        "streamTimeSeconds", metadata.streamTimeSeconds,
+        "vendorName",        metadata.streamerClientVendorName.c_str(),
+        "vendorVersion",     metadata.streamerClientVendorVersion.c_str(),
+        "videoCodec",        metadata.videoCodec.c_str(),
+        "videoHeight",       metadata.videoHeight,
+        "videoWidth",        metadata.videoWidth
+    ));
+
+    JsonPtr queryResult = runGraphQlQuery(query.str(), std::move(queryVariables));
+    json_t* jsonData = json_object_get(queryResult.get(), "data");
+    if (jsonData != nullptr)
+    {
+        json_t* jsonStream = json_object_get(jsonData, "logStreamMetadata");
+        if (jsonStream != nullptr)
+        {
+            json_t* jsonStreamId = json_object_get(jsonStream, "id");
+            if (jsonStreamId != nullptr)
+            {
+                uint32_t updatedStreamId = json_integer_value(jsonStreamId);
+            }
+        }
+    }
 }
 
 void GlimeshServiceConnection::EndStream(ftl_stream_id_t streamId)
@@ -148,7 +184,6 @@ void GlimeshServiceConnection::ensureAuth()
     if (accessToken.length() > 0)
     {
         std::time_t currentTime = std::time(nullptr);
-        JANUS_LOG(LOG_INFO, "FTL: Expiration %lu < %lu ?\n", currentTime, accessTokenExpirationTime);
         if (currentTime < accessTokenExpirationTime)
         {
             return;
@@ -190,7 +225,7 @@ void GlimeshServiceConnection::ensureAuth()
                 tm createdAtTime = parseIso8601DateTime(createdAtStr);
 
                 // Calculate expiration time
-                std::time_t expirationTime(std::mktime(&createdAtTime));
+                std::time_t expirationTime = std::mktime(&createdAtTime);
                 expirationTime += expiresIn;
                 accessTokenExpirationTime = expirationTime;
                 return;
@@ -202,13 +237,13 @@ void GlimeshServiceConnection::ensureAuth()
     throw std::runtime_error("Access token request failed!");
 }
 
-JsonPtr GlimeshServiceConnection::runGraphQlQuery(std::string query)
+JsonPtr GlimeshServiceConnection::runGraphQlQuery(std::string query, JsonPtr variables)
 {
     // Make sure we have a valid access token
     ensureAuth();
 
     // Create a JSON blob for our GraphQL query
-    JsonPtr queryJson(json_pack("{s:s}", "query", query.c_str()));
+    JsonPtr queryJson(json_pack("{s:s, s:o?}", "query", query.c_str(), "variables", variables.get()));
     char* queryStr = json_dumps(queryJson.get(), 0);
     std::string queryString(queryStr);
     free(queryStr);

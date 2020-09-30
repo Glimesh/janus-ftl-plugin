@@ -56,6 +56,6 @@ private:
     /* Private methods */
     httplib::Client getHttpClient();
     void ensureAuth();
-    JsonPtr runGraphQlQuery(std::string query);
+    JsonPtr runGraphQlQuery(std::string query, JsonPtr variables = nullptr);
     tm parseIso8601DateTime(std::string dateTimeString);
 };

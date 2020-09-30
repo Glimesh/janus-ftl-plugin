@@ -26,7 +26,9 @@ public:
     void Load();
 
     /* Configuration values */
+    std::string GetMyHostname();
     ServiceConnectionKind GetServiceConnectionKind();
+    uint16_t GetServiceConnectionMetadataReportIntervalMs();
     // Glimesh Service Connection Values
     std::string GetGlimeshServiceHostname();
     uint16_t GetGlimeshServicePort();
@@ -36,7 +38,9 @@ public:
 
 private:
     /* Backing stores */
+    std::string myHostname;
     ServiceConnectionKind serviceConnectionKind = ServiceConnectionKind::DummyServiceConnection;
+    uint16_t serviceConnectionMetadataReportIntervalMs = 4000;
     // Glimesh Service Connection Backing Stores
     std::string glimeshServiceHostname = "localhost";
     uint16_t glimeshServicePort = 4000;

@@ -56,6 +56,16 @@ ftl_channel_id_t IngestConnection::GetChannelId()
     return channelId;
 }
 
+std::string IngestConnection::GetVendorName()
+{
+    return vendorName;
+}
+
+std::string IngestConnection::GetVendorVersion()
+{
+    return vendorVersion;
+}
+
 bool IngestConnection::GetHasVideo()
 {
     return hasVideo;
