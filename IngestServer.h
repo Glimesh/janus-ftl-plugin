@@ -11,7 +11,7 @@
 #pragma once
 
 #include "IngestConnection.h"
-#include "CredStore.h"
+#include "ServiceConnection.h"
 #include <sys/socket.h>
 #include <vector>
 #include <thread>
@@ -27,7 +27,7 @@ class IngestServer
 public:
     /* Constructor/Destructor */
     IngestServer(
-        std::shared_ptr<CredStore> credStore,
+        std::shared_ptr<ServiceConnection> serviceConnection,
         int listenPort = 8084,
         int socketQueueLimit = SOMAXCONN);
 
@@ -39,7 +39,7 @@ public:
 
 private:
     /* Private members */
-    std::shared_ptr<CredStore> credStore;
+    std::shared_ptr<ServiceConnection> serviceConnection;
     int listenPort;
     int socketQueueLimit;
     int listenSocketHandle;

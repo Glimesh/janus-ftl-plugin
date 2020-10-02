@@ -51,9 +51,23 @@ The default stream key is `123456789-aBcDeFgHiJkLmNoPqRsTuVwXyZ123456`.
 
 `123456789` can be whatever "Channel ID" you'd like.
 
-See `DummyCredStore.cpp` for the default stream key retrieval mechanism.
+See `DummyServiceConnection.cpp` for the default stream key retrieval mechanism.
 
 For watching your stream from a browser, see [janus-ftl-player](https://github.com/haydenmc/janus-ftl-player).
+
+# Configuration
+
+Configuration is achieved through environment variables.
+| Environment Variable   | Supported Values | Notes             |
+| :--------------------- | :--------------- | :---------------- |
+| `FTL_HOSTNAME`         | Valid hostname   | The hostname of the machine running the FTL service. Defaults to system hostname. |
+| `FTL_SERVICE_CONNECTION` | `DUMMY`: Dummy service connection <br />`GLIMESH`: Glimesh service connection | This configuration value determines which service FTL should plug into for operations such as stream key retrieval. |
+| `FTL_SERVICE_METADATAREPORTINTERVALMS` | Time in milliseconds | Defaults to `4000`, controls how often FTL stream metadata will be reported to the service. |
+| `FTL_SERVICE_GLIMESH_HOSTNAME` | Hostname value (ex. `localhost`, `glimesh.tv`) | This is the hostname the Glimesh service connection will attempt to reach. |
+| `FTL_SERVICE_GLIMESH_PORT` | Port number, `1`-`65535`. | This is the port used to communicate with the Glimesh service via HTTP/HTTPS. |
+| `FTL_SERVICE_GLIMESH_HTTPS` | `0`: Use HTTP <br />`1`: Use HTTPS | Determines whether HTTPS is used to communicate with the Glimesh service. |
+| `FTL_SERVICE_GLIMESH_CLIENTID` | String, OAuth Client ID returned by Glimesh app registration. | Used to authenticate to the Glimesh API. |
+| `FTL_SERVICE_GLIMESH_CLIENTSECRET` | String, OAuth Client Secret returned by Glimesh app registration. | Used to authenticate to the Glimesh API. |
 
 # Dockering
 

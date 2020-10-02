@@ -10,14 +10,16 @@
 #pragma once
 
 #include "RtpRelayPacket.h"
+#include "FtlTypes.h"
 #include "IngestConnection.h"
 #include "RelayThreadPool.h"
-#include "FtlRtp.h"
+#include "StreamMetadata.h"
 
 extern "C"
 {
     #include <rtp.h>
 }
+#include <atomic>
 #include <stdint.h>
 #include <string>
 #include <memory>
@@ -37,7 +39,10 @@ public:
     FtlStream(
         const std::shared_ptr<IngestConnection> ingestConnection,
         const uint16_t mediaPort,
-        const std::shared_ptr<RelayThreadPool> relayThreadPool);
+        const std::shared_ptr<RelayThreadPool> relayThreadPool,
+        const std::shared_ptr<ServiceConnection> serviceConnection,
+        const uint16_t metadataReportIntervalMs,
+        const std::string myHostname);
 
     /* Public methods */
     void Start();
@@ -70,6 +75,10 @@ private:
     const std::shared_ptr<IngestConnection> ingestConnection;
     const uint16_t mediaPort; // Port that this stream is listening on
     const std::shared_ptr<RelayThreadPool> relayThreadPool;
+    const std::shared_ptr<ServiceConnection> serviceConnection;
+    const uint16_t metadataReportIntervalMs;
+    const std::string myHostname;
+    ftl_stream_id_t streamId;
     janus_rtp_switching_context rtpSwitchingContext;
     int mediaSocketHandle;
     std::thread streamThread;
@@ -79,10 +88,20 @@ private:
     bool stopping = false;
     std::map<rtp_payload_type_t, rtp_sequence_num_t> latestSequence;
     std::map<rtp_payload_type_t, std::set<rtp_sequence_num_t>> lostPackets;
+    // Metadata/reporting
+    std::time_t streamStartTime;
+    std::atomic<uint32_t> currentSourceBitrateBps;
+    std::atomic<uint32_t> numPacketsReceived;
+    std::atomic<uint32_t> numPacketsNacked;
+    std::atomic<uint32_t> numPacketsLost;
+    std::atomic<uint16_t> streamerToIngestPingMs;
+    std::mutex streamMetadataMutex;
+    std::thread streamMetadataReportingThread;
 
     /* Private methods */
     void ingestConnectionClosed(IngestConnection& connection);
     void startStreamThread();
+    void startStreamMetadataReportingThread();
     void markReceivedSequence(rtp_payload_type_t payloadType, rtp_sequence_num_t receivedSequence);
     void processLostPackets(sockaddr_in remoteAddr, rtp_payload_type_t payloadType, rtp_sequence_num_t currentSequence, rtp_timestamp_t currentTimestamp);
     void handlePing(janus_rtp_header* rtpHeader, uint16_t length);

@@ -10,10 +10,10 @@
 
 #pragma once
 
-#include "CredStore.h"
+#include "ServiceConnection.h"
 #include "AudioCodec.h"
 #include "VideoCodec.h"
-#include "FtlRtp.h"
+#include "FtlTypes.h"
 
 #include <thread>
 #include <random>
@@ -28,17 +28,6 @@ extern "C"
 }
 
 /**
- * @brief Enum value describing the current state of the ingest connection
- */
-enum class IngestConnectionState
-{
-    Pending,       // Someone has connected, but hasn't yet completed the authentication process.
-    Authenticated, // Someone has connected and authenticated, but has not completed the handshake.
-    Active,        // Handshake has been completed and this connection is active.
-    Closed         // Connection has been closed.
-};
-
-/**
  * @brief This class manages the FTL ingest connection.
  * 
  */
@@ -49,7 +38,7 @@ public:
     IngestConnection(
         int connectionHandle,
         sockaddr_in acceptAddress,
-        std::shared_ptr<CredStore> credStore);
+        std::shared_ptr<ServiceConnection> serviceConnection);
 
     /* Public methods */
     void Start();
@@ -57,6 +46,8 @@ public:
     // Getters/Setters
     sockaddr_in GetAcceptAddress();
     ftl_channel_id_t GetChannelId();
+    std::string GetVendorName();
+    std::string GetVendorVersion();
     bool GetHasVideo();
     bool GetHasAudio();
     VideoCodecKind GetVideoCodec();
@@ -78,7 +69,7 @@ private:
     uint32_t channelId = 0;
     const int connectionHandle;
     const sockaddr_in acceptAddress;
-    const std::shared_ptr<CredStore> credStore;
+    const std::shared_ptr<ServiceConnection> serviceConnection;
     std::thread connectionThread;
     std::array<uint8_t, 128> hmacPayload;
     std::default_random_engine randomEngine { std::random_device()() };

@@ -9,7 +9,9 @@
  */
 
 #include "JanusFtl.h"
-#include "DummyCredStore.h"
+#include "Configuration.h"
+#include "DummyServiceConnection.h"
+#include "GlimeshServiceConnection.h"
 #include "JanssonPtr.h"
 #include <jansson.h>
 extern "C"
@@ -29,17 +31,17 @@ int JanusFtl::Init(janus_callbacks* callback, const char* config_path)
 {
     this->janusCore = callback;
 
-    // TODO: Read configuration
+    configuration = std::make_unique<Configuration>();
+    configuration->Load();
 
-    // TODO: Configurable cred store
-    credStore = std::make_shared<DummyCredStore>();
+    initServiceConnection();
 
     ftlStreamStore = std::make_shared<FtlStreamStore>();
 
     relayThreadPool = std::make_shared<RelayThreadPool>(ftlStreamStore);
     relayThreadPool->Start();
 
-    ingestServer = std::make_unique<IngestServer>(credStore);
+    ingestServer = std::make_unique<IngestServer>(serviceConnection);
     ingestServer->SetOnRequestMediaConnection(std::bind(
         &JanusFtl::newIngestFtlStream,
         this,
@@ -215,6 +217,27 @@ json_t* JanusFtl::QuerySession(janus_plugin_session* handle)
 #pragma endregion
 
 #pragma region Private methods
+void JanusFtl::initServiceConnection()
+{
+    switch (configuration->GetServiceConnectionKind())
+    {
+    case ServiceConnectionKind::GlimeshServiceConnection:
+        serviceConnection = std::make_shared<GlimeshServiceConnection>(
+            configuration->GetGlimeshServiceHostname(),
+            configuration->GetGlimeshServicePort(),
+            configuration->GetGlimeshServiceUseHttps(),
+            configuration->GetGlimeshServiceClientId(),
+            configuration->GetGlimeshServiceClientSecret());
+        break;
+    case ServiceConnectionKind::DummyServiceConnection:
+    default:
+        serviceConnection = std::make_shared<DummyServiceConnection>();
+        break;
+    }
+
+    serviceConnection->Init();
+}
+
 uint16_t JanusFtl::newIngestFtlStream(std::shared_ptr<IngestConnection> connection)
 {
     // Find a free port
@@ -235,7 +258,13 @@ uint16_t JanusFtl::newIngestFtlStream(std::shared_ptr<IngestConnection> connecti
     }
 
     // Spin up a new FTL stream
-    auto ftlStream = std::make_shared<FtlStream>(connection, targetPort, relayThreadPool);
+    auto ftlStream = std::make_shared<FtlStream>(
+        connection,
+        targetPort,
+        relayThreadPool,
+        serviceConnection,
+        configuration->GetServiceConnectionMetadataReportIntervalMs(),
+        configuration->GetMyHostname());
     ftlStream->SetOnClosed(std::bind(
         &JanusFtl::ftlStreamClosed,
         this,

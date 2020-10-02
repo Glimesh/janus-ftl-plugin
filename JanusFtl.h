@@ -15,9 +15,10 @@ extern "C"
     #include <plugins/plugin.h>
 }
 
+#include "Configuration.h"
 #include "RtpRelayPacket.h"
 #include "IngestServer.h"
-#include "CredStore.h"
+#include "ServiceConnection.h"
 #include "JanusSession.h"
 #include "FtlStream.h"
 #include "JanssonPtr.h"
@@ -68,17 +69,19 @@ private:
     /* Members */
     janus_plugin* pluginHandle;
     janus_callbacks* janusCore;
-    std::shared_ptr<CredStore> credStore;
+    std::shared_ptr<ServiceConnection> serviceConnection;
     std::shared_ptr<FtlStreamStore> ftlStreamStore;
     std::shared_ptr<RelayThreadPool> relayThreadPool;
     std::unique_ptr<IngestServer> ingestServer;
-    uint16_t minMediaPort = 9000;
-    uint16_t maxMediaPort = 65535;
+    std::unique_ptr<Configuration> configuration;
+    uint16_t minMediaPort = 9000; // TODO: Migrate to Configuration
+    uint16_t maxMediaPort = 65535; // TODO: Migrate to Configuration
     std::mutex sessionsMutex;
     std::map<janus_plugin_session*, std::shared_ptr<JanusSession>> sessions;
     std::mutex portAssignmentMutex;
 
     /* Private methods */
+    void initServiceConnection();
     uint16_t newIngestFtlStream(std::shared_ptr<IngestConnection> connection);
     void ftlStreamClosed(FtlStream& ftlStream);
     // Message handling

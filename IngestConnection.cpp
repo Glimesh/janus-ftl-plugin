@@ -26,10 +26,10 @@ const std::array<char, 4> IngestConnection::commandDelimiter = { '\r', '\n', '\r
 IngestConnection::IngestConnection(
     int connectionHandle,
     sockaddr_in acceptAddress,
-    std::shared_ptr<CredStore> credStore) : 
+    std::shared_ptr<ServiceConnection> serviceConnection) : 
     connectionHandle(connectionHandle),
     acceptAddress(acceptAddress),
-    credStore(credStore)
+    serviceConnection(serviceConnection)
 { }
 #pragma endregion
 
@@ -54,6 +54,16 @@ sockaddr_in IngestConnection::GetAcceptAddress()
 ftl_channel_id_t IngestConnection::GetChannelId()
 {
     return channelId;
+}
+
+std::string IngestConnection::GetVendorName()
+{
+    return vendorName;
+}
+
+std::string IngestConnection::GetVendorVersion()
+{
+    return vendorVersion;
 }
 
 bool IngestConnection::GetHasVideo()
@@ -233,7 +243,7 @@ void IngestConnection::processConnectCommand(std::string command)
         uint32_t channelId = static_cast<uint32_t>(std::stoul(channelIdStr));
         std::vector<uint8_t> hmacHash = hexStringToByteArray(hmacHashStr);
 
-        std::string key = credStore->GetHmacKey(channelId);
+        std::string key = serviceConnection->GetHmacKey(channelId);
 
         uint8_t buffer[512];
         uint32_t bufferLength;
