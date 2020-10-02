@@ -67,7 +67,7 @@ std::string GlimeshServiceConnection::GetHmacKey(uint32_t channelId)
 ftl_stream_id_t GlimeshServiceConnection::StartStream(ftl_channel_id_t channelId)
 {
     std::stringstream query;
-    query << "mutation { startStream(channelId: \"" << channelId << "\") { id } }";
+    query << "mutation { startStream(channelId: " << channelId << ") { id } }";
 
     JsonPtr queryResult = runGraphQlQuery(query.str());
     json_t* jsonData = json_object_get(queryResult.get(), "data");
@@ -79,10 +79,8 @@ ftl_stream_id_t GlimeshServiceConnection::StartStream(ftl_channel_id_t channelId
             json_t* jsonStreamId = json_object_get(jsonStream, "id");
             if (jsonStreamId != nullptr)
             {
-                uint32_t streamId = json_integer_value(jsonStreamId);
-                // NOTE: Right now, the API doesn't accept references to stream IDs,
-                // only channel IDs. So we'll fudge it and store the channel ID as the stream ID.
-                return channelId;
+                ftl_stream_id_t streamId = std::stoi(json_string_value(jsonStreamId));
+                return streamId;
             }
         }
     }
@@ -94,12 +92,14 @@ void GlimeshServiceConnection::UpdateStreamMetadata(ftl_stream_id_t streamId, St
 {
     // TODO: channelId -> streamId
     std::stringstream query;
-    query << "mutation($channelId: ID!, $streamMetadata: StreamMetadataInput!) " << 
-        "{ logStreamMetadata(channelId: $channelId, metadata: $streamMetadata) { id } }";
+    query << "mutation($streamId: ID!, $streamMetadata: StreamMetadataInput!) " << 
+        "{ logStreamMetadata(streamId: $streamId, metadata: $streamMetadata) { id } }";
 
     // Create a json object to contain query variables
     JsonPtr queryVariables(json_pack(
-        "{s:s, s:s, s:i, s:i, s:i, s:i, s:i, s:i, s:i, s:s, s:s, s:s, s:i, s:i}",
+        "{s:i, s:{s:s, s:s, s:i, s:i, s:i, s:i, s:i, s:i, s:i, s:s, s:s, s:s, s:i, s:i}}",
+        "streamId",          streamId,
+        "streamMetadata", 
         "audioCodec",        metadata.audioCodec.c_str(),
         "ingestServer",      metadata.ingestServerHostname.c_str(),
         "ingestViewers",     metadata.numActiveViewers,
@@ -126,7 +126,8 @@ void GlimeshServiceConnection::UpdateStreamMetadata(ftl_stream_id_t streamId, St
             json_t* jsonStreamId = json_object_get(jsonStream, "id");
             if (jsonStreamId != nullptr)
             {
-                uint32_t updatedStreamId = json_integer_value(jsonStreamId);
+                // uint32_t updatedStreamId = json_integer_value(jsonStreamId);
+                // TOTO: Handle error case
             }
         }
     }
@@ -134,10 +135,8 @@ void GlimeshServiceConnection::UpdateStreamMetadata(ftl_stream_id_t streamId, St
 
 void GlimeshServiceConnection::EndStream(ftl_stream_id_t streamId)
 {
-    // NOTE: Right now, the API doesn't accept references to stream IDs,
-    // only channel IDs. So we're fudging it and storing the channel ID as the stream ID.
     std::stringstream query;
-    query << "mutation { endStream(channelId: \"" << streamId << "\") { id } }";
+    query << "mutation { endStream(streamId: " << streamId << ") { id } }";
 
     JsonPtr queryResult = runGraphQlQuery(query.str());
     json_t* jsonData = json_object_get(queryResult.get(), "data");
@@ -149,7 +148,8 @@ void GlimeshServiceConnection::EndStream(ftl_stream_id_t streamId)
             json_t* jsonStreamId = json_object_get(jsonStream, "id");
             if (jsonStreamId != nullptr)
             {
-                uint32_t endedStreamId = json_integer_value(jsonStreamId);
+                // uint32_t endedStreamId = json_integer_value(jsonStreamId);
+                // TODO: Handle error case
             }
         }
     }
