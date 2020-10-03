@@ -13,6 +13,7 @@
 extern "C"
 {
     #include <plugins/plugin.h>
+    #include <rtcp.h>
 }
 
 #include "Configuration.h"
@@ -84,6 +85,8 @@ private:
     void initServiceConnection();
     uint16_t newIngestFtlStream(std::shared_ptr<IngestConnection> connection);
     void ftlStreamClosed(FtlStream& ftlStream);
+    // Packet handling
+    void handlePsfbRtcpPacket(janus_plugin_session* handle, janus_rtcp_header* packet);
     // Message handling
     janus_plugin_result* generateMessageErrorResponse(int errorCode, std::string errorMessage);
     janus_plugin_result* handleWatchMessage(std::shared_ptr<JanusSession> session, JsonPtr message, char* transaction);

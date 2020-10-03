@@ -448,12 +448,6 @@ void FtlStream::processKeyframePacket(std::shared_ptr<std::vector<unsigned char>
     // Part of our current keyframe?
     else if (timestamp == pendingKeyframe.rtpTimestamp)
     {
-        JANUS_LOG(
-            LOG_INFO,
-            "FTL: Channel %u addtl keyframe seq %u ts %u\n",
-            GetChannelId(),
-            sequence,
-            timestamp);
         pendingKeyframe.rtpPackets.push_back(rtpPacket);
     }
 }
