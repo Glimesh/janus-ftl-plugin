@@ -20,8 +20,6 @@ extern "C"
 #include <queue>
 #include <condition_variable>
 
-class FtlStream; // Forward declare, circular reference
-
 class JanusSession
 {
 public:

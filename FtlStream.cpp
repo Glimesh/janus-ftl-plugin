@@ -85,9 +85,11 @@ void FtlStream::AddViewer(std::shared_ptr<JanusSession> viewerSession)
 void FtlStream::RemoveViewer(std::shared_ptr<JanusSession> viewerSession)
 {
     std::lock_guard<std::mutex> lock(viewerSessionsMutex);
+    std::lock_guard<std::mutex> keyframeLock(keyframeMutex);
     viewerSessions.erase(
         std::remove(viewerSessions.begin(), viewerSessions.end(), viewerSession),
         viewerSessions.end());
+    keyframeSentToViewers.erase(viewerSession);
 }
 
 void FtlStream::SetOnClosed(std::function<void (FtlStream&)> callback)
@@ -97,23 +99,26 @@ void FtlStream::SetOnClosed(std::function<void (FtlStream&)> callback)
 
 void FtlStream::SendKeyframeToViewer(std::shared_ptr<JanusSession> viewerSession)
 {
-    // Do we have a keyframe we can immediately send?
     std::lock_guard<std::mutex> keyframeLock(keyframeMutex);
     if (keyframe.rtpPackets.size() > 0)
     {
-        JANUS_LOG(
-            LOG_INFO,
-            "FTL: Channel %u sending %lu keyframe packets to viewer.\n",
-            GetChannelId(),
-            keyframe.rtpPackets.size());
-        for (const auto& packet : keyframe.rtpPackets)
+        if (keyframeSentToViewers.count(viewerSession) == 0)
         {
-            viewerSession->SendRtpPacket(
+            JANUS_LOG(
+                LOG_INFO,
+                "FTL: Channel %u sending %lu keyframe packets to viewer.\n",
+                GetChannelId(),
+                keyframe.rtpPackets.size());
+            for (const auto& packet : keyframe.rtpPackets)
             {
-                .rtpPacketPayload = packet,
-                .type = RtpRelayPacketKind::Video,
-                .channelId = GetChannelId()
-            });
+                viewerSession->SendRtpPacket(
+                {
+                    .rtpPacketPayload = packet,
+                    .type = RtpRelayPacketKind::Video,
+                    .channelId = GetChannelId()
+                });
+            }
+            keyframeSentToViewers.insert(viewerSession);
         }
     }
 }
@@ -408,13 +413,15 @@ void FtlStream::processKeyframePacket(std::shared_ptr<std::vector<unsigned char>
     uint16_t sequence = ntohs(rtpHeader->seq_number);
     uint32_t timestamp = ntohl(rtpHeader->timestamp);
 
-    // If we have a pending keyframe capture and we see new timestamps, we're done
+    // If we have an ongoing keyframe capture and we see different timestamps come in, we're done
     // capturing that keyframe.
-    if ((pendingKeyframe.rtpTimestamp != 0) && (timestamp != pendingKeyframe.rtpTimestamp))
+    if ((pendingKeyframe.isCapturing) && (timestamp != pendingKeyframe.rtpTimestamp))
     {
         keyframe = pendingKeyframe;
+        pendingKeyframe.isCapturing = false;
         pendingKeyframe.rtpTimestamp = 0;
         pendingKeyframe.rtpPackets.clear();
+        keyframeSentToViewers.clear();
 
         JANUS_LOG(
             LOG_INFO,
@@ -433,8 +440,8 @@ void FtlStream::processKeyframePacket(std::shared_ptr<std::vector<unsigned char>
         isKeyframePacket = janus_h264_is_keyframe(payload, payloadLength);
     }
     
-    // Our first new keyframe?
-    if (isKeyframePacket && pendingKeyframe.rtpTimestamp == 0)
+    // Our first keyframe packet?
+    if (isKeyframePacket && !pendingKeyframe.isCapturing)
     {
         JANUS_LOG(
             LOG_INFO,
@@ -442,11 +449,12 @@ void FtlStream::processKeyframePacket(std::shared_ptr<std::vector<unsigned char>
             GetChannelId(),
             sequence,
             timestamp);
+        pendingKeyframe.isCapturing = true;
         pendingKeyframe.rtpTimestamp = timestamp;
         pendingKeyframe.rtpPackets.push_back(rtpPacket);
     }
     // Part of our current keyframe?
-    else if (timestamp == pendingKeyframe.rtpTimestamp)
+    else if (timestamp == pendingKeyframe.rtpTimestamp && pendingKeyframe.isCapturing)
     {
         pendingKeyframe.rtpPackets.push_back(rtpPacket);
     }

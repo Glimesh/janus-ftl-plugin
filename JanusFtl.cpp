@@ -357,12 +357,10 @@ void JanusFtl::handlePsfbRtcpPacket(janus_plugin_session* handle, janus_rtcp_hea
     {
     case 1:
     {
-        JANUS_LOG(LOG_INFO, "FTL: Received PLI packet! Sending Keyframe...\n");
         std::shared_ptr<JanusSession> session = sessions.at(handle);
         std::shared_ptr<FtlStream> viewingStream = ftlStreamStore->GetStreamBySession(session);
         if (viewingStream != nullptr)
         {
-            // TODO: Debounce...
             viewingStream->SendKeyframeToViewer(session);
         }
         break;

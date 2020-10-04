@@ -102,6 +102,7 @@ private:
     std::mutex keyframeMutex;
     Keyframe keyframe;
     Keyframe pendingKeyframe;
+    std::set<std::shared_ptr<JanusSession>> keyframeSentToViewers;
 
     /* Private methods */
     void ingestConnectionClosed(IngestConnection& connection);

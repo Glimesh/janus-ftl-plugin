@@ -17,7 +17,8 @@
 
 struct Keyframe
 {
-    Keyframe() : rtpTimestamp(0) { }
+    Keyframe() : isCapturing(false), rtpTimestamp(0) { }
+    bool isCapturing;
     uint32_t rtpTimestamp;
     std::list<std::shared_ptr<std::vector<unsigned char>>> rtpPackets;
 };
