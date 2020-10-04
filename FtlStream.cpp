@@ -424,7 +424,7 @@ void FtlStream::processKeyframePacket(std::shared_ptr<std::vector<unsigned char>
         keyframeSentToViewers.clear();
 
         JANUS_LOG(
-            LOG_INFO,
+            LOG_VERB,
             "FTL: Channel %u keyframe complete ts %u w/ %lu packets\n",
             GetChannelId(),
             keyframe.rtpTimestamp,
@@ -444,7 +444,7 @@ void FtlStream::processKeyframePacket(std::shared_ptr<std::vector<unsigned char>
     if (isKeyframePacket && !pendingKeyframe.isCapturing)
     {
         JANUS_LOG(
-            LOG_INFO,
+            LOG_VERB,
             "FTL: Channel %u new keyframe seq %u ts %u\n",
             GetChannelId(),
             sequence,
