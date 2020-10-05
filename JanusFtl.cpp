@@ -17,6 +17,7 @@
 extern "C"
 {
     #include <apierror.h>
+    #include <rtcp.h>
     #include <debug.h>
 }
 
@@ -142,7 +143,7 @@ json_t* JanusFtl::HandleAdminMessage(json_t* message)
 
 void JanusFtl::SetupMedia(janus_plugin_session* handle)
 {
-    JANUS_LOG(LOG_INFO, "FTL: SetupMedia");
+    JANUS_LOG(LOG_INFO, "FTL: SetupMedia\n");
 
     std::shared_ptr<JanusSession> session;
     {
@@ -164,21 +165,55 @@ void JanusFtl::SetupMedia(janus_plugin_session* handle)
 
     session->ResetRtpSwitchingContext();
     session->SetIsStarted(true);
+    ftlStream->SendKeyframeToViewer(session);
 }
 
 void JanusFtl::IncomingRtp(janus_plugin_session* handle, janus_plugin_rtp* packet)
 {
-    // TODO
+    // We don't care about incoming rtp, we're send-only
 }
 
 void JanusFtl::IncomingRtcp(janus_plugin_session* handle, janus_plugin_rtcp* packet)
 {
-    // TODO
+    uint16_t totalLength = packet->length;
+    janus_rtcp_header* rtcpHeader = reinterpret_cast<janus_rtcp_header*>(packet->buffer);
+
+    // Turns out these packets often come in big 'ol bundles (compound packets)
+    // so let's sort through them.
+    while (true)
+    {
+        switch (rtcpHeader->type)
+        {
+        case RTCP_RR:
+            break;
+        case RTCP_PSFB:
+            handlePsfbRtcpPacket(handle, rtcpHeader);
+            break;
+        default:
+            JANUS_LOG(LOG_INFO, "FTL: Got unknown RTCP packet! Type: %d\n", rtcpHeader->type);
+            break;
+        }
+
+        // Check if we've reached the end of the compound packet, and if not, advance to the next
+        uint16_t packetLength = ntohs(rtcpHeader->length);
+        if (packetLength == 0)
+        {
+            break;
+        }
+        totalLength -= (packetLength * 4) + 4;
+        if (totalLength <= 0)
+        {
+            break;
+        }
+        rtcpHeader = reinterpret_cast<janus_rtcp_header*>(
+            reinterpret_cast<uint32_t*>(rtcpHeader) + packetLength + 1);
+    }
 }
 
 void JanusFtl::DataReady(janus_plugin_session* handle)
 {
     // TODO
+    JANUS_LOG(LOG_INFO, "FTL: DataReady\n");
 }
 
 void JanusFtl::HangUpMedia(janus_plugin_session* handle)
@@ -314,6 +349,25 @@ void JanusFtl::ftlStreamClosed(FtlStream& ftlStream)
     }
 
     ftlStreamStore->RemoveStream(stream);
+}
+
+void JanusFtl::handlePsfbRtcpPacket(janus_plugin_session* handle, janus_rtcp_header* packet)
+{
+    switch (packet->rc)
+    {
+    case 1:
+    {
+        std::shared_ptr<JanusSession> session = sessions.at(handle);
+        std::shared_ptr<FtlStream> viewingStream = ftlStreamStore->GetStreamBySession(session);
+        if (viewingStream != nullptr)
+        {
+            viewingStream->SendKeyframeToViewer(session);
+        }
+        break;
+    }
+    default:
+        break;
+    }
 }
 
 janus_plugin_result* JanusFtl::generateMessageErrorResponse(int errorCode, std::string errorMessage)
@@ -452,10 +506,10 @@ std::string JanusFtl::generateSdpOffer(
             "m=video 1 RTP/SAVPF " << videoPayloadType << "\r\n" <<
             "c=IN IP4 1.1.1.1\r\n" <<
             "a=rtpmap:" << videoPayloadType << " " << videoCodec << "/90000\r\n" <<
-            "a=fmtp:" << videoPayloadType << " profile-level-id=42e01f;packetization-mode=1;"
-            //"a=rtcp-fb:96 nack\r\n" <<            // Send us NACK's
-            //"a=rtcp-fb:96 nack pli\r\n" <<        // Send us picture-loss-indicators
-            //"a=rtcp-fb:96 nack goog-remb\r\n" <<  // Send some congestion indicator thing
+            "a=fmtp:" << videoPayloadType << " profile-level-id=42e01f;packetization-mode=1;\r\n"
+            "a=rtcp-fb:" << videoPayloadType << " nack\r\n" <<            // Send us NACK's
+            "a=rtcp-fb:" << videoPayloadType << " nack pli\r\n" <<        // Send us picture-loss-indicators
+            // "a=rtcp-fb:96 nack goog-remb\r\n" <<  // Send some congestion indicator thing
             "a=sendonly\r\n" <<
             "a=extmap:1 urn:ietf:params:rtp-hdrext:sdes:mid\r\n";
     }
