@@ -23,7 +23,8 @@ deps = [
     dependency('libsrtp2'),
     dependency('jansson'),
     dependency('libssl'),
-    dependency('libcrypto')
+    dependency('libcrypto'),
+    dependency('libavcodec')
 ]
 
 incdir = include_directories(
