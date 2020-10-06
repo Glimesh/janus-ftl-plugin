@@ -165,7 +165,8 @@ void JanusFtl::SetupMedia(janus_plugin_session* handle)
 
     session->ResetRtpSwitchingContext();
     session->SetIsStarted(true);
-    ftlStream->SendKeyframeToViewer(session);
+    // BUG: Disabling this behavior for now due to #20
+    // ftlStream->SendKeyframeToViewer(session);
 }
 
 void JanusFtl::IncomingRtp(janus_plugin_session* handle, janus_plugin_rtp* packet)
@@ -357,12 +358,13 @@ void JanusFtl::handlePsfbRtcpPacket(janus_plugin_session* handle, janus_rtcp_hea
     {
     case 1:
     {
-        std::shared_ptr<JanusSession> session = sessions.at(handle);
-        std::shared_ptr<FtlStream> viewingStream = ftlStreamStore->GetStreamBySession(session);
-        if (viewingStream != nullptr)
-        {
-            viewingStream->SendKeyframeToViewer(session);
-        }
+        // BUG: Disabling this behavior for now due to #20
+        // std::shared_ptr<JanusSession> session = sessions.at(handle);
+        // std::shared_ptr<FtlStream> viewingStream = ftlStreamStore->GetStreamBySession(session);
+        // if (viewingStream != nullptr)
+        // {
+        //     viewingStream->SendKeyframeToViewer(session);
+        // }
         break;
     }
     default:
