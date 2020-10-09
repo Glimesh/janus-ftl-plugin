@@ -92,11 +92,11 @@ private:
     std::map<rtp_payload_type_t, std::set<rtp_sequence_num_t>> lostPackets;
     // Metadata/reporting
     std::time_t streamStartTime;
-    std::atomic<uint32_t> currentSourceBitrateBps;
-    std::atomic<uint32_t> numPacketsReceived;
-    std::atomic<uint32_t> numPacketsNacked;
-    std::atomic<uint32_t> numPacketsLost;
-    std::atomic<uint16_t> streamerToIngestPingMs;
+    std::atomic<uint32_t> currentSourceBitrateBps {0};
+    std::atomic<uint32_t> numPacketsReceived {0};
+    std::atomic<uint32_t> numPacketsNacked {0};
+    std::atomic<uint32_t> numPacketsLost {0};
+    std::atomic<uint16_t> streamerToIngestPingMs {0};
     std::mutex streamMetadataMutex;
     std::thread streamMetadataReportingThread;
     std::mutex keyframeMutex;
