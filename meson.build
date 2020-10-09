@@ -21,8 +21,9 @@ sources = files([
 deps = [
     dependency('glib-2.0'),
     dependency('libsrtp2'),
-    dependency('openssl'),
-    dependency('jansson')
+    dependency('jansson'),
+    dependency('libssl'),
+    dependency('libcrypto')
 ]
 
 incdir = include_directories(
@@ -30,7 +31,7 @@ incdir = include_directories(
     './cpp-httplib'
 )
 
-cppargs = '-Wno-unknown-pragmas'
+cppargs = ['-Wno-unknown-pragmas', '-DCPPHTTPLIB_OPENSSL_SUPPORT']
 
 shared_library(
     'janus_ftl',
