@@ -12,9 +12,10 @@
 
 #include "RtpRelayPacket.h"
 
+#include <atomic>
 #include <memory>
 #include <mutex>
-#include <map>
+#include <vector>
 #include <queue>
 #include <thread>
 #include <condition_variable>
@@ -28,23 +29,21 @@ public:
     /* Constructor/Destructor */
     RelayThreadPool(
         std::shared_ptr<FtlStreamStore> ftlStreamStore,
-        unsigned int threadCount = DEFAULT_THREAD_COUNT);
+        unsigned int threadCount = std::thread::hardware_concurrency());
 
     /* Public methods */
     void Start();
     void Stop();
     void RelayPacket(RtpRelayPacket packet);
-    void SetThreadCount(unsigned int newThreadCount);
 private:
     /* Private members */
-    static const unsigned int DEFAULT_THREAD_COUNT = 5;
     const std::shared_ptr<FtlStreamStore> ftlStreamStore;
-    bool isStarted = false;
     unsigned int threadCount;
+    std::atomic<bool> stopping { false };
     // Packet relay threads
     std::mutex threadVectorMutex;
     std::mutex relayMutex;
-    std::map<unsigned int, std::thread> relayThreads;
+    std::vector<std::thread> relayThreads;
     std::condition_variable relayThreadCondition;
     std::queue<RtpRelayPacket> packetRelayQueue;
 

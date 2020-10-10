@@ -31,19 +31,33 @@ RelayThreadPool::RelayThreadPool(
 void RelayThreadPool::Start()
 {
     std::lock_guard<std::mutex> lock(threadVectorMutex);
+
     for (unsigned int i = 0; i < threadCount; ++i)
     {
         auto thread = std::thread(&RelayThreadPool::relayThreadMethod, this, i);
-        thread.detach();
-        relayThreads[i] = std::move(thread);
+        relayThreads.push_back(std::move(thread));
     }
 }
 
 void RelayThreadPool::Stop()
 {
-    SetThreadCount(0);
+    std::lock_guard<std::mutex> lock(threadVectorMutex);
 
-    // TODO: Wait for threads to exit
+    // Notify threads that we're stopping
+    stopping = true;
+    relayThreadCondition.notify_all();
+
+    // Join all threads
+    for (auto& thread : relayThreads)
+    {
+        if (thread.joinable())
+        {
+            thread.join();
+        }
+    }
+
+    // Clear thread pool
+    relayThreads.clear();
 }
 
 void RelayThreadPool::RelayPacket(RtpRelayPacket packet)
@@ -53,25 +67,6 @@ void RelayThreadPool::RelayPacket(RtpRelayPacket packet)
         packetRelayQueue.push(packet);
     }
     relayThreadCondition.notify_one();
-}
-
-void RelayThreadPool::SetThreadCount(unsigned int newThreadCount)
-{
-    {
-        std::lock_guard<std::mutex> lock(threadVectorMutex);
-        if (isStarted && (newThreadCount > threadCount))
-        {
-            for (unsigned int i = threadCount; i < newThreadCount; ++i)
-            {
-                auto thread = std::thread(&RelayThreadPool::relayThreadMethod, this, i);
-                thread.detach();
-                relayThreads[i] = std::move(thread);
-            }
-        }
-        threadCount = newThreadCount;
-    }
-    // Notify threads if they need to shut down
-    relayThreadCondition.notify_all();
 }
 #pragma endregion
 
@@ -87,13 +82,13 @@ void RelayThreadPool::relayThreadMethod(unsigned int threadNumber)
         // NOTE: `wait` will automatically release the lock until the condition
         // variable is triggered, at which point it will hold the lock again.
         relayThreadCondition.wait(lock,
-            [this, threadNumber]()
+            [this]()
             {
-                return (packetRelayQueue.size() > 0) || (threadCount < threadNumber + 1);
+                return (packetRelayQueue.size() > 0) || stopping;
             });
 
         // If we're stopping, release the lock and exit the thread.
-        if (threadCount < threadNumber + 1)
+        if (stopping)
         {
             break;
         }
@@ -127,11 +122,6 @@ void RelayThreadPool::relayThreadMethod(unsigned int threadNumber)
         lock.lock();
     }
 
-    // Remove from thread pool
-    {
-        std::lock_guard<std::mutex> threadPoolLock(threadVectorMutex);
-        relayThreads.erase(threadNumber);
-    }
     JANUS_LOG(LOG_INFO, "FTL: Relay thread pool thread #%d terminated.\n", threadNumber);
 }
 #pragma endregion
