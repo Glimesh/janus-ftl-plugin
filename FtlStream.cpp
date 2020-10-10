@@ -528,7 +528,7 @@ void FtlStream::processLostPackets(
         auto& lostPayloadPackets = lostPackets[payloadType];
         for (auto it = lostPayloadPackets.cbegin(); it != lostPayloadPackets.cend();)
         {
-            const auto& lostPacketSequence = *it;
+            const auto lostPacketSequence = *it;
 
             // If this 'lost' packet came from the future, get rid of it
             if (lostPacketSequence > currentSequence)
