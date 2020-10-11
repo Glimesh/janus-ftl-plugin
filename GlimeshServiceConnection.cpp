@@ -213,7 +213,6 @@ void GlimeshServiceConnection::ensureAuth()
                 // Extract access token
                 json_t* accessTokenJson = json_object_get(jsonBody.get(), "access_token");
                 accessToken = std::string(json_string_value(accessTokenJson));
-                JANUS_LOG(LOG_INFO, "FTL: Received access token: %s\n", accessToken.c_str());
 
                 // Extract time to expiration
                 json_t* expiresInJson = json_object_get(jsonBody.get(), "expires_in");
@@ -228,6 +227,15 @@ void GlimeshServiceConnection::ensureAuth()
                 std::time_t expirationTime = std::mktime(&createdAtTime);
                 expirationTime += expiresIn;
                 accessTokenExpirationTime = expirationTime;
+
+                std::time_t currentTime = std::time(nullptr);
+                JANUS_LOG(
+                    LOG_INFO,
+                    "FTL: Received new access token: %s, expires in %ld - %ld = %ld seconds\n",
+                    accessToken.c_str(),
+                    expirationTime,
+                    currentTime,
+                    (expirationTime - currentTime));
                 return;
             }
         }
@@ -243,7 +251,7 @@ JsonPtr GlimeshServiceConnection::runGraphQlQuery(std::string query, JsonPtr var
     ensureAuth();
 
     // Create a JSON blob for our GraphQL query
-    JsonPtr queryJson(json_pack("{s:s, s:o?}", "query", query.c_str(), "variables", variables.get()));
+    JsonPtr queryJson(json_pack("{s:s, s:O?}", "query", query.c_str(), "variables", variables.get()));
     char* queryStr = json_dumps(queryJson.get(), 0);
     std::string queryString(queryStr);
     free(queryStr);
@@ -289,7 +297,7 @@ tm GlimeshServiceConnection::parseIso8601DateTime(std::string dateTimeString)
         }
     }
 
-    tm time;
+    tm time { 0 };
     time.tm_year = y - 1900; // Year since 1900
     time.tm_mon = M - 1;     // 0-11
     time.tm_mday = d;        // 1-31
