@@ -33,7 +33,7 @@ IngestServer::IngestServer(
 #pragma region Public methods
 void IngestServer::Start()
 {
-    sockaddr_in socketAddress;
+    sockaddr_in socketAddress = { 0 };
     socketAddress.sin_family = AF_INET;
     socketAddress.sin_addr.s_addr = htonl(INADDR_ANY);
     socketAddress.sin_port = htons(listenPort);
@@ -110,7 +110,7 @@ void IngestServer::startListenThread()
         }
         else
         {
-            sockaddr_in acceptAddress;
+            sockaddr_in acceptAddress = { 0 };
             socklen_t acceptLen = sizeof(acceptAddress);
             getpeername(connectionHandle, reinterpret_cast<sockaddr*>(&acceptAddress), &acceptLen);
             JANUS_LOG(LOG_INFO, "FTL: Ingest server accepted connection...\n");
