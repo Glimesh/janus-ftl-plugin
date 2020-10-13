@@ -50,6 +50,17 @@ void FtlStream::Start()
     // Mark our start time
     streamStartTime = std::time(nullptr);
 
+    // Initialize PreviewGenerator
+    switch (GetVideoCodec())
+    {
+    case VideoCodecKind::H264:
+        previewGenerator = std::make_unique<H264PreviewGenerator>();
+        break;
+    case VideoCodecKind::Unsupported:
+    default:
+        break;
+    }
+
     // Start listening for incoming packets
     streamThread = std::thread(&FtlStream::startStreamThread, this);
     streamThread.detach();
@@ -429,6 +440,12 @@ void FtlStream::processKeyframePacket(std::shared_ptr<std::vector<unsigned char>
             GetChannelId(),
             keyframe.rtpTimestamp,
             keyframe.rtpPackets.size());
+
+        // Try to use it to generate a preview!
+        if (previewGenerator)
+        {
+            previewGenerator->GenerateImage(keyframe);
+        }
     }
 
     // Determine if this packet is part of a keyframe
