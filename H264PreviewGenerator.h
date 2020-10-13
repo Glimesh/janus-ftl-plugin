@@ -12,6 +12,11 @@
 
 #include "PreviewGenerator.h"
 
+extern "C"
+{
+    #include <libavcodec/avcodec.h>
+}
+
 /**
  * @brief
  *  H264PreviewGenerator is the PreviewGenerator implementation for streams utilizing
@@ -22,5 +27,8 @@ class H264PreviewGenerator :
 {
 public:
     /* PreviewGenerator */
-    void GenerateImage(const Keyframe& keyframe) override;
+    std::vector<uint8_t> GenerateJpegImage(const Keyframe& keyframe) override;
+
+private:
+    std::vector<uint8_t> encodeToJpeg(AVFrame* frame);
 };

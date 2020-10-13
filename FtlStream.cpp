@@ -10,8 +10,10 @@
 
 #include "FtlStream.h"
 #include "JanusSession.h"
-#include <poll.h>
 #include <algorithm>
+#include <fstream>
+#include <iostream>
+#include <poll.h>
 extern "C"
 {
     #include <unistd.h>
@@ -444,7 +446,11 @@ void FtlStream::processKeyframePacket(std::shared_ptr<std::vector<unsigned char>
         // Try to use it to generate a preview!
         if (previewGenerator)
         {
-            previewGenerator->GenerateImage(keyframe);
+            std::vector<uint8_t> jpegImg = previewGenerator->GenerateJpegImage(keyframe);
+            std::ofstream jpegFile;
+            jpegFile.open("test.jpg");
+            jpegFile.write(reinterpret_cast<const char*>(jpegImg.data()), jpegImg.size());
+            jpegFile.close();
         }
     }
 

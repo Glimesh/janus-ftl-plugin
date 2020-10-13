@@ -10,6 +10,9 @@
 
 #pragma once
 
+#include <cstdint>
+#include <vector>
+
 struct Keyframe;
 
 /**
@@ -23,5 +26,5 @@ public:
     virtual ~PreviewGenerator()
     { }
 
-    virtual void GenerateImage(const Keyframe& keyframe) = 0;
+    virtual std::vector<uint8_t> GenerateJpegImage(const Keyframe& keyframe) = 0;
 };

@@ -13,23 +13,16 @@
 extern "C"
 {
     #include <rtp.h>
-    #include <libavcodec/avcodec.h>
     #include <debug.h>
 }
 
 #pragma region PreviewGenerator
-void H264PreviewGenerator::GenerateImage(const Keyframe& keyframe)
+std::vector<uint8_t> H264PreviewGenerator::GenerateJpegImage(const Keyframe& keyframe)
 {
     JANUS_LOG(LOG_INFO,
         "FTL: Decoding %d keyframe packets into frame...\n",
         keyframe.rtpPackets.size());
     std::vector<char> keyframeDataBuffer;
-
-    // NALU start code
-    // keyframeDataBuffer.push_back(0x00);
-    // keyframeDataBuffer.push_back(0x00);
-    // keyframeDataBuffer.push_back(0x00);
-    // keyframeDataBuffer.push_back(0x01);
 
     // We need to shove all of the keyframe NAL units into a buffer to feed into libav
     for (const auto& packet : keyframe.rtpPackets)
@@ -88,7 +81,6 @@ void H264PreviewGenerator::GenerateImage(const Keyframe& keyframe)
             JANUS_LOG(LOG_INFO, "FTL: WRITE SINGLE NAL\n");
 
             // Write the start code
-            // keyframeDataBuffer.push_back(0x00);
             keyframeDataBuffer.push_back(0x00);
             keyframeDataBuffer.push_back(0x00);
             keyframeDataBuffer.push_back(0x01);
@@ -104,7 +96,6 @@ void H264PreviewGenerator::GenerateImage(const Keyframe& keyframe)
 
     // Decode time
     const AVCodec* codec;
-    // AVCodecParserContext* parser;
     AVCodecContext* context = nullptr;
     AVFrame* frame = av_frame_alloc();
     AVPacket* packet = av_packet_alloc();
@@ -115,12 +106,6 @@ void H264PreviewGenerator::GenerateImage(const Keyframe& keyframe)
     {
         throw std::runtime_error("Could not find H264 codec!");
     }
-
-    // parser = av_parser_init(codec->id);
-    // if (!parser)
-    // {
-    //     throw std::runtime_error("Could not find H264 parser!");
-    // }
 
     context = avcodec_alloc_context3(codec);
     if (!context)
@@ -133,60 +118,83 @@ void H264PreviewGenerator::GenerateImage(const Keyframe& keyframe)
         throw std::runtime_error("Could not open codec!");
     }
 
-    // Parse the buffer we've created
-    // NOTE: Maybe we can send this straight to an AVPacket ?
-    // ret = av_parser_parse2(
-    //     parser,
-    //     context,
-    //     &packet->data,
-    //     &packet->size,
-    //     reinterpret_cast<const uint8_t*>(keyframeDataBuffer.data()),
-    //     keyframeDataBuffer.size(),
-    //     AV_NOPTS_VALUE,
-    //     AV_NOPTS_VALUE,
-    //     0);
-    // if (ret < 0)
-    // {
-    //     throw std::runtime_error("Error while parsing.");
-    // }
-
-    // We should see a packet here.
-    // if (packet->size <= 0)
-    // {
-    //     throw std::runtime_error("Expected H264 packet from keyframe, but found none.");
-    // }
-
-    // So let's decode this packet.
-    // ret = avcodec_send_packet(context, packet);
-    // if (ret < 0)
-    // {
-    //     throw std::runtime_error("Error sending a packet for decoding.");
-    // }
-
-    // ret = avcodec_receive_frame(context, frame);
-    // if (ret < 0)
-    // {
-    //     throw std::runtime_error("Error receiving decoded frame.");
-    // }
-
     av_init_packet(packet);
     packet->data = reinterpret_cast<uint8_t*>(keyframeDataBuffer.data());
     packet->size = keyframeDataBuffer.size();
     packet->flags |= AV_PKT_FLAG_KEY;
 
-    int framefinished = 0;
-    ret = avcodec_decode_video2(context, frame, &framefinished, packet);
+    // So let's decode this packet.
+    ret = avcodec_send_packet(context, packet);
+    if (ret < 0)
+    {
+        throw std::runtime_error("Error sending a packet for decoding.");
+    }
 
-    if (framefinished <= 0)
+    ret = avcodec_receive_frame(context, frame);
+    if (ret < 0)
     {
         throw std::runtime_error("Error receiving decoded frame.");
     }
 
     JANUS_LOG(LOG_INFO, "FTL: WE'VE GOT A DECODED FRAME!\n");
 
-    av_frame_free(&frame);
+    // Now encode it to a JPEG
+    std::vector<uint8_t> returnVal = encodeToJpeg(frame);
+
+    // av_frame_free(&frame); // This should be handled by encodeToJpeg
     avcodec_free_context(&context);
-    // av_parser_close(parser);
     av_packet_free(&packet);
+
+    return returnVal;
+}
+#pragma endregion
+
+#pragma region Private methods
+std::vector<uint8_t> H264PreviewGenerator::encodeToJpeg(AVFrame* frame)
+{
+    int ret;
+    const AVCodec* jpegCodec = avcodec_find_encoder(AV_CODEC_ID_MJPEG);
+    AVPacket* jpegPacket = av_packet_alloc();
+    av_init_packet(jpegPacket);
+    if (!jpegCodec)
+    {
+        throw std::runtime_error("Could not find mjpeg codec!");
+    }
+
+    AVCodecContext* jpegCodecContext = avcodec_alloc_context3(jpegCodec);
+    if (!jpegCodecContext)
+    {
+        throw std::runtime_error("Failed to allocated mjpeg codec context!");
+    }
+
+    jpegCodecContext->pix_fmt       = AV_PIX_FMT_YUVJ420P;
+    jpegCodecContext->height        = frame->height;
+    jpegCodecContext->width         = frame->width;
+    jpegCodecContext->time_base.num = 1;
+    jpegCodecContext->time_base.den = 1000000;
+
+    ret = avcodec_open2(jpegCodecContext, jpegCodec, nullptr);
+    if (ret < 0)
+    {
+        throw std::runtime_error("Couldn't open mjpeg codec!");
+    }
+
+    ret = avcodec_send_frame(jpegCodecContext, frame);
+    if (ret < 0)
+    {
+        throw std::runtime_error("Error sending frame to jpeg codec!");
+    }
+
+    ret = avcodec_receive_packet(jpegCodecContext, jpegPacket);
+    if (ret < 0)
+    {
+        throw std::runtime_error("Error receiving jpeg packet!");
+    }
+
+    std::vector<uint8_t> returnVal(jpegPacket->data, jpegPacket->data + jpegPacket->size);
+    av_packet_free(&jpegPacket);
+    avcodec_free_context(&jpegCodecContext);
+    
+    return returnVal;
 }
 #pragma endregion
