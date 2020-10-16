@@ -9,6 +9,7 @@
  */
 
 #include "GlimeshServiceConnection.h"
+#include "FtlExceptions.h"
 #include <jansson.h>
 extern "C"
 {
@@ -159,7 +160,22 @@ void GlimeshServiceConnection::SendJpegPreviewImage(
     ftl_stream_id_t streamId,
     std::vector<uint8_t> jpegData)
 {
+    std::stringstream query;
+    query << "mutation { uploadStreamThumbnail(streamId: " << streamId << ", thumbnail: \"thumbdata\") { id } }";
 
+    std::string fileContents(jpegData.begin(), jpegData.end());
+
+    httplib::MultipartFormDataItems files
+    {
+        {
+            .name = "thumbdata",
+            .content = fileContents,
+            .filename = "preview.jpg",
+            .content_type = "image/jpeg"
+        }
+    };
+
+    runGraphQlQuery(query.str(), nullptr, files);
 }
 #pragma endregion
 
@@ -252,41 +268,124 @@ void GlimeshServiceConnection::ensureAuth()
     throw std::runtime_error("Access token request failed!");
 }
 
-JsonPtr GlimeshServiceConnection::runGraphQlQuery(std::string query, JsonPtr variables)
+JsonPtr GlimeshServiceConnection::runGraphQlQuery(
+    std::string query,
+    JsonPtr variables,
+    httplib::MultipartFormDataItems fileData)
 {
     // Make sure we have a valid access token
     ensureAuth();
 
-    // Create a JSON blob for our GraphQL query
-    JsonPtr queryJson(json_pack("{s:s, s:O?}", "query", query.c_str(), "variables", variables.get()));
-    char* queryStr = json_dumps(queryJson.get(), 0);
-    std::string queryString(queryStr);
-    free(queryStr);
+    std::string queryString;
 
-    // Make the request
-    httplib::Client httpClient = getHttpClient();
-    if (httplib::Result res = httpClient.Post("/api", queryString, "application/json"))
+    // If we're doing a file upload, we pack this all into a multipart request
+    if (fileData.size() > 0)
     {
-        if (res->status == 200)
+        fileData.push_back(httplib::MultipartFormData {
+            .name = "query",
+            .content = query,
+            .filename = "",
+            .content_type = "application/json"
+        });
+        
+    }
+    // Otherwise, create a JSON blob for our GraphQL query to put into POST body
+    else
+    {
+        
+        JsonPtr queryJson(json_pack("{s:s, s:O?}", "query", query.c_str(), "variables", variables.get()));
+        char* queryStr = json_dumps(queryJson.get(), 0);
+        queryString = std::string(queryStr);
+        free(queryStr);
+    }
+
+    // Make the request, and retry if necessary
+    int numRetries = 0;
+    while (true)
+    {
+        httplib::Client httpClient = getHttpClient();
+        JsonPtr result = nullptr;
+
+        // If we're doing files, use a multipart http request
+        if (fileData.size() > 0)
+        {
+            httplib::Result response = httpClient.Post("/api", fileData);
+            result = processGraphQlResponse(response);
+        }
+        // otherwise, stick with post body
+        else
+        {
+            httplib::Result response = httpClient.Post("/api", queryString, "application/json");
+            result = processGraphQlResponse(response);
+        }
+
+        if (result != nullptr)
+        {
+            return result;
+        }
+
+        if (numRetries < MAX_RETRIES)
+        {
+            JANUS_LOG(
+                LOG_WARN,
+                "FTL: Attempt %d / %d: Glimesh file upload GraphQL query failed. Retrying in %d ms...\n",
+                (numRetries + 1),
+                MAX_RETRIES,
+                TIME_BETWEEN_RETRIES_MS);
+
+            std::this_thread::sleep_for(std::chrono::milliseconds(TIME_BETWEEN_RETRIES_MS));
+            ++numRetries;
+        }
+        else
+        {
+            break;
+        }
+    }
+    
+    // We've exceeded our retry limit
+    JANUS_LOG(
+        LOG_ERR,
+        "FTL: Aborting Glimesh file upload GraphQL query after %d failed attempts.\n",
+        MAX_RETRIES);
+
+    throw ServiceConnectionCommunicationFailedException("Glimesh GraphQL query failed.");
+}
+
+JsonPtr GlimeshServiceConnection::processGraphQlResponse(httplib::Result result)
+{
+    if (result)
+    {
+        if (result->status == 200)
         {
             // Try to parse out the response
             json_error_t error;
-            JsonPtr jsonBody(json_loads(res->body.c_str(), 0, &error));
+            JsonPtr jsonBody(json_loads(result->body.c_str(), 0, &error));
             if (jsonBody.get() == nullptr)
             {
-                throw std::runtime_error("Could not parse GraphQL JSON response.");
+                // If we can't parse the JSON of a successful request, retrying won't help,
+                // so we throw here.
+                std::stringstream errStr;
+                errStr << "Could not parse GraphQL JSON response from Glimesh Service Connection: \n"
+                    << result->body.c_str();
+                throw ServiceConnectionCommunicationFailedException(errStr.str().c_str());
             }
             return jsonBody;
         }
         else
         {
-            // TODO: Retry/re-auth logic based on status code
-            throw std::runtime_error("GraphQL HTTP request received unexpected status code!");
+            JANUS_LOG(
+                LOG_WARN,
+                "FTL: Glimesh service connection received status code %d when processing GraphQL query.\n",
+                result->status);
+            return nullptr;
         }
     }
     else
     {
-        throw std::runtime_error("GraphQL HTTP request failed!");
+        JANUS_LOG(
+            LOG_WARN,
+            "FTL: Glimesh service connection HTTP request failed.\n");
+        return nullptr;
     }
 }
 

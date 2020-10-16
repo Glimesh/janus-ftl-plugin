@@ -441,7 +441,7 @@ void FtlStream::startStreamMetadataReportingThread()
             {
                 JANUS_LOG(
                     LOG_ERR,
-                    "FTL: Failed to send JPEG preview for stream %d to service connection. Error: %s",
+                    "FTL: Failed to send JPEG preview for stream %d to service connection. Error: %s\n",
                     streamId,
                     e.what());
             }

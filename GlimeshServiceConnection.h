@@ -45,6 +45,8 @@ public:
 
 private:
     /* Private members */
+    const int MAX_RETRIES = 5;
+    const int TIME_BETWEEN_RETRIES_MS = 3000;
     std::string hostname;
     uint16_t port;
     bool useHttps;
@@ -57,6 +59,7 @@ private:
     /* Private methods */
     httplib::Client getHttpClient();
     void ensureAuth();
-    JsonPtr runGraphQlQuery(std::string query, JsonPtr variables = nullptr);
+    JsonPtr runGraphQlQuery(std::string query, JsonPtr variables = nullptr, httplib::MultipartFormDataItems fileData = httplib::MultipartFormDataItems());
+    JsonPtr processGraphQlResponse(httplib::Result result);
     tm parseIso8601DateTime(std::string dateTimeString);
 };
