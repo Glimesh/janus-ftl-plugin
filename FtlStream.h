@@ -11,6 +11,7 @@
 
 #include "RtpRelayPacket.h"
 #include "FtlTypes.h"
+#include "H264PreviewGenerator.h"
 #include "IngestConnection.h"
 #include "RelayThreadPool.h"
 #include "StreamMetadata.h"
@@ -90,6 +91,7 @@ private:
     bool stopping = false;
     std::map<rtp_payload_type_t, rtp_sequence_num_t> latestSequence;
     std::map<rtp_payload_type_t, std::set<rtp_sequence_num_t>> lostPackets;
+    std::unique_ptr<PreviewGenerator> previewGenerator;
     // Metadata/reporting
     std::time_t streamStartTime;
     std::atomic<uint32_t> currentSourceBitrateBps {0};
@@ -103,6 +105,7 @@ private:
     Keyframe keyframe;
     Keyframe pendingKeyframe;
     std::set<std::shared_ptr<JanusSession>> keyframeSentToViewers;
+    uint32_t lastKeyframePreviewReported = 0;
 
     /* Private methods */
     void ingestConnectionClosed(IngestConnection& connection);

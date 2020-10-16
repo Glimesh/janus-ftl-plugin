@@ -14,6 +14,7 @@
 #include "FtlTypes.h"
 
 #include <string>
+#include <vector>
 
 /**
  * @brief
@@ -61,4 +62,11 @@ public:
      * @param streamId ID of stream to end
      */
     virtual void EndStream(ftl_stream_id_t streamId) = 0;
+
+    /**
+     * @brief Sends a JPEG preview image of a stream to the service.
+     * 
+     * @param thumbnailData buffer containing JPEG image data
+     */
+    virtual void SendJpegPreviewImage(ftl_stream_id_t streamId, std::vector<uint8_t> jpegData) = 0;
 };

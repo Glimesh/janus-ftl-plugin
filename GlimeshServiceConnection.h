@@ -41,9 +41,12 @@ public:
     ftl_stream_id_t StartStream(ftl_channel_id_t channelId) override;
     void UpdateStreamMetadata(ftl_stream_id_t streamId, StreamMetadata metadata) override;
     void EndStream(ftl_stream_id_t streamId) override;
+    void SendJpegPreviewImage(ftl_stream_id_t streamId, std::vector<uint8_t> jpegData) override;
 
 private:
     /* Private members */
+    const int MAX_RETRIES = 5;
+    const int TIME_BETWEEN_RETRIES_MS = 3000;
     std::string hostname;
     uint16_t port;
     bool useHttps;
@@ -56,6 +59,7 @@ private:
     /* Private methods */
     httplib::Client getHttpClient();
     void ensureAuth();
-    JsonPtr runGraphQlQuery(std::string query, JsonPtr variables = nullptr);
+    JsonPtr runGraphQlQuery(std::string query, JsonPtr variables = nullptr, httplib::MultipartFormDataItems fileData = httplib::MultipartFormDataItems());
+    JsonPtr processGraphQlResponse(httplib::Result result);
     tm parseIso8601DateTime(std::string dateTimeString);
 };

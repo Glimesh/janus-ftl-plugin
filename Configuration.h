@@ -29,6 +29,7 @@ public:
     std::string GetMyHostname();
     ServiceConnectionKind GetServiceConnectionKind();
     uint16_t GetServiceConnectionMetadataReportIntervalMs();
+    std::string GetDummyPreviewImagePath();
     // Glimesh Service Connection Values
     std::string GetGlimeshServiceHostname();
     uint16_t GetGlimeshServicePort();
@@ -41,6 +42,7 @@ private:
     std::string myHostname;
     ServiceConnectionKind serviceConnectionKind = ServiceConnectionKind::DummyServiceConnection;
     uint16_t serviceConnectionMetadataReportIntervalMs = 4000;
+    std::string dummyPreviewImagePath;
     // Glimesh Service Connection Backing Stores
     std::string glimeshServiceHostname = "localhost";
     uint16_t glimeshServicePort = 4000;

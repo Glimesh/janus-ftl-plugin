@@ -10,6 +10,7 @@ sources = files([
     'FtlStream.cpp',
     'FtlStreamStore.cpp',
     'GlimeshServiceConnection.cpp',
+    'H264PreviewGenerator.cpp',
     'IngestConnection.cpp',
     'IngestServer.cpp',
     'janus_ftl.cpp',
@@ -23,7 +24,8 @@ deps = [
     dependency('libsrtp2'),
     dependency('jansson'),
     dependency('libssl'),
-    dependency('libcrypto')
+    dependency('libcrypto'),
+    dependency('libavcodec')
 ]
 
 incdir = include_directories(

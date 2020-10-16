@@ -8,10 +8,13 @@
  * 
  */
 
+#include "FtlExceptions.h"
 #include "FtlStream.h"
 #include "JanusSession.h"
-#include <poll.h>
 #include <algorithm>
+#include <fstream>
+#include <iostream>
+#include <poll.h>
 extern "C"
 {
     #include <unistd.h>
@@ -49,6 +52,17 @@ void FtlStream::Start()
 {
     // Mark our start time
     streamStartTime = std::time(nullptr);
+
+    // Initialize PreviewGenerator
+    switch (GetVideoCodec())
+    {
+    case VideoCodecKind::H264:
+        previewGenerator = std::make_unique<H264PreviewGenerator>();
+        break;
+    case VideoCodecKind::Unsupported:
+    default:
+        break;
+    }
 
     // Start listening for incoming packets
     streamThread = std::thread(&FtlStream::startStreamThread, this);
@@ -396,6 +410,42 @@ void FtlStream::startStreamMetadataReportingThread()
                 .videoWidth                   = 1280,
                 .videoHeight                  = 720,
             });
+
+        // Send a preview of the latest keyframe if needed
+        if (previewGenerator && (lastKeyframePreviewReported != keyframe.rtpTimestamp))
+        {
+            // Create our own copy of the keyframe to avoid holding up processing
+            // new keyframe packets
+            Keyframe previewKeyframe;
+            {
+                std::lock_guard<std::mutex> lock(keyframeMutex);
+                previewKeyframe = keyframe;
+            }
+
+            // Generate a JPEG image and send it off to the service connection
+            try
+            {
+                std::vector<uint8_t> jpegData = 
+                    previewGenerator->GenerateJpegImage(previewKeyframe);
+                serviceConnection->SendJpegPreviewImage(streamId, jpegData);
+            }
+            catch (const PreviewGenerationFailedException& e)
+            {
+                JANUS_LOG(
+                    LOG_ERR,
+                    "FTL: Failed to generate JPEG preview for stream %d, error: %s",
+                    streamId,
+                    e.what());
+            }
+            catch (const ServiceConnectionCommunicationFailedException& e)
+            {
+                JANUS_LOG(
+                    LOG_ERR,
+                    "FTL: Failed to send JPEG preview for stream %d to service connection. Error: %s\n",
+                    streamId,
+                    e.what());
+            }
+        }
     }
 }
 
