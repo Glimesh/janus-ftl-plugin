@@ -105,6 +105,7 @@ private:
     Keyframe keyframe;
     Keyframe pendingKeyframe;
     std::set<std::shared_ptr<JanusSession>> keyframeSentToViewers;
+    uint32_t lastKeyframePreviewReported = 0;
 
     /* Private methods */
     void ingestConnectionClosed(IngestConnection& connection);

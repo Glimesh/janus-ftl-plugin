@@ -8,6 +8,7 @@
  * 
  */
 
+#include "FtlExceptions.h"
 #include "FtlStream.h"
 #include "JanusSession.h"
 #include <algorithm>
@@ -409,6 +410,42 @@ void FtlStream::startStreamMetadataReportingThread()
                 .videoWidth                   = 1280,
                 .videoHeight                  = 720,
             });
+
+        // Send a preview of the latest keyframe if needed
+        if (previewGenerator && (lastKeyframePreviewReported != keyframe.rtpTimestamp))
+        {
+            // Create our own copy of the keyframe to avoid holding up processing
+            // new keyframe packets
+            Keyframe previewKeyframe;
+            {
+                std::lock_guard<std::mutex> lock(keyframeMutex);
+                previewKeyframe = keyframe;
+            }
+
+            // Generate a JPEG image and send it off to the service connection
+            try
+            {
+                std::vector<uint8_t> jpegData = 
+                    previewGenerator->GenerateJpegImage(previewKeyframe);
+                serviceConnection->SendJpegPreviewImage(streamId, jpegData);
+            }
+            catch (const PreviewGenerationFailedException& e)
+            {
+                JANUS_LOG(
+                    LOG_ERR,
+                    "FTL: Failed to generate JPEG preview for stream %d, error: %s",
+                    streamId,
+                    e.what());
+            }
+            catch (const ServiceConnectionCommunicationFailedException& e)
+            {
+                JANUS_LOG(
+                    LOG_ERR,
+                    "FTL: Failed to send JPEG preview for stream %d to service connection. Error: %s",
+                    streamId,
+                    e.what());
+            }
+        }
     }
 }
 
@@ -442,16 +479,6 @@ void FtlStream::processKeyframePacket(std::shared_ptr<std::vector<unsigned char>
             GetChannelId(),
             keyframe.rtpTimestamp,
             keyframe.rtpPackets.size());
-
-        // Try to use it to generate a preview!
-        if (previewGenerator)
-        {
-            std::vector<uint8_t> jpegImg = previewGenerator->GenerateJpegImage(keyframe);
-            std::ofstream jpegFile;
-            jpegFile.open("test.jpg");
-            jpegFile.write(reinterpret_cast<const char*>(jpegImg.data()), jpegImg.size());
-            jpegFile.close();
-        }
     }
 
     // Determine if this packet is part of a keyframe

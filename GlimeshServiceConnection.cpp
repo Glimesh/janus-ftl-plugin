@@ -154,6 +154,13 @@ void GlimeshServiceConnection::EndStream(ftl_stream_id_t streamId)
         }
     }
 }
+
+void GlimeshServiceConnection::SendJpegPreviewImage(
+    ftl_stream_id_t streamId,
+    std::vector<uint8_t> jpegData)
+{
+
+}
 #pragma endregion
 
 #pragma region Private methods

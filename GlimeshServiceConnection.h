@@ -41,6 +41,7 @@ public:
     ftl_stream_id_t StartStream(ftl_channel_id_t channelId) override;
     void UpdateStreamMetadata(ftl_stream_id_t streamId, StreamMetadata metadata) override;
     void EndStream(ftl_stream_id_t streamId) override;
+    void SendJpegPreviewImage(ftl_stream_id_t streamId, std::vector<uint8_t> jpegData) override;
 
 private:
     /* Private members */

@@ -14,6 +14,7 @@
 #include <limits.h>
 #include <string>
 #include <unistd.h>
+#include <wordexp.h>
 
 #pragma region Public methods
 void Configuration::Load()
@@ -22,6 +23,12 @@ void Configuration::Load()
     char hostname[HOST_NAME_MAX];
     gethostname(hostname, HOST_NAME_MAX);
     myHostname = std::string(hostname);
+
+    // Get default dummy thumbnail path
+    wordexp_t expResult { 0 };
+    wordexp("~/.ftl/previews", &expResult, 0);
+    dummyPreviewImagePath = std::string(*(expResult.we_wordv));
+    wordfree(&expResult);
 
     // FTL_HOSTNAME -> MyHostname
     if (char* varVal = std::getenv("FTL_HOSTNAME"))
@@ -52,6 +59,16 @@ void Configuration::Load()
     if (char* varVal = std::getenv("FTL_SERVICE_METADATAREPORTINTERVALMS"))
     {
         serviceConnectionMetadataReportIntervalMs = std::stoi(varVal);
+    }
+
+    // FTL_SERVICE_DUMMY_PREVIEWIMAGEPATH -> DummyPreviewImagePath
+    if (char* varVal = std::getenv("FTL_SERVICE_DUMMY_PREVIEWIMAGEPATH"))
+    {
+        // wordexp expands shell expansion on a string, allowing paths such as ~/.config/...
+        wordexp_t expResult { 0 };
+        wordexp(varVal, &expResult, 0);
+        dummyPreviewImagePath = std::string(*(expResult.we_wordv));
+        wordfree(&expResult);
     }
 
     // FTL_SERVICE_GLIMESH_HOSTNAME -> GlimeshServiceHostname
@@ -95,6 +112,11 @@ std::string Configuration::GetMyHostname()
 ServiceConnectionKind Configuration::GetServiceConnectionKind()
 {
     return serviceConnectionKind;
+}
+
+std::string Configuration::GetDummyPreviewImagePath()
+{
+    return dummyPreviewImagePath;
 }
 
 uint16_t Configuration::GetServiceConnectionMetadataReportIntervalMs()
