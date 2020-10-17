@@ -79,6 +79,37 @@ Configuration is achieved through environment variables.
 
 # Misc Notes
 
+## Streaming from OBS
+
+Currently, there is no UI in OBS to set a custom FTL ingest endpoint.
+
+In order to specify a custom FTL ingest server, you will need to edit the `plugin_config\rtmp-services\services.json` file. This is located in `%AppData%\obs-studio\plugin_config\rtmp-services\services.json` on Windows.
+
+Add the following to the `"services"` array:
+
+```json
+{
+    "name": "YOUR NAME HERE",
+    "common": false,
+    "servers": [
+        {
+            "name": "SERVER NAME HERE",
+            "url": "your.janus.hostname"
+        }
+    ],
+    "recommended": {
+        "keyint": 2,
+        "output": "ftl_output",
+        "max audio bitrate": 160,
+        "max video bitrate": 8000,
+        "profile": "main",
+        "bframes": 0
+    }
+},
+```
+
+After you've made this change, you can start OBS and find your service listed in the OBS settings UI.
+
 ## Include paths
 
 If you use VS code with the C++ extension, these include paths should make intellisense happy.
