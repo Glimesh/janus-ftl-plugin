@@ -55,7 +55,7 @@ The default stream key is `123456789-aBcDeFgHiJkLmNoPqRsTuVwXyZ123456`.
 
 See `DummyServiceConnection.cpp` for the default stream key retrieval mechanism.
 
-For watching your stream from a browser, see [janus-ftl-player](https://github.com/haydenmc/janus-ftl-player).
+For watching your stream from a browser, see [janus-ftl-player](https://github.com/Glimesh/janus-ftl-player).
 
 # Configuration
 
