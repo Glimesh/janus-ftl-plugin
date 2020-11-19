@@ -55,7 +55,7 @@ std::string GlimeshServiceConnection::GetHmacKey(uint32_t channelId)
         if (jsonChannel != nullptr)
         {
             json_t* jsonStreamKey = json_object_get(jsonChannel, "streamKey");
-            if (jsonStreamKey != nullptr)
+            if (jsonStreamKey != nullptr && json_is_string(jsonStreamKey)
             {
                 return std::string(json_string_value(jsonStreamKey));
             }
