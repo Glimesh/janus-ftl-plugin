@@ -61,6 +61,12 @@ void Configuration::Load()
         serviceConnectionMetadataReportIntervalMs = std::stoi(varVal);
     }
 
+    // FTL_SERVICE_DUMMY_HMAC_KEY -> DummyHmacKey
+    if (char* varVal = std::getenv("FTL_SERVICE_DUMMY_HMAC_KEY"))
+    {
+        dummyHmacKey = std::string(varVal);
+    }
+
     // FTL_SERVICE_DUMMY_PREVIEWIMAGEPATH -> DummyPreviewImagePath
     if (char* varVal = std::getenv("FTL_SERVICE_DUMMY_PREVIEWIMAGEPATH"))
     {
@@ -112,6 +118,11 @@ std::string Configuration::GetMyHostname()
 ServiceConnectionKind Configuration::GetServiceConnectionKind()
 {
     return serviceConnectionKind;
+}
+
+std::string Configuration::GetDummyHmacKey()
+{
+    return dummyHmacKey;
 }
 
 std::string Configuration::GetDummyPreviewImagePath()

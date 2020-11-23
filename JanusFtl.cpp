@@ -268,6 +268,7 @@ void JanusFtl::initServiceConnection()
     case ServiceConnectionKind::DummyServiceConnection:
     default:
         serviceConnection = std::make_shared<DummyServiceConnection>(
+            configuration->GetDummyHmacKey(),
             configuration->GetDummyPreviewImagePath());
         break;
     }

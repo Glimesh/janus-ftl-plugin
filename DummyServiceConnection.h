@@ -24,7 +24,7 @@ class DummyServiceConnection :
 {
 public:
     /* Constructor/Destructor */
-    DummyServiceConnection(std::string previewSavePath);
+    DummyServiceConnection(std::string hmacKey, std::string previewSavePath);
 
     // ServiceConnection
     void Init() override;
@@ -35,6 +35,7 @@ public:
     void SendJpegPreviewImage(ftl_stream_id_t streamId, std::vector<uint8_t> jpegData) override;
 
 private:
+    std::string hmacKey;
     std::string previewSavePath;
 
     /**
