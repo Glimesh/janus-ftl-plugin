@@ -19,7 +19,8 @@
 #include <stdexcept>
 
 #pragma region Constructor/Destructor
-DummyServiceConnection::DummyServiceConnection(std::string previewSavePath) : 
+DummyServiceConnection::DummyServiceConnection(std::string hmacKey, std::string previewSavePath) : 
+    hmacKey(hmacKey),
     previewSavePath(previewSavePath)
 { }
 #pragma endregion
@@ -38,7 +39,7 @@ void DummyServiceConnection::Init()
 
 std::string DummyServiceConnection::GetHmacKey(ftl_channel_id_t channelId)
 {
-    return "aBcDeFgHiJkLmNoPqRsTuVwXyZ123456";
+    return this->hmacKey;
 }
 
 ftl_stream_id_t DummyServiceConnection::StartStream(ftl_channel_id_t channelId)

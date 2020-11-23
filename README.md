@@ -53,6 +53,8 @@ The default stream key is `123456789-aBcDeFgHiJkLmNoPqRsTuVwXyZ123456`.
 
 `123456789` can be whatever "Channel ID" you'd like.
 
+`aBcDeFgHiJkLmNoPqRsTuVwXyZ123456` can be overridden by setting the `FTL_SERVICE_DUMMY_HMAC_KEY` environment variable.
+
 See `DummyServiceConnection.cpp` for the default stream key retrieval mechanism.
 
 For watching your stream from a browser, see [janus-ftl-player](https://github.com/Glimesh/janus-ftl-player).
@@ -65,6 +67,7 @@ Configuration is achieved through environment variables.
 | `FTL_HOSTNAME`         | Valid hostname   | The hostname of the machine running the FTL service. Defaults to system hostname. |
 | `FTL_SERVICE_CONNECTION` | `DUMMY`: (default) Dummy service connection <br />`GLIMESH`: Glimesh service connection | This configuration value determines which service FTL should plug into for operations such as stream key retrieval. |
 | `FTL_SERVICE_METADATAREPORTINTERVALMS` | Time in milliseconds | Defaults to `4000`, controls how often FTL stream metadata will be reported to the service. |
+| `FTL_SERVICE_DUMMY_HMAC_KEY` | String, default: `aBcDeFgHiJkLmNoPqRsTuVwXyZ123456` | Key all FTL clients must use if service connection is `DUMMY`. The HMAC key is the part after the dash in a stream key.` |
 | `FTL_SERVICE_DUMMY_PREVIEWIMAGEPATH` | `/path/to/directory` | The path where preview images of ingested streams will be stored if service connection is `DUMMY`. Defaults to `~/.ftl/previews` |
 | `FTL_SERVICE_GLIMESH_HOSTNAME` | Hostname value (ex. `localhost`, `glimesh.tv`) | This is the hostname the Glimesh service connection will attempt to reach. |
 | `FTL_SERVICE_GLIMESH_PORT` | Port number, `1`-`65535`. | This is the port used to communicate with the Glimesh service via HTTP/HTTPS. |
