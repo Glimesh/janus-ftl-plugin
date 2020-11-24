@@ -43,7 +43,7 @@ void IngestConnection::Start()
 void IngestConnection::Stop()
 {
     // TODO: Try to tell the client nicely that we're outta here
-    shutdown(connectionHandle, SHUT_RDWR);
+    close(connectionHandle);
 }
 
 sockaddr_in IngestConnection::GetAcceptAddress()

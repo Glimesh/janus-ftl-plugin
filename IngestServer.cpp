@@ -81,6 +81,7 @@ void IngestServer::Stop()
     pendingConnections.clear();
     shutdown(listenSocketHandle, SHUT_RDWR);
     listenThread.join();
+    close(listenSocketHandle);
 }
 
 void IngestServer::SetOnRequestMediaConnection(
