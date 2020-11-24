@@ -433,7 +433,7 @@ void FtlStream::startStreamMetadataReportingThread()
             {
                 JANUS_LOG(
                     LOG_ERR,
-                    "FTL: Failed to generate JPEG preview for stream %d, error: %s",
+                    "FTL: Failed to generate JPEG preview for stream %d. Error: %s\n",
                     streamId,
                     e.what());
             }
