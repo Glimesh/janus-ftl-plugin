@@ -36,7 +36,13 @@ RUN \
     cd ${DIR} && \
     curl -sLf https://github.com/meetecho/janus-gateway/archive/${JANUSGATEWAY_VERSION}.tar.gz | tar -zx --strip-components=1 && \
     sh autogen.sh && \ 
-    ./configure --prefix=/opt/janus && \
+    ./configure --prefix=/opt/janus \
+    --disable-rabbitmq \
+    --disable-mqtt \
+    --disable-unix-sockets \
+    --disable-websockets \
+    --disable-all-handlers \
+    --disable-all-plugins && \
     make && \
     make configs && \
     make install && \
