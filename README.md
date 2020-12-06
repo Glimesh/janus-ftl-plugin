@@ -82,7 +82,7 @@ Configuration is achieved through environment variables.
 
 # Dockering
 
-    docker build -t janus-ftl
+    docker build -t janus-ftl .
     docker run --rm -p 8084:8084/tcp -p 8088:8088/tcp -p 9000-9100:9000-9100/udp -p 20000-20100:20000-20100/udp -e "DOCKER_IP=HOST.IP.ADDRESS.HERE" janus-ftl
 
 # Misc Notes
