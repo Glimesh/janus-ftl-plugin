@@ -95,6 +95,7 @@ private:
 
     /* Private methods */
     void startConnectionThread();
+    void writeToSocket(const char* buffer, const size_t bufferSize);
     // Commands
     void processCommand(std::string command);
     void processHmacCommand();
