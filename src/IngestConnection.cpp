@@ -186,6 +186,21 @@ void IngestConnection::startConnectionThread()
     JANUS_LOG(LOG_INFO, "FTL: Ingest connection thread terminating\n");
 }
 
+void IngestConnection::writeToSocket(const char* buffer, const size_t bufferSize)
+{
+    int written = write(connectionHandle, buffer, bufferSize);
+    if (written == -1)
+    {
+        std::stringstream errStr;
+        errStr << "Error writing to ingest socket: " << errno;
+        throw std::runtime_error(errStr.str());
+    }
+    else if (static_cast<size_t>(written) != bufferSize)
+    {
+        throw std::runtime_error("Could not write entire buffer to ingest socket.");
+    }
+}
+
 void IngestConnection::processCommand(std::string command)
 {
     if (command.compare("HMAC") == 0)
@@ -225,9 +240,9 @@ void IngestConnection::processHmacCommand()
     }
     std::string hmacString = byteArrayToHexString(&hmacPayload[0], hmacPayload.size());
     JANUS_LOG(LOG_INFO, "FTL: Sending HMAC payload: %s\n", hmacString.c_str());
-    write(connectionHandle, "200 ", 4);
-    write(connectionHandle, hmacString.c_str(), hmacString.size());
-    write(connectionHandle, "\n", 1);
+    writeToSocket("200 ", 4);
+    writeToSocket(hmacString.c_str(), hmacString.size());
+    writeToSocket("\n", 1);
 }
 
 void IngestConnection::processConnectCommand(std::string command)
@@ -273,7 +288,7 @@ void IngestConnection::processConnectCommand(std::string command)
         if (match)
         {
             JANUS_LOG(LOG_INFO, "FTL: Hashes match!\n");
-            write(connectionHandle, "200\n", 4);
+            writeToSocket("200\n", 4);
             this->channelId = channelId;
             isAuthenticated = true;
         }
@@ -410,12 +425,12 @@ void IngestConnection::processDotCommand()
     std::stringstream response;
     response << "200 hi. Use UDP port " << assignedPort << "\n";
     std::string responseStr = response.str();
-    write(connectionHandle, responseStr.c_str(), responseStr.length());
+    writeToSocket(responseStr.c_str(), responseStr.length());
 }
 
 void IngestConnection::processPingCommand()
 {
-    write(connectionHandle, "201\n", 4);
+    writeToSocket("201\n", 4);
 }
 
 std::string IngestConnection::byteArrayToHexString(uint8_t* byteArray, uint32_t length)
