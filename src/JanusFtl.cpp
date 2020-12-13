@@ -35,6 +35,8 @@ int JanusFtl::Init(janus_callbacks* callback, const char* config_path)
     configuration = std::make_unique<Configuration>();
     configuration->Load();
 
+    initOrchestratorConnection();
+
     initServiceConnection();
 
     ftlStreamStore = std::make_shared<FtlStreamStore>();
@@ -253,6 +255,34 @@ json_t* JanusFtl::QuerySession(janus_plugin_session* handle)
 #pragma endregion
 
 #pragma region Private methods
+void JanusFtl::initOrchestratorConnection()
+{
+    if (configuration->GetNodeKind() != NodeKind::Standalone)
+    {
+        JANUS_LOG(
+            LOG_INFO,
+            "FTL: Connecting to Orchestration service @ %s:%d...\n",
+            configuration->GetOrchestratorHostname().c_str(),
+            configuration->GetOrchestratorPort());
+        orchestrationClient = FtlOrchestrationClient::Connect(
+            configuration->GetOrchestratorHostname(),
+            configuration->GetOrchestratorPsk(),
+            configuration->GetMyHostname(),
+            configuration->GetOrchestratorPort());
+
+        orchestrationClient->Start();
+        orchestrationClient->SendIntro(ConnectionIntroPayload
+            {
+                .VersionMajor = 0,
+                .VersionMinor = 0,
+                .VersionRevision = 0,
+                .RelayLayer = 0,
+                .RegionCode = "global",
+                .Hostname = configuration->GetMyHostname(),
+            });
+    }
+}
+
 void JanusFtl::initServiceConnection()
 {
     switch (configuration->GetServiceConnectionKind())

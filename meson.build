@@ -41,12 +41,14 @@ deps = [
     dependency('jansson'),
     dependency('libssl'),
     dependency('libcrypto'),
-    dependency('libavcodec')
+    dependency('libavcodec'),
+    subproject('spdlog').get_variable('spdlog_dep'), # use wrapped copy of spdlog
 ]
 
 incdir = include_directories(
     './src',
     './cpp-httplib',
+    './janus-ftl-orchestrator/inc',
     janusincludepath,
 )
 

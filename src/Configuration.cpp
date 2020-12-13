@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <limits.h>
+#include <sstream>
 #include <string>
 #include <unistd.h>
 #include <wordexp.h>
@@ -30,10 +31,59 @@ void Configuration::Load()
     dummyPreviewImagePath = std::string(*(expResult.we_wordv));
     wordfree(&expResult);
 
+    // Set default Orchestrator PSK
+    orchestratorPsk = {
+        std::byte(0x00), std::byte(0x01), std::byte(0x02), std::byte(0x03),
+        std::byte(0x04), std::byte(0x05), std::byte(0x06), std::byte(0x07),
+        std::byte(0x08), std::byte(0x09), std::byte(0x0a), std::byte(0x0b),
+        std::byte(0x0c), std::byte(0x0d), std::byte(0x0e), std::byte(0x0f),
+    };
+
     // FTL_HOSTNAME -> MyHostname
     if (char* varVal = std::getenv("FTL_HOSTNAME"))
     {
         myHostname = std::string(varVal);
+    }
+
+    // FTL_NODE_KIND -> NodeKind
+    if (char* nodeKindEnv = std::getenv("FTL_NODE_KIND"))
+    {
+        std::string nodeKindStr = std::string(nodeKindEnv);
+        std::transform(
+            nodeKindStr.begin(),
+            nodeKindStr.end(),
+            nodeKindStr.begin(),
+            [](unsigned char c) { return std::tolower(c); });
+        if (nodeKindStr.compare("standalone") == 0)
+        {
+            nodeKind = NodeKind::Standalone;
+        }
+        else if (nodeKindStr.compare("ingest") == 0)
+        {
+            nodeKind = NodeKind::Ingest;
+        }
+        else if (nodeKindStr.compare("edge") == 0)
+        {
+            nodeKind = NodeKind::Edge;
+        }
+    }
+
+    // FTL_ORCHESTRATOR_HOSTNAME -> OrchestratorHostname
+    if (char* varVal = std::getenv("FTL_ORCHESTRATOR_HOSTNAME"))
+    {
+        orchestratorHostname = std::string(varVal);
+    }
+
+    // FTL_ORCHESTRATOR_PORT -> OrchestratorPort
+    if (char* varVal = std::getenv("FTL_ORCHESTRATOR_PORT"))
+    {
+        orchestratorPort = std::stoi(varVal);
+    }
+
+    // FTL_ORCHESTRATOR_PSK -> OrchestratorPsk
+    if (char* varVal = std::getenv("FTL_ORCHESTRATOR_PSK"))
+    {
+        orchestratorPsk = hexStringToByteArray(std::string(varVal));
     }
 
     // FTL_SERVICE_CONNECTION -> ServiceConnectionKind
@@ -115,6 +165,26 @@ std::string Configuration::GetMyHostname()
     return myHostname;
 }
 
+NodeKind Configuration::GetNodeKind()
+{
+    return nodeKind;
+}
+
+std::string Configuration::GetOrchestratorHostname()
+{
+    return orchestratorHostname;
+}
+
+uint16_t Configuration::GetOrchestratorPort()
+{
+    return orchestratorPort;
+}
+
+std::vector<std::byte> Configuration::GetOrchestratorPsk()
+{
+    return orchestratorPsk;
+}
+
 ServiceConnectionKind Configuration::GetServiceConnectionKind()
 {
     return serviceConnectionKind;
@@ -158,5 +228,26 @@ std::string Configuration::GetGlimeshServiceClientId()
 std::string Configuration::GetGlimeshServiceClientSecret()
 {
     return glimeshServiceClientSecret;
+}
+#pragma endregion
+
+#pragma region Private methods
+std::vector<std::byte> Configuration::hexStringToByteArray(std::string hexString)
+{
+    std::vector<std::byte> retVal;
+    std::stringstream convertStream;
+
+    unsigned int buffer;
+    unsigned int offset = 0;
+    while (offset < hexString.length()) 
+    {
+        convertStream.clear();
+        convertStream << std::hex << hexString.substr(offset, 2);
+        convertStream >> std::hex >> buffer;
+        retVal.push_back(static_cast<std::byte>(buffer));
+        offset += 2;
+    }
+
+    return retVal;
 }
 #pragma endregion

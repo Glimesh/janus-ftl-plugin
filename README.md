@@ -65,6 +65,10 @@ Configuration is achieved through environment variables.
 | Environment Variable   | Supported Values | Notes             |
 | :--------------------- | :--------------- | :---------------- |
 | `FTL_HOSTNAME`         | Valid hostname   | The hostname of the machine running the FTL service. Defaults to system hostname. |
+| `FTL_NODE_KIND`        | `Standalone`: (default) This instance will listen for incoming FTL connections and transmit them to WebRTC clients.<br />`Ingest`: This instance will listen for incoming FTL connections and relay them to other nodes when instructed by an Orchestrator service.<br />`Edge`: This instance will receive stream relays from other nodes and transmit them to WebRTC clients. | This configuration value controls the behavior of the FTL plugin when used in conjunction with an [Orchestrator service](https://github.com/Glimesh/janus-ftl-orchestrator). |
+| `FTL_ORCHESTRATOR_HOSTNAME` | Valid hostname | The hostname of the Orchestrator service to connect to for stream relay information. |
+| `FTL_ORCHESTRATOR_PORT` | Port number, `1`-`65535`. | The port number to use when connecting to the Orchestrator service. |
+| `FTL_ORCHESTRATOR_PSK` | String of arbitrary hex values (ex. `001122334455ff`) | This is the pre-shared key used to establish a secure TLS1.3 connection to the Orchestrator service. |
 | `FTL_SERVICE_CONNECTION` | `DUMMY`: (default) Dummy service connection <br />`GLIMESH`: Glimesh service connection | This configuration value determines which service FTL should plug into for operations such as stream key retrieval. |
 | `FTL_SERVICE_METADATAREPORTINTERVALMS` | Time in milliseconds | Defaults to `4000`, controls how often FTL stream metadata will be reported to the service. |
 | `FTL_SERVICE_DUMMY_HMAC_KEY` | String, default: `aBcDeFgHiJkLmNoPqRsTuVwXyZ123456` | Key all FTL clients must use if service connection is `DUMMY`. The HMAC key is the part after the dash in a stream key.` |
