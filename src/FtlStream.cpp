@@ -65,8 +65,15 @@ void FtlStream::Start()
     }
 
     // Start listening for incoming packets
-    streamThread = std::thread(&FtlStream::startStreamThread, this);
+    std::promise<void> streamThreadReadyPromise;
+    std::future<void> streamThreadReadyFuture = streamThreadReadyPromise.get_future();
+    streamThread = std::thread(
+        &FtlStream::startStreamThread,
+        this,
+        std::move(streamThreadReadyPromise));
     streamThread.detach();
+    // Wait for the stream thread to be ready
+    streamThreadReadyFuture.get();
 
     // Start thread for reporting stream metadata out
     streamMetadataReportingThread = 
@@ -144,6 +151,11 @@ ftl_channel_id_t FtlStream::GetChannelId()
     return ingestConnection->GetChannelId();
 }
 
+ftl_stream_id_t FtlStream::GetStreamId()
+{
+    return streamId;
+}
+
 uint16_t FtlStream::GetMediaPort()
 {
     return mediaPort;
@@ -203,7 +215,7 @@ void FtlStream::ingestConnectionClosed(IngestConnection& connection)
     stopping = true;
 }
 
-void FtlStream::startStreamThread()
+void FtlStream::startStreamThread(std::promise<void>&& streamReadyPromise)
 {
     sockaddr_in socketAddress;
     socketAddress.sin_family = AF_INET;
@@ -234,6 +246,9 @@ void FtlStream::startStreamThread()
 
     // Let the service know that we're streaming!
     streamId = serviceConnection->StartStream(GetChannelId());
+
+    // We're ready to start accepting packets.
+    streamReadyPromise.set_value();
 
     // Set up some values we'll be using in our read thread
     socklen_t addrlen;

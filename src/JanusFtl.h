@@ -97,4 +97,9 @@ private:
     janus_plugin_result* handleStartMessage(std::shared_ptr<JanusSession> session, JsonPtr message, char* transaction);
     int sendJsep(std::shared_ptr<JanusSession> session, std::shared_ptr<FtlStream> ftlStream, char* transaction);
     std::string generateSdpOffer(std::shared_ptr<JanusSession> session, std::shared_ptr<FtlStream> ftlStream);
+    // Orchestrator message handling
+    void onOrchestratorConnectionClosed();
+    ConnectionResult onOrchestratorIntro(ConnectionIntroPayload payload);
+    ConnectionResult onOrchestratorOutro(ConnectionOutroPayload payload);
+    ConnectionResult onOrchestratorStreamRelay(ConnectionRelayPayload payload);
 };

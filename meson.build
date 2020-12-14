@@ -23,6 +23,7 @@ installdir = get_variable('INSTALL_PATH', (januspath + '/lib/janus/plugins'))
 sources = files([
     'src/Configuration.cpp',
     'src/DummyServiceConnection.cpp',
+    'src/FtlClient.cpp',
     'src/FtlStream.cpp',
     'src/FtlStreamStore.cpp',
     'src/GlimeshServiceConnection.cpp',

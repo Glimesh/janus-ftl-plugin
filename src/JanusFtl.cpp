@@ -264,12 +264,25 @@ void JanusFtl::initOrchestratorConnection()
             "FTL: Connecting to Orchestration service @ %s:%d...\n",
             configuration->GetOrchestratorHostname().c_str(),
             configuration->GetOrchestratorPort());
+        
+        // Open Orchestrator connection
         orchestrationClient = FtlOrchestrationClient::Connect(
             configuration->GetOrchestratorHostname(),
             configuration->GetOrchestratorPsk(),
             configuration->GetMyHostname(),
             configuration->GetOrchestratorPort());
+        
+        // Bind to events from Orchestrator connection
+        orchestrationClient->SetOnConnectionClosed(
+            std::bind(&JanusFtl::onOrchestratorConnectionClosed, this));
+        orchestrationClient->SetOnIntro(
+            std::bind(&JanusFtl::onOrchestratorIntro, this, std::placeholders::_1));
+        orchestrationClient->SetOnOutro(
+            std::bind(&JanusFtl::onOrchestratorOutro, this, std::placeholders::_1));
+        orchestrationClient->SetOnStreamRelay(
+            std::bind(&JanusFtl::onOrchestratorStreamRelay, this, std::placeholders::_1));
 
+        // Start the connection and send an Intro
         orchestrationClient->Start();
         orchestrationClient->SendIntro(ConnectionIntroPayload
             {
@@ -340,6 +353,22 @@ uint16_t JanusFtl::newIngestFtlStream(std::shared_ptr<IngestConnection> connecti
     ftlStreamStore->AddStream(ftlStream);
     ftlStream->Start();
 
+    // If we are configured as an Ingest node, notify the Orchestrator that a stream has started.
+    if ((configuration->GetNodeKind() == NodeKind::Ingest) && (orchestrationClient != nullptr))
+    {
+        JANUS_LOG(
+            LOG_INFO,
+            "FTL: Publishing channel %d / stream %d to Orchestrator...\n",
+            ftlStream->GetChannelId(),
+            ftlStream->GetStreamId());
+        orchestrationClient->SendStreamPublish(ConnectionPublishPayload
+            {
+                .IsPublish = true,
+                .ChannelId = ftlStream->GetChannelId(),
+                .StreamId = ftlStream->GetStreamId(),
+            });
+    }
+
     // Add any pending viewers
     std::set<std::shared_ptr<JanusSession>> pendingViewers = 
         ftlStreamStore->ClearPendingViewersForChannelId(ftlStream->GetChannelId());
@@ -379,6 +408,22 @@ void JanusFtl::ftlStreamClosed(FtlStream& ftlStream)
         ftlStreamStore->AddPendingViewerForChannelId(channelId, viewer);
 
         // TODO: Tell the viewers that this stream has stopped
+    }
+
+    // If we are configured as an Ingest node, notify the Orchestrator that a stream has ended.
+    if ((configuration->GetNodeKind() == NodeKind::Ingest) && (orchestrationClient != nullptr))
+    {
+        JANUS_LOG(
+            LOG_INFO,
+            "FTL: Unpublishing channel %d / stream %d from Orchestrator...\n",
+            stream->GetChannelId(),
+            stream->GetStreamId());
+        orchestrationClient->SendStreamPublish(ConnectionPublishPayload
+            {
+                .IsPublish = false,
+                .ChannelId = stream->GetChannelId(),
+                .StreamId = stream->GetStreamId(),
+            });
     }
 
     ftlStreamStore->RemoveStream(stream);
@@ -549,4 +594,64 @@ std::string JanusFtl::generateSdpOffer(
     }
     return offerStream.str();
 }
-#pragma endregion
+
+void JanusFtl::onOrchestratorConnectionClosed()
+{
+    // TODO: We should reconnect.
+    throw std::runtime_error("Connection to Orchestrator was closed unexpectedly.");
+}
+
+ConnectionResult JanusFtl::onOrchestratorIntro(ConnectionIntroPayload payload)
+{
+    JANUS_LOG(LOG_INFO, "FTL: Received Intro from Orchestrator.");
+    return ConnectionResult
+    {
+        .IsSuccess = true,
+    };
+}
+
+ConnectionResult JanusFtl::onOrchestratorOutro(ConnectionOutroPayload payload)
+{
+    JANUS_LOG(
+        LOG_INFO,
+        "FTL: Received Outro from Orchestrator: %s",
+        payload.DisconnectReason.c_str());
+
+    return ConnectionResult
+    {
+        .IsSuccess = true,
+    };
+}
+
+ConnectionResult JanusFtl::onOrchestratorStreamRelay(ConnectionRelayPayload payload)
+{
+    if (payload.IsStartRelay)
+    {
+        JANUS_LOG(
+            LOG_INFO,
+            "FTL: Start Stream Relay request from Orchestrator: Channel %d, Stream %d, Target %s",
+            payload.ChannelId,
+            payload.StreamId,
+            payload.TargetHostname.c_str());
+        
+        return ConnectionResult
+        {
+            .IsSuccess = true,
+        };
+    }
+    else
+    {
+        JANUS_LOG(
+            LOG_INFO,
+            "FTL: End Stream Relay request from Orchestrator: Channel %d, Stream %d",
+            payload.ChannelId,
+            payload.StreamId);
+
+        return ConnectionResult
+        {
+            .IsSuccess = true,
+        };
+    }
+    
+}
+#pragma endregion Private methods
