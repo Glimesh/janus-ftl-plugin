@@ -44,6 +44,7 @@ deps = [
     dependency('libcrypto'),
     dependency('libavcodec'),
     subproject('spdlog').get_variable('spdlog_dep'), # use wrapped copy of spdlog
+    subproject('fmt').get_variable('fmt_dep'), # use wrapped copy of fmt
 ]
 
 incdir = include_directories(

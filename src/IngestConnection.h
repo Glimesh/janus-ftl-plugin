@@ -103,7 +103,4 @@ private:
     void processAttributeCommand(std::string command);
     void processDotCommand();
     void processPingCommand();
-    // Utility methods
-    std::string byteArrayToHexString(uint8_t* byteArray, uint32_t length);
-    std::vector<uint8_t> hexStringToByteArray(std::string hexString);
 };

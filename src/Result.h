@@ -31,12 +31,11 @@ struct Result : public CommonResult<T>
      */
     static Result<T> Success(T value)
     {
-        return Result<T>
-        {
-            .Value = value,
-            .IsError = false,
-            .ErrorMessage = "",
-        };
+        auto r = Result<T>();
+        r.Value = value;
+        r.IsError = false;
+        r.ErrorMessage = "";
+        return r;
     }
 
     /**
@@ -44,12 +43,11 @@ struct Result : public CommonResult<T>
      */
     static Result<T> Error(const std::string& message = "")
     {
-        return Result<T>
-        {
-            .Value = {},
-            .IsError = true,
-            .ErrorMessage = message,
-        };
+        auto r = Result<T>();
+        r.Value = {};
+        r.IsError = true;
+        r.ErrorMessage = message;
+        return r;
     }
 
     /**
