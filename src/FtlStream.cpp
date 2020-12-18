@@ -176,6 +176,16 @@ VideoCodecKind FtlStream::GetVideoCodec()
     return ingestConnection->GetVideoCodec();
 }
 
+uint16_t FtlStream::GetVideoWidth()
+{
+    return ingestConnection->GetVideoWidth();
+}
+
+uint16_t FtlStream::GetVideoHeight()
+{
+    return ingestConnection->GetVideoHeight();
+}
+
 AudioCodecKind FtlStream::GetAudioCodec()
 {
     return ingestConnection->GetAudioCodec();

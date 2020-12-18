@@ -40,6 +40,7 @@ public:
     std::string GetOrchestratorHostname();
     uint16_t GetOrchestratorPort();
     std::vector<std::byte> GetOrchestratorPsk();
+    std::string GetOrchestratorRegionCode();
     ServiceConnectionKind GetServiceConnectionKind();
     uint16_t GetServiceConnectionMetadataReportIntervalMs();
 
@@ -61,6 +62,7 @@ private:
     std::string orchestratorHostname;
     uint16_t orchestratorPort = 8085;
     std::vector<std::byte> orchestratorPsk;
+    std::string orchestratorRegionCode = "global";
     ServiceConnectionKind serviceConnectionKind = ServiceConnectionKind::DummyServiceConnection;
     uint16_t serviceConnectionMetadataReportIntervalMs = 4000;
 

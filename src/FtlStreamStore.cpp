@@ -247,4 +247,36 @@ void FtlStreamStore::RemovePendingViewershipForSession(std::shared_ptr<JanusSess
         JANUS_LOG(LOG_WARN, "FTL: Failed to erase session from pending channel ID session set.");
     }
 }
+
+void FtlStreamStore::AddRelay(FtlStreamStore::RelayStore relay)
+{
+    std::lock_guard<std::mutex> lock(relaysMutex);
+
+    // Check for collisions
+    if (relaysByChannelId.count(relay.ChannelId) > 0)
+    {
+        throw std::invalid_argument(
+            "Attempt to add FTL Relay with a channel ID that is already assigned.");
+    }
+
+    // Add to map
+    relaysByChannelId[relay.ChannelId] = relay;
+}
+
+std::optional<FtlStreamStore::RelayStore> FtlStreamStore::GetRelayForChannelId(
+    ftl_channel_id_t channelId)
+{
+    std::lock_guard<std::mutex> lock(relaysMutex);
+    if (relaysByChannelId.count(channelId) <= 0)
+    {
+        return std::nullopt;
+    }
+    return relaysByChannelId.at(channelId);
+}
+
+void FtlStreamStore::ClearRelay(ftl_channel_id_t channelId)
+{
+    std::lock_guard<std::mutex> lock(relaysMutex);
+    relaysByChannelId.erase(channelId);
+}
 #pragma endregion

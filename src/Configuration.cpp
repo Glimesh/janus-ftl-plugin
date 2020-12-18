@@ -86,6 +86,12 @@ void Configuration::Load()
         orchestratorPsk = hexStringToByteArray(std::string(varVal));
     }
 
+    // FTL_ORCHESTRATOR_REGION_CODE -> OrchestratorRegionCode
+    if (char* varVal = std::getenv("FTL_ORCHESTRATOR_REGION_CODE"))
+    {
+        orchestratorRegionCode = std::string(varVal);
+    }
+
     // FTL_SERVICE_CONNECTION -> ServiceConnectionKind
     if (char* serviceConnectionEnv = std::getenv("FTL_SERVICE_CONNECTION"))
     {
@@ -183,6 +189,11 @@ uint16_t Configuration::GetOrchestratorPort()
 std::vector<std::byte> Configuration::GetOrchestratorPsk()
 {
     return orchestratorPsk;
+}
+
+std::string Configuration::GetOrchestratorRegionCode()
+{
+    return orchestratorRegionCode;
 }
 
 ServiceConnectionKind Configuration::GetServiceConnectionKind()

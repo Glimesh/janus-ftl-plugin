@@ -84,6 +84,16 @@ VideoCodecKind IngestConnection::GetVideoCodec()
     return videoCodec;
 }
 
+uint16_t IngestConnection::GetVideoWidth()
+{
+    return videoWidth;
+}
+
+uint16_t IngestConnection::GetVideoHeight()
+{
+    return videoHeight;
+}
+
 AudioCodecKind IngestConnection::GetAudioCodec()
 {
     return audioCodec;

@@ -8,6 +8,7 @@
  * 
  */
 
+#include "FtlClient.h"
 #include "JanusFtl.h"
 #include "Configuration.h"
 #include "DummyServiceConnection.h"
@@ -290,7 +291,7 @@ void JanusFtl::initOrchestratorConnection()
                 .VersionMinor = 0,
                 .VersionRevision = 0,
                 .RelayLayer = 0,
-                .RegionCode = "global",
+                .RegionCode = configuration->GetOrchestratorRegionCode(),
                 .Hostname = configuration->GetMyHostname(),
             });
     }
@@ -424,6 +425,21 @@ void JanusFtl::ftlStreamClosed(FtlStream& ftlStream)
                 .ChannelId = stream->GetChannelId(),
                 .StreamId = stream->GetStreamId(),
             });
+    }
+
+    // If a relay exists for this stream, stop and remove it.
+    std::optional<FtlStreamStore::RelayStore> relay = 
+        ftlStreamStore->GetRelayForChannelId(stream->GetChannelId());
+    if (relay.has_value())
+    {
+        JANUS_LOG(
+            LOG_INFO,
+            "FTL: Stopping %s relay for channel %d / stream %d...\n",
+            relay.value().TargetHost.c_str(),
+            stream->GetChannelId(),
+            stream->GetStreamId());
+        relay.value().FtlClientInstance->Stop();
+        ftlStreamStore->ClearRelay(relay.value().ChannelId);
     }
 
     ftlStreamStore->RemoveStream(stream);
@@ -603,7 +619,7 @@ void JanusFtl::onOrchestratorConnectionClosed()
 
 ConnectionResult JanusFtl::onOrchestratorIntro(ConnectionIntroPayload payload)
 {
-    JANUS_LOG(LOG_INFO, "FTL: Received Intro from Orchestrator.");
+    JANUS_LOG(LOG_INFO, "FTL: Received Intro from Orchestrator.\n");
     return ConnectionResult
     {
         .IsSuccess = true,
@@ -614,7 +630,7 @@ ConnectionResult JanusFtl::onOrchestratorOutro(ConnectionOutroPayload payload)
 {
     JANUS_LOG(
         LOG_INFO,
-        "FTL: Received Outro from Orchestrator: %s",
+        "FTL: Received Outro from Orchestrator: %s\n",
         payload.DisconnectReason.c_str());
 
     return ConnectionResult
@@ -629,10 +645,71 @@ ConnectionResult JanusFtl::onOrchestratorStreamRelay(ConnectionRelayPayload payl
     {
         JANUS_LOG(
             LOG_INFO,
-            "FTL: Start Stream Relay request from Orchestrator: Channel %d, Stream %d, Target %s",
+            "FTL: Start Stream Relay request from Orchestrator: Channel %d, Stream %d, Target %s\n",
             payload.ChannelId,
             payload.StreamId,
             payload.TargetHostname.c_str());
+
+        // Do we have an active stream?
+        std::shared_ptr<FtlStream> activeStream = 
+            ftlStreamStore->GetStreamByChannelId(payload.ChannelId);
+        if (activeStream == nullptr)
+        {
+            JANUS_LOG(
+                LOG_ERR,
+                "FTL: Orchestrator requested a relay for channel that is not streaming."
+                "Target hostname: %s, Channel ID: %d\n",
+                payload.TargetHostname.c_str(),
+                payload.ChannelId);
+            return ConnectionResult
+                {
+                    .IsSuccess = false,
+                };
+        }
+
+        // Start the relay now!
+        std::shared_ptr<FtlClient> relayClient = std::make_shared<FtlClient>(
+            payload.TargetHostname,
+            payload.ChannelId,
+            payload.StreamKey);
+        Result<void> connectResult = relayClient->ConnectAsync(FtlClient::ConnectMetadata
+            {
+                .VendorName = "janus-ftl-plugin",
+                .VendorVersion = "0.0.0", // TODO: Versioning
+                .HasVideo = activeStream->GetHasVideo(),
+                .VideoCodec = 
+                    SupportedVideoCodecs::VideoCodecString(activeStream->GetVideoCodec()),
+                .VideoHeight = activeStream->GetVideoHeight(),
+                .VideoWidth = activeStream->GetVideoWidth(),
+                .VideoPayloadType = activeStream->GetVideoPayloadType(),
+                .VideoIngestSsrc = activeStream->GetVideoSsrc(),
+                .HasAudio = activeStream->GetHasAudio(),
+                .AudioCodec = 
+                    SupportedAudioCodecs::AudioCodecString(activeStream->GetAudioCodec()),
+                .AudioPayloadType = activeStream->GetAudioPayloadType(),
+                .AudioIngestSsrc = activeStream->GetAudioSsrc(),
+            });
+        if (connectResult.IsError)
+        {
+            JANUS_LOG(
+                LOG_ERR,
+                "FTL: Failed to connect to relay target %s for channel %d: %s\n",
+                payload.TargetHostname.c_str(),
+                payload.ChannelId,
+                connectResult.ErrorMessage.c_str());
+            return ConnectionResult
+                {
+                    .IsSuccess = false,
+                };
+        }
+
+        ftlStreamStore->AddRelay(FtlStreamStore::RelayStore
+            {
+                .ChannelId = payload.ChannelId,
+                .TargetHost = payload.TargetHostname,
+                .StreamKey = payload.StreamKey,
+                .FtlClientInstance = relayClient,
+            });
         
         return ConnectionResult
         {
@@ -643,9 +720,27 @@ ConnectionResult JanusFtl::onOrchestratorStreamRelay(ConnectionRelayPayload payl
     {
         JANUS_LOG(
             LOG_INFO,
-            "FTL: End Stream Relay request from Orchestrator: Channel %d, Stream %d",
+            "FTL: End Stream Relay request from Orchestrator: Channel %d, Stream %d\n",
             payload.ChannelId,
             payload.StreamId);
+
+        // Find the relay
+        std::optional<FtlStreamStore::RelayStore> relay = 
+            ftlStreamStore->GetRelayForChannelId(payload.ChannelId);
+        if (relay.has_value() == false)
+        {
+            JANUS_LOG(
+                LOG_WARN,
+                "FTL: Orchestrator requested to stop non-existant relay: Channel %d, Stream %d\n",
+                payload.ChannelId,
+                payload.StreamId);
+        }
+        else
+        {
+            // Stop the relay, then remove it from the store.
+            relay.value().FtlClientInstance->Stop();
+            ftlStreamStore->ClearRelay(payload.ChannelId);
+        }
 
         return ConnectionResult
         {

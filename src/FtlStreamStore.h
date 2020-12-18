@@ -10,11 +10,16 @@
 
 #pragma once
 
-#include <memory>
-#include <map>
-#include <set>
-#include <mutex>
+#include "FtlTypes.h"
 
+#include <map>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <set>
+#include <vector>
+
+class FtlClient;
 class FtlStream;
 class JanusSession;
 
@@ -24,6 +29,22 @@ class JanusSession;
 class FtlStreamStore
 {
 public:
+    /* Nested structs */
+    /**
+     * @brief
+     *  Used to manage the state of a relay between an incoming FTL stream and another node.
+     *  If this relay is active, FtlClient will be set to an instance of an FtlClient used to relay
+     *  stream data.
+     *  Otherwise, this is used to indicate that a relay is requested for a particular channel.
+     */
+    struct RelayStore
+    {
+        ftl_channel_id_t ChannelId;
+        std::string TargetHost;
+        std::vector<std::byte> StreamKey;
+        std::shared_ptr<FtlClient> FtlClientInstance;
+    };
+
     /**
      * @brief Adds the specified FtlStream instance to the stream store.
      * @param ftlStream The stream to add
@@ -111,6 +132,21 @@ public:
      * @param session Session to remove from pending viewer stores.
      */
     void RemovePendingViewershipForSession(std::shared_ptr<JanusSession> session);
+
+    /**
+     * @brief Adds a relay associated with a channel ID
+     */
+    void AddRelay(RelayStore relay);
+
+    /**
+     * @brief Retrieves a relay for a given channel ID if one exists.
+     */
+    std::optional<RelayStore> GetRelayForChannelId(ftl_channel_id_t channelId);
+
+    /**
+     * @brief Removes references to any relays associated with the given channel ID
+     */
+    void ClearRelay(ftl_channel_id_t channelId);
 private:
     /* Private members */
     std::mutex channelIdMapMutex;
@@ -122,4 +158,6 @@ private:
     std::mutex pendingSessionMutex;
     std::map<uint16_t, std::set<std::shared_ptr<JanusSession>>> pendingChannelIdSessions;
     std::map<std::shared_ptr<JanusSession>, uint16_t> pendingSessionChannelId;
+    std::mutex relaysMutex;
+    std::map<ftl_channel_id_t, RelayStore> relaysByChannelId;
 };
