@@ -32,50 +32,106 @@ FtlClient::FtlClient(
 #pragma region Public methods
 Result<void> FtlClient::ConnectAsync(FtlClient::ConnectMetadata metadata)
 {
-    // Look up hostname
-    addrinfo addrHints { 0 };
-    addrHints.ai_family = AF_INET; // TODO: IPV6 support
-    addrHints.ai_socktype = SOCK_STREAM;
-    addrHints.ai_protocol = IPPROTO_TCP;
-    addrinfo* addrLookup = nullptr;
-    int lookupErr = getaddrinfo(
-        targetHostname.c_str(),
-        std::to_string(FTL_CONTROL_PORT).c_str(),
-        &addrHints,
-        &addrLookup);
-    if (lookupErr != 0)
+    // Open a socket for control connection
+    Result<void> openResult = openControlConnection();
+    if (openResult.IsError)
     {
-        freeaddrinfo(addrLookup);
-        return Result<void>::Error("Error looking up hostname");
+        return openResult;
     }
-
-    // Attempt to open TCP connection
-    // TODO: Loop through additional addresses on failure. For now, only try the first one.
-    addrinfo targetAddr = *addrLookup;
-    controlSocketHandle = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    int connectErr = connect(controlSocketHandle, targetAddr.ai_addr, targetAddr.ai_addrlen);
-    if (connectErr != 0)
-    {
-        close(controlSocketHandle);
-        freeaddrinfo(addrLookup);
-        return Result<void>::Error("Could not connect to Orchestration service on given host");
-    }
-
-    freeaddrinfo(addrLookup);
 
     // Start a new thread to read incoming data
     connectionThread = std::thread(&FtlClient::connectionThreadBody, this);
     connectionThread.detach();
 
+    // Authenticate the control connection
+    Result<void> authResult = authenticateControlConnection();
+    if (authResult.IsError)
+    {
+        Stop();
+        return authResult;
+    }
+
+    // Request to start our stream
+    Result<void> startResult = sendControlStartStream(metadata);
+    if (startResult.IsError)
+    {
+        Stop();
+        return startResult;
+    }
+
+    // Open media connection
+    Result<void> openMediaResult = openMediaConnection();
+    if (openMediaResult.IsError)
+    {
+        Stop();
+        return openMediaResult;
+    }
+
+    return Result<void>::Success();
+}
+
+void FtlClient::Stop()
+{
+
+}
+
+void FtlClient::SetOnClosed(std::function<void()> onClosed)
+{
+    this->onClosed = onClosed;
+}
+#pragma endregion Public methods
+
+#pragma region Private methods
+Result<void> FtlClient::openControlConnection()
+{
+    // Look up hostname
+    addrinfo addrHints { 0 };
+    addrHints.ai_family = AF_INET; // TODO: IPV6 support
+    addrHints.ai_socktype = SOCK_STREAM;
+    addrHints.ai_protocol = IPPROTO_TCP;
+    addrinfo* controlAddrInfoPtr = nullptr;
+    int lookupErr = getaddrinfo(
+        targetHostname.c_str(),
+        std::to_string(FTL_CONTROL_PORT).c_str(),
+        &addrHints,
+        &controlAddrInfoPtr);
+    // Store addr lookup in a smart pointer so it is free'd when it goes out of scope
+    std::unique_ptr<addrinfo, decltype(&freeaddrinfo)> controlAddrLookup(
+        controlAddrInfoPtr,
+        &freeaddrinfo);
+    if (lookupErr != 0)
+    {
+        return Result<void>::Error("Error looking up hostname");
+    }
+
+    // Attempt to open TCP connection
+    // TODO: Loop through additional addresses on failure. For now, only try the first one.
+    controlSocketHandle = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    int connectErr = connect(
+        controlSocketHandle,
+        controlAddrLookup->ai_addr,
+        controlAddrLookup->ai_addrlen);
+    if (connectErr != 0)
+    {
+        int error = errno;
+        close(controlSocketHandle);
+        return Result<void>::Error(
+            fmt::format("Error {} when opening FTL control connection", error));
+    }
+
+    return Result<void>::Success();
+}
+
+Result<void> FtlClient::authenticateControlConnection()
+{
     // Request HMAC payload and wait for response
     sendControlMessage("HMAC\r\n\r\n");
     Result<FtlClient::FtlResponse> hmacResponse = waitForResponse();
     if (hmacResponse.IsError)
     {
-        Stop();
         return Result<void>::Error("Did not receive response to HMAC payload request.");
     }
-    std::string hmacPayload = hmacResponse.Value.payload;
+    std::vector<std::byte> hmacPayload = Util::HexStringToByteArray(hmacResponse.Value.payload);
 
     // Hash payload against stream key
     std::byte buffer[512];
@@ -84,7 +140,7 @@ Result<void> FtlClient::ConnectAsync(FtlClient::ConnectMetadata metadata)
         EVP_sha512(),
         streamKey.data(),
         streamKey.size(),
-        reinterpret_cast<const unsigned char*>(hmacPayload.c_str()),
+        reinterpret_cast<const unsigned char*>(hmacPayload.data()),
         hmacPayload.size(),
         reinterpret_cast<unsigned char*>(buffer),
         &bufferLength);
@@ -98,16 +154,19 @@ Result<void> FtlClient::ConnectAsync(FtlClient::ConnectMetadata metadata)
     Result<FtlClient::FtlResponse> authResponse = waitForResponse();
     if (authResponse.IsError)
     {
-        Stop();
         return Result<void>::Error("Did not receive successful response to HMAC authentication.");
     }
     if (authResponse.Value.statusCode != 200)
     {
-        Stop();
         return Result<void>::Error("Received error in response to HMAC authentication.");
     }
 
-    // Now let's send all of our metadata.
+    return Result<void>::Success();
+}
+
+Result<void> FtlClient::sendControlStartStream(FtlClient::ConnectMetadata metadata)
+{
+    // Send stream metadata
     sendControlMessage(fmt::format(
         "ProtocolVersion: {}.{}\r\n\r\n",
         FTL_PROTOCOL_VERSION_MAJOR,
@@ -130,17 +189,19 @@ Result<void> FtlClient::ConnectAsync(FtlClient::ConnectMetadata metadata)
     Result<FtlClient::FtlResponse> metadataResponse = waitForResponse();
     if (metadataResponse.IsError)
     {
-        Stop();
         return Result<void>::Error("Didn't receive a response after providing stream metadata.");
+    }
+    if (metadataResponse.Value.statusCode != 200)
+    {
+        return Result<void>::Error("Received error status code when attempting to start stream.");
     }
 
     // Attempt to parse the port assignment out of the response payload
     std::regex portPattern = std::regex(R"~(Use UDP port ([0-9]+))~", std::regex_constants::icase);
     std::smatch portPatternMatch;
-    if (!std::regex_match(metadataResponse.Value.payload, portPatternMatch, portPattern) ||
+    if ((std::regex_search(metadataResponse.Value.payload, portPatternMatch, portPattern) == false) ||
         (portPatternMatch.size() < 2))
     {
-        Stop();
         return Result<void>::Error("Expected a UDP port assignment but didn't receive one.");
     }
     try
@@ -148,29 +209,59 @@ Result<void> FtlClient::ConnectAsync(FtlClient::ConnectMetadata metadata)
         int parsedPort = std::stoi(portPatternMatch[1].str());
         if ((parsedPort < 0) || (parsedPort > UINT16_MAX))
         {
-            Stop();
             return Result<void>::Error("Invalid UDP port assignment.");
         }
         assignedMediaPort = static_cast<uint16_t>(parsedPort);
     }
     catch (...)
     {
-        Stop();
         return Result<void>::Error("Invalid UDP port assignment.");
     }
-
-    // TODO: Open UDP connection to assigned UDP port
 
     return Result<void>::Success();
 }
 
-void FtlClient::SetOnClosed(std::function<void()> onClosed)
+Result<void> FtlClient::openMediaConnection()
 {
-    this->onClosed = onClosed;
-}
-#pragma endregion Public methods
+    // Look up hostname
+    addrinfo addrHints { 0 };
+    addrHints.ai_family = AF_INET; // TODO: IPV6 support
+    addrHints.ai_socktype = SOCK_STREAM;
+    addrHints.ai_protocol = IPPROTO_TCP;
+    addrinfo* addrInfoPtr = nullptr;
+    int lookupErr = getaddrinfo(
+        targetHostname.c_str(),
+        std::to_string(assignedMediaPort).c_str(),
+        &addrHints,
+        &addrInfoPtr);
+    // Store addr lookup in a smart pointer so it is free'd when it goes out of scope
+    std::unique_ptr<addrinfo, decltype(&freeaddrinfo)> addrInfo(
+        addrInfoPtr,
+        &freeaddrinfo);
+    if (lookupErr != 0)
+    {
+        return Result<void>::Error("Error looking up hostname");
+    }
 
-#pragma region Private methods
+    // Attempt to open UDP connection
+    // TODO: Loop through additional addresses on failure. For now, only try the first one.
+    mediaSocketHandle = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    int connectErr = connect(
+        mediaSocketHandle,
+        addrInfo->ai_addr,
+        addrInfo->ai_addrlen);
+    if (connectErr != 0)
+    {
+        int error = errno;
+        close(mediaSocketHandle);
+        mediaSocketHandle = 0;
+        return Result<void>::Error(
+            fmt::format("Error {} when opening FTL media connection", error));
+    }
+
+    return Result<void>::Success();
+}
+
 void FtlClient::connectionThreadBody()
 {
     std::string receivedBytes;
@@ -189,7 +280,7 @@ void FtlClient::connectionThreadBody()
 
         receivedBytes.insert(receivedBytes.end(), recvBuffer, (recvBuffer + readBytes));
         size_t requestEndPosition = 
-            receivedBytes.find("\n", (receivedBytes.size() - readBytes), readBytes);
+            receivedBytes.find('\n', (receivedBytes.size() - readBytes));
         if (requestEndPosition != std::string::npos)
         {
             // Pull out the request
@@ -198,10 +289,10 @@ void FtlClient::connectionThreadBody()
                 (receivedBytes.begin() + requestEndPosition));
             receivedBytes.erase(
                 receivedBytes.begin(),
-                (receivedBytes.begin() + requestEndPosition));
+                (receivedBytes.begin() + requestEndPosition + 1)); // + 1 to erase the newline
 
-            // We expect at least a status code plus newline character
-            if (requestStr.size() < 4)
+            // We expect at least a status code
+            if (requestStr.size() < 3)
             {
                 // TODO: bad request.
                 break;
@@ -231,13 +322,13 @@ void FtlClient::connectionThreadBody()
 
             // Sometimes there's a space before the payload... sometimes there's not. 🤷‍♂️
             std::string payload;
-            if ((receivedBytes.at(3) == ' ') && (receivedBytes.size() > 4))
+            if ((requestStr.size() > 3) && (requestStr.at(3) == ' '))
             {
-                payload = std::string((receivedBytes.begin() + 4), (receivedBytes.end() - 1));
+                payload = std::string((requestStr.begin() + 4), requestStr.end());
             }
             else
             {
-                payload = std::string((receivedBytes.begin() + 3), (receivedBytes.end() - 1));
+                payload = std::string((requestStr.begin() + 3), requestStr.end());
             }
 
             FtlClient::FtlResponse response

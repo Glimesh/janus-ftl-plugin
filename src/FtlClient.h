@@ -87,18 +87,23 @@ private:
     std::string targetHostname;
     ftl_channel_id_t channelId;
     std::vector<std::byte> streamKey;
-    int controlSocketHandle;
+    int controlSocketHandle = 0;
     std::thread connectionThread;
     std::mutex recvResponseMutex;
     std::condition_variable recvResponseConditionVariable;
     std::queue<FtlResponse> receivedResponses;
     uint16_t assignedMediaPort = 0;
+    int mediaSocketHandle = 0;
     // Callbacks
     std::function<void()> onClosed;
 
     /* Private methods */
+    Result<void> openControlConnection();
+    Result<void> authenticateControlConnection();
+    Result<void> sendControlStartStream(FtlClient::ConnectMetadata metadata);
+    Result<void> openMediaConnection();
     void connectionThreadBody();
     void sendControlMessage(std::string message);
     Result<FtlClient::FtlResponse> waitForResponse(
-        std::chrono::milliseconds timeout = std::chrono::milliseconds(5000));
+        std::chrono::milliseconds timeout = std::chrono::milliseconds(500000));
 };

@@ -62,3 +62,10 @@ shared_library(
     install: true,
     install_dir: installdir
 )
+
+executable(
+    'ftlclienttest',
+    files(['src/ftlclienttest.cpp', 'src/FtlClient.cpp']),
+    dependencies: deps,
+    include_directories: incdir
+)
