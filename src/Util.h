@@ -7,6 +7,7 @@
 #pragma once
 
 #include <iomanip>
+#include <random>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -33,6 +34,9 @@ public:
         return retVal;
     }
 
+    /**
+     * @brief Converts a set of bytes to a string of hex values expressed in ASCII (ex 0001..FF)
+     */
     static std::string ByteArrayToHexString(std::byte* byteArray, uint32_t length)
     {
         std::stringstream returnValue;
@@ -43,4 +47,22 @@ public:
         }
         return returnValue.str();
     }
+
+    /**
+     * @brief Generates a random binary blob with the given size.
+     */
+    static std::vector<std::byte> GenerateRandomBinaryPayload(size_t size)
+    {
+        std::vector<std::byte> payload;
+        payload.reserve(size);
+        std::uniform_int_distribution<uint8_t> uniformDistribution(0x00, 0xFF);
+        for (unsigned int i = 0; i < size; ++i)
+        {
+            payload[i] = std::byte{ uniformDistribution(randomEngine) };
+        }
+        return payload;
+    }
+
+private:
+    inline static std::default_random_engine randomEngine { std::random_device()() };
 };

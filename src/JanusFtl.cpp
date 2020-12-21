@@ -12,6 +12,7 @@
 #include "JanusFtl.h"
 #include "Configuration.h"
 #include "DummyServiceConnection.h"
+#include "EdgeNodeServiceConnection.h"
 #include "GlimeshServiceConnection.h"
 #include "JanssonPtr.h"
 #include <jansson.h>
@@ -82,6 +83,15 @@ struct janus_plugin_result* JanusFtl::HandleMessage(
 {
     JsonPtr messagePtr(message);
     JsonPtr jsepPtr(jsep);
+
+    // If we're not meant to be streaming to viewers, don't acknowledge any messages.
+    if (configuration->GetNodeKind() == NodeKind::Ingest)
+    {
+        JANUS_LOG(LOG_WARN, "FTL: Ingest service is ignoring incoming WebRTC message.\n");
+        return generateMessageErrorResponse(
+            FTL_PLUGIN_ERROR_INVALID_REQUEST,
+            "Server is ingest-only.");
+    }
 
     // Look up the session
     std::shared_ptr<JanusSession> session;
@@ -241,6 +251,48 @@ void JanusFtl::DestroySession(janus_plugin_session* handle, int* error)
     if (viewingStream != nullptr)
     {
         ftlStreamStore->RemoveViewer(viewingStream, session);
+
+        // If we're an Edge node and there are no more viewers for this channel, we can
+        // un-subscribe.
+        if ((configuration->GetNodeKind() == NodeKind::Edge) &&
+            (viewingStream->GetViewers().size() == 0))
+        {
+            JANUS_LOG(LOG_INFO,
+                "FTL: Last viewer for channel %d has disconnected - unsubscribing...\n",
+                viewingStream->GetChannelId());
+            orchestrationClient->SendChannelSubscription(ConnectionSubscriptionPayload
+                {
+                    .IsSubscribe = false,
+                    .ChannelId = viewingStream->GetChannelId(),
+                });
+        }
+    }
+
+    // If this session was marked as pending for a particular channel, remove that record
+    std::optional<ftl_channel_id_t> pendingChannelId = 
+        ftlStreamStore->GetPendingChannelIdForSession(session);
+    if (pendingChannelId.has_value())
+    {
+        // Remove this viewer
+        ftlStreamStore->RemovePendingViewershipForSession(session);
+
+        std::set<std::shared_ptr<JanusSession>> outstandingPendingViewers = 
+            ftlStreamStore->GetPendingViewersForChannelId(pendingChannelId.value());
+
+        // If we're an Edge node and there are no more pending viewers for this channel, we can
+        // un-subscribe.
+        if ((configuration->GetNodeKind() == NodeKind::Edge) &&
+            (outstandingPendingViewers.size() == 0))
+        {
+            JANUS_LOG(LOG_INFO,
+                "FTL: Last pending viewer for channel %d has disconnected - unsubscribing...\n",
+                pendingChannelId.value());
+            orchestrationClient->SendChannelSubscription(ConnectionSubscriptionPayload
+                {
+                    .IsSubscribe = false,
+                    .ChannelId = pendingChannelId.value(),
+                });
+        }
     }
 
     // TODO: hang up media
@@ -299,22 +351,30 @@ void JanusFtl::initOrchestratorConnection()
 
 void JanusFtl::initServiceConnection()
 {
-    switch (configuration->GetServiceConnectionKind())
+    // If we are configured to be an edge node, we *must* use the EdgeNodeServiceConnection
+    if (configuration->GetNodeKind() == NodeKind::Edge)
     {
-    case ServiceConnectionKind::GlimeshServiceConnection:
-        serviceConnection = std::make_shared<GlimeshServiceConnection>(
-            configuration->GetGlimeshServiceHostname(),
-            configuration->GetGlimeshServicePort(),
-            configuration->GetGlimeshServiceUseHttps(),
-            configuration->GetGlimeshServiceClientId(),
-            configuration->GetGlimeshServiceClientSecret());
-        break;
-    case ServiceConnectionKind::DummyServiceConnection:
-    default:
-        serviceConnection = std::make_shared<DummyServiceConnection>(
-            configuration->GetDummyHmacKey(),
-            configuration->GetDummyPreviewImagePath());
-        break;
+        serviceConnection = std::make_shared<EdgeNodeServiceConnection>();
+    }
+    else
+    {
+        switch (configuration->GetServiceConnectionKind())
+        {
+        case ServiceConnectionKind::GlimeshServiceConnection:
+            serviceConnection = std::make_shared<GlimeshServiceConnection>(
+                configuration->GetGlimeshServiceHostname(),
+                configuration->GetGlimeshServicePort(),
+                configuration->GetGlimeshServiceUseHttps(),
+                configuration->GetGlimeshServiceClientId(),
+                configuration->GetGlimeshServiceClientSecret());
+            break;
+        case ServiceConnectionKind::DummyServiceConnection:
+        default:
+            serviceConnection = std::make_shared<DummyServiceConnection>(
+                configuration->GetDummyHmacKey(),
+                configuration->GetDummyPreviewImagePath());
+            break;
+        }
     }
 
     serviceConnection->Init();
@@ -495,6 +555,35 @@ janus_plugin_result* JanusFtl::handleWatchMessage(
     if (ftlStream == nullptr)
     {
         // This channel doesn't have a stream running!
+
+        // If we're an Edge node and this is a first viewer for a given channel,
+        // request that this channel be relayed to us.
+        if ((configuration->GetNodeKind() == NodeKind::Edge) &&
+            (ftlStreamStore->GetPendingViewersForChannelId(channelId).size() == 0))
+        {
+            // Generate a new stream key for incoming relay of this channel
+            const auto& edgeServiceConnection = 
+                std::dynamic_pointer_cast<EdgeNodeServiceConnection>(
+                    serviceConnection);
+            if (edgeServiceConnection == nullptr)
+            {
+                throw std::runtime_error(
+                    "Unexpected service connection type - expected EdgeNodeServiceConnection.");
+            }
+            std::vector<std::byte> streamKey = edgeServiceConnection->ProvisionStreamKey(channelId);
+
+            // Subscribe for relay of this stream
+            JANUS_LOG(LOG_INFO,
+                "FTL: First viewer for channel %d - subscribing...\n",
+               channelId);
+            orchestrationClient->SendChannelSubscription(ConnectionSubscriptionPayload
+                {
+                    .IsSubscribe = true,
+                    .ChannelId = channelId,
+                    .StreamKey = streamKey,
+                });
+        }
+
         // Add this session to a pending viewership list.
         JANUS_LOG(
             LOG_INFO,

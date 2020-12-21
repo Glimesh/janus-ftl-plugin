@@ -200,6 +200,20 @@ std::set<std::shared_ptr<JanusSession>> FtlStreamStore::GetPendingViewersForChan
     return std::set<std::shared_ptr<JanusSession>>(); // Empty set
 }
 
+std::optional<ftl_channel_id_t> FtlStreamStore::GetPendingChannelIdForSession(
+    std::shared_ptr<JanusSession> session)
+{
+    std::lock_guard<std::mutex> lock(pendingSessionMutex);
+
+    // Look up the channel ID
+    if (pendingSessionChannelId.count(session) <= 0)
+    {
+        return std::nullopt;
+    }
+    uint16_t channelId = pendingSessionChannelId[session];
+    return channelId;
+}
+
 std::set<std::shared_ptr<JanusSession>> FtlStreamStore::ClearPendingViewersForChannelId(
     uint16_t channelId)
 {

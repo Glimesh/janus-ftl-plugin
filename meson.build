@@ -6,6 +6,7 @@ project(
         'b_lundef=false', # Don't fail over undefined references, since we refer to some Janus code
         'b_asneeded=false', # Don't exclude libraries if we don't reference them directly
         'werror=true', # treat warnings as errors
+        'default_library=static',
     ],
 )
 
@@ -23,6 +24,7 @@ installdir = get_variable('INSTALL_PATH', (januspath + '/lib/janus/plugins'))
 sources = files([
     'src/Configuration.cpp',
     'src/DummyServiceConnection.cpp',
+    'src/EdgeNodeServiceConnection.cpp',
     'src/FtlClient.cpp',
     'src/FtlStream.cpp',
     'src/FtlStreamStore.cpp',

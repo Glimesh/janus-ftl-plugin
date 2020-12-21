@@ -43,5 +43,10 @@ public:
     void SendJpegPreviewImage(ftl_stream_id_t streamId, std::vector<uint8_t> jpegData) override;
 
 private:
+    /* Static private members */
+    static constexpr size_t DEFAULT_KEY_SIZE = 32;
+
+    /* Static members */
+    size_t streamKeySize = DEFAULT_KEY_SIZE;
     std::unordered_map<ftl_channel_id_t, std::vector<std::byte>> streamKeys;
 };

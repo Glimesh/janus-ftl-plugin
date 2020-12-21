@@ -121,6 +121,12 @@ public:
     std::set<std::shared_ptr<JanusSession>> GetPendingViewersForChannelId(uint16_t channelId);
 
     /**
+     * @brief Return the channel ID if a given session is pending viewership.
+     */
+    std::optional<ftl_channel_id_t> GetPendingChannelIdForSession(
+        std::shared_ptr<JanusSession> session);
+
+    /**
      * @brief Clears pending viewer store for a given channel ID
      * @param channelId Channel ID to clear pending viewers for
      * @return std::list<std::shared_ptr<JanusSession>> List of pending viewers that were cleared
