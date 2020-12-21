@@ -9,6 +9,12 @@
 
 #include "FtlTypes.h"
 #include "Result.h"
+#include "RtpRelayPacket.h"
+
+extern "C"
+{
+    #include <utils.h>
+}
 
 #include <chrono>
 #include <condition_variable>
@@ -71,6 +77,11 @@ public:
      */
     void SetOnClosed(std::function<void()> onClosed);
 
+    /**
+     * @brief Relays a packet from an incoming FtlStream
+     */
+    void RelayPacket(RtpRelayPacket packet);
+
 private:
     /* Private structs */
     struct FtlResponse
@@ -84,10 +95,15 @@ private:
     static constexpr int FTL_PROTOCOL_VERSION_MINOR = 9;
 
     /* Private members */
-    std::string targetHostname;
-    ftl_channel_id_t channelId;
-    std::vector<std::byte> streamKey;
+    const std::string targetHostname;
+    const ftl_channel_id_t channelId;
+    const std::vector<std::byte> streamKey;
+    std::atomic<bool> isStopping { false }; // Set once close has been called on the sockets and we
+                                            // are waiting for the connection thread to notice.
+    std::atomic<bool> isStopped { false };  // Set just before the connection thread exits.
     int controlSocketHandle = 0;
+    std::promise<void> connectionThreadEndedPromise;
+    std::future<void> connectionThreadEndedFuture = connectionThreadEndedPromise.get_future();
     std::thread connectionThread;
     std::mutex recvResponseMutex;
     std::condition_variable recvResponseConditionVariable;
@@ -103,6 +119,7 @@ private:
     Result<void> sendControlStartStream(FtlClient::ConnectMetadata metadata);
     Result<void> openMediaConnection();
     void connectionThreadBody();
+    void endConnection();
     void sendControlMessage(std::string message);
     Result<FtlClient::FtlResponse> waitForResponse(
         std::chrono::milliseconds timeout = std::chrono::milliseconds(500000));

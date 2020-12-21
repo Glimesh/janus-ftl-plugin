@@ -31,13 +31,17 @@ FtlStream::FtlStream(
     const std::shared_ptr<RelayThreadPool> relayThreadPool,
     const std::shared_ptr<ServiceConnection> serviceConnection,
     const uint16_t metadataReportIntervalMs,
-    const std::string myHostname) : 
+    const std::string myHostname,
+    const bool nackLostPackets,
+    const bool generatePreviews) : 
     ingestConnection(ingestConnection),
     mediaPort(mediaPort),
     relayThreadPool(relayThreadPool),
     serviceConnection(serviceConnection),
     metadataReportIntervalMs(metadataReportIntervalMs),
-    myHostname(myHostname)
+    myHostname(myHostname),
+    nackLostPackets(nackLostPackets),
+    generatePreviews(generatePreviews)
 {
     // Bind to ingest callbacks
     ingestConnection->SetOnClosed(std::bind(
@@ -54,14 +58,17 @@ void FtlStream::Start()
     streamStartTime = std::time(nullptr);
 
     // Initialize PreviewGenerator
-    switch (GetVideoCodec())
+    if (generatePreviews)
     {
-    case VideoCodecKind::H264:
-        previewGenerator = std::make_unique<H264PreviewGenerator>();
-        break;
-    case VideoCodecKind::Unsupported:
-    default:
-        break;
+        switch (GetVideoCodec())
+        {
+        case VideoCodecKind::H264:
+            previewGenerator = std::make_unique<H264PreviewGenerator>();
+            break;
+        case VideoCodecKind::Unsupported:
+        default:
+            break;
+        }
     }
 
     // Start listening for incoming packets
@@ -358,9 +365,12 @@ void FtlStream::startStreamThread(std::promise<void>&& streamReadyPromise)
                     .channelId = GetChannelId()
                 });
 
-                // Check for any lost packets
-                markReceivedSequence(rtpHeader->type, sequenceNumber);
-                processLostPackets(remote, rtpHeader->type, sequenceNumber, rtpHeader->timestamp);
+                if (nackLostPackets)
+                {
+                    // Check for any lost packets
+                    markReceivedSequence(rtpHeader->type, sequenceNumber);
+                    processLostPackets(remote, rtpHeader->type, sequenceNumber, rtpHeader->timestamp);
+                }
             }
             else
             {
@@ -430,10 +440,10 @@ void FtlStream::startStreamMetadataReportingThread()
                 .streamerToIngestPingMs       = streamerToIngestPingMs,
                 .streamerClientVendorName     = ingestConnection->GetVendorName(),
                 .streamerClientVendorVersion  = ingestConnection->GetVendorVersion(),
-                .videoCodec                   = SupportedVideoCodecs::VideoCodecString(ingestConnection->GetVideoCodec()),
-                .audioCodec                   = SupportedAudioCodecs::AudioCodecString(ingestConnection->GetAudioCodec()),
-                .videoWidth                   = 1280,
-                .videoHeight                  = 720,
+                .videoCodec                   = SupportedVideoCodecs::VideoCodecString(GetVideoCodec()),
+                .audioCodec                   = SupportedAudioCodecs::AudioCodecString(GetAudioCodec()),
+                .videoWidth                   = GetVideoWidth(),
+                .videoHeight                  = GetVideoHeight(),
             });
 
         // Send a preview of the latest keyframe if needed

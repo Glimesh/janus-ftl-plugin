@@ -12,6 +12,7 @@
 
 #include "FtlTypes.h"
 
+#include <list>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -145,14 +146,19 @@ public:
     void AddRelay(RelayStore relay);
 
     /**
+     * @brief Removes a relay with the given channel ID and target hostname, returning a copy
+     */
+    std::optional<RelayStore> RemoveRelay(ftl_channel_id_t channelId, std::string targetHostname);
+
+    /**
      * @brief Retrieves a relay for a given channel ID if one exists.
      */
-    std::optional<RelayStore> GetRelayForChannelId(ftl_channel_id_t channelId);
+    std::list<RelayStore> GetRelaysForChannelId(ftl_channel_id_t channelId);
 
     /**
      * @brief Removes references to any relays associated with the given channel ID
      */
-    void ClearRelay(ftl_channel_id_t channelId);
+    void ClearRelays(ftl_channel_id_t channelId);
 private:
     /* Private members */
     std::mutex channelIdMapMutex;
@@ -165,5 +171,5 @@ private:
     std::map<uint16_t, std::set<std::shared_ptr<JanusSession>>> pendingChannelIdSessions;
     std::map<std::shared_ptr<JanusSession>, uint16_t> pendingSessionChannelId;
     std::mutex relaysMutex;
-    std::map<ftl_channel_id_t, RelayStore> relaysByChannelId;
+    std::map<ftl_channel_id_t, std::list<RelayStore>> relaysByChannelId;
 };

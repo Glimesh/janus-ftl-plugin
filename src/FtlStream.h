@@ -45,7 +45,9 @@ public:
         const std::shared_ptr<RelayThreadPool> relayThreadPool,
         const std::shared_ptr<ServiceConnection> serviceConnection,
         const uint16_t metadataReportIntervalMs,
-        const std::string myHostname);
+        const std::string myHostname,
+        const bool nackLostPackets = true,
+        const bool generatePreviews = true);
 
     /* Public methods */
     void Start();
@@ -85,6 +87,8 @@ private:
     const std::shared_ptr<ServiceConnection> serviceConnection;
     const uint16_t metadataReportIntervalMs;
     const std::string myHostname;
+    const bool nackLostPackets;
+    const bool generatePreviews;
     ftl_stream_id_t streamId;
     janus_rtp_switching_context rtpSwitchingContext;
     int mediaSocketHandle;

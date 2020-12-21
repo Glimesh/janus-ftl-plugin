@@ -266,29 +266,54 @@ void FtlStreamStore::AddRelay(FtlStreamStore::RelayStore relay)
 {
     std::lock_guard<std::mutex> lock(relaysMutex);
 
-    // Check for collisions
-    if (relaysByChannelId.count(relay.ChannelId) > 0)
+    if (relaysByChannelId.count(relay.ChannelId) <= 0)
     {
-        throw std::invalid_argument(
-            "Attempt to add FTL Relay with a channel ID that is already assigned.");
+        relaysByChannelId[relay.ChannelId] = std::list<RelayStore>();
     }
 
-    // Add to map
-    relaysByChannelId[relay.ChannelId] = relay;
+    relaysByChannelId[relay.ChannelId].push_back(relay);
 }
 
-std::optional<FtlStreamStore::RelayStore> FtlStreamStore::GetRelayForChannelId(
+std::optional<FtlStreamStore::RelayStore> FtlStreamStore::RemoveRelay(ftl_channel_id_t channelId, std::string targetHostname)
+{
+    std::lock_guard<std::mutex> lock(relaysMutex);
+
+    if (relaysByChannelId.count(channelId) <= 0)
+    {
+        return std::nullopt;
+    }
+
+    auto& relayList = relaysByChannelId[channelId];
+    for (auto it = relayList.begin(); it != relayList.end();)
+    {
+        auto& relay = *it;
+        if ((relay.ChannelId == channelId) && (relay.TargetHost == targetHostname))
+        {
+            RelayStore relayCopy = relay;
+            it = relayList.erase(it);
+            return relayCopy;
+        }
+        else
+        {
+            ++it;
+        }
+    }
+
+    return std::nullopt;
+}
+
+std::list<FtlStreamStore::RelayStore> FtlStreamStore::GetRelaysForChannelId(
     ftl_channel_id_t channelId)
 {
     std::lock_guard<std::mutex> lock(relaysMutex);
     if (relaysByChannelId.count(channelId) <= 0)
     {
-        return std::nullopt;
+        return std::list<FtlStreamStore::RelayStore>();
     }
     return relaysByChannelId.at(channelId);
 }
 
-void FtlStreamStore::ClearRelay(ftl_channel_id_t channelId)
+void FtlStreamStore::ClearRelays(ftl_channel_id_t channelId)
 {
     std::lock_guard<std::mutex> lock(relaysMutex);
     relaysByChannelId.erase(channelId);

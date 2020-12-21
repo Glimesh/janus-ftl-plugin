@@ -46,8 +46,8 @@ deps = [
     dependency('libcrypto'),
     dependency('libavcodec'),
     # Meson wrapped dependencies
-    subproject('spdlog').get_variable('spdlog_dep'),
     subproject('fmt', default_options: 'default_library=static').get_variable('fmt_dep'),
+    subproject('spdlog', default_options: 'external_fmt=true').get_variable('spdlog_dep'),
 ]
 
 incdir = include_directories(

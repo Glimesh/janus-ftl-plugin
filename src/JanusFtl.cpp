@@ -400,13 +400,19 @@ uint16_t JanusFtl::newIngestFtlStream(std::shared_ptr<IngestConnection> connecti
     }
 
     // Spin up a new FTL stream
+    bool nackLostPackets = ((configuration->GetNodeKind() == NodeKind::Standalone) || 
+        (configuration->GetNodeKind() == NodeKind::Ingest));
+    bool generatePreviews = ((configuration->GetNodeKind() == NodeKind::Standalone) || 
+        (configuration->GetNodeKind() == NodeKind::Ingest));
     auto ftlStream = std::make_shared<FtlStream>(
         connection,
         targetPort,
         relayThreadPool,
         serviceConnection,
         configuration->GetServiceConnectionMetadataReportIntervalMs(),
-        configuration->GetMyHostname());
+        configuration->GetMyHostname(),
+        nackLostPackets,
+        generatePreviews);
     ftlStream->SetOnClosed(std::bind(
         &JanusFtl::ftlStreamClosed,
         this,
@@ -487,20 +493,20 @@ void JanusFtl::ftlStreamClosed(FtlStream& ftlStream)
             });
     }
 
-    // If a relay exists for this stream, stop and remove it.
-    std::optional<FtlStreamStore::RelayStore> relay = 
-        ftlStreamStore->GetRelayForChannelId(stream->GetChannelId());
-    if (relay.has_value())
+    // If relays exist for this stream, stop and remove them
+    std::list<FtlStreamStore::RelayStore> relays = 
+        ftlStreamStore->GetRelaysForChannelId(stream->GetChannelId());
+    for (const auto& relay : relays)
     {
         JANUS_LOG(
             LOG_INFO,
             "FTL: Stopping %s relay for channel %d / stream %d...\n",
-            relay.value().TargetHost.c_str(),
+            relay.TargetHost.c_str(),
             stream->GetChannelId(),
             stream->GetStreamId());
-        relay.value().FtlClientInstance->Stop();
-        ftlStreamStore->ClearRelay(relay.value().ChannelId);
+        relay.FtlClientInstance->Stop();
     }
+    ftlStreamStore->ClearRelays(stream->GetChannelId());
 
     ftlStreamStore->RemoveStream(stream);
 }
@@ -809,26 +815,28 @@ ConnectionResult JanusFtl::onOrchestratorStreamRelay(ConnectionRelayPayload payl
     {
         JANUS_LOG(
             LOG_INFO,
-            "FTL: End Stream Relay request from Orchestrator: Channel %d, Stream %d\n",
+            "FTL: End Stream Relay request from Orchestrator: Channel %d, Stream %d, Target: %s\n",
             payload.ChannelId,
-            payload.StreamId);
+            payload.StreamId,
+            payload.TargetHostname.c_str());
 
-        // Find the relay
+        // Remove and stop the relay
         std::optional<FtlStreamStore::RelayStore> relay = 
-            ftlStreamStore->GetRelayForChannelId(payload.ChannelId);
+            ftlStreamStore->RemoveRelay(payload.ChannelId, payload.TargetHostname);
         if (relay.has_value() == false)
         {
             JANUS_LOG(
                 LOG_WARN,
-                "FTL: Orchestrator requested to stop non-existant relay: Channel %d, Stream %d\n",
+                "FTL: Orchestrator requested to stop non-existant relay: "
+                "Channel %d, Stream %d, Target: %s\n",
                 payload.ChannelId,
-                payload.StreamId);
+                payload.StreamId,
+                payload.TargetHostname.c_str());
         }
         else
         {
-            // Stop the relay, then remove it from the store.
+            // Stop the relay
             relay.value().FtlClientInstance->Stop();
-            ftlStreamStore->ClearRelay(payload.ChannelId);
         }
 
         return ConnectionResult

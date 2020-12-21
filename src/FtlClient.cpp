@@ -72,12 +72,41 @@ Result<void> FtlClient::ConnectAsync(FtlClient::ConnectMetadata metadata)
 
 void FtlClient::Stop()
 {
-
+    if (!isStopping && !isStopped)
+    {
+        // Looks like this connection hasn't stopped yet.
+        // Close the sockets and wait for the connection thread to end.
+        isStopping = true;
+        if (controlSocketHandle != 0)
+        {
+            shutdown(controlSocketHandle, SHUT_RDWR);
+            close(controlSocketHandle);
+        }
+        if (mediaSocketHandle != 0)
+        {
+            shutdown(mediaSocketHandle, SHUT_RDWR);
+            close(mediaSocketHandle);
+        }
+        connectionThreadEndedFuture.wait();
+    }
+    else if (isStopping && !isStopped)
+    {
+        // We're already stopping - just wait for the connnection thread to end.
+        connectionThreadEndedFuture.wait();
+    }
 }
 
 void FtlClient::SetOnClosed(std::function<void()> onClosed)
 {
     this->onClosed = onClosed;
+}
+
+void FtlClient::RelayPacket(RtpRelayPacket packet)
+{
+    if (mediaSocketHandle != 0)
+    {
+        write(mediaSocketHandle, packet.rtpPacketPayload->data(), packet.rtpPacketPayload->size());
+    }
 }
 #pragma endregion Public methods
 
@@ -264,6 +293,10 @@ Result<void> FtlClient::openMediaConnection()
 
 void FtlClient::connectionThreadBody()
 {
+    // We set this promise value after the thread exits so we can properly
+    // wait for the thread to exit after stopping the connection.
+    connectionThreadEndedPromise.set_value_at_thread_exit();
+
     std::string receivedBytes;
     char recvBuffer[512] = {0};
     int readBytes = 0;
@@ -342,6 +375,39 @@ void FtlClient::connectionThreadBody()
             }
             recvResponseConditionVariable.notify_one();
         }
+    }
+    endConnection();
+}
+
+void FtlClient::endConnection()
+{
+    if (!isStopping)
+    {
+        // We haven't been asked to stop, so the connection was closed for another reason.
+        // Close the sockets.
+        isStopping = true;
+        if (controlSocketHandle != 0)
+        {
+            shutdown(controlSocketHandle, SHUT_RDWR);
+            close(controlSocketHandle);
+        }
+        if (mediaSocketHandle != 0)
+        {
+            shutdown(mediaSocketHandle, SHUT_RDWR);
+            close(mediaSocketHandle);
+        }
+
+        // We only callback when we haven't been explicitly told to stop (to avoid feedback loops)
+        if (onClosed)
+        {
+            onClosed();
+        }
+    }
+
+    if (!isStopped)
+    {
+        // By this point, the sockets have been closed.
+        isStopped = true;
     }
 }
 

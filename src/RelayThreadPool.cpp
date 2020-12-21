@@ -9,6 +9,8 @@
  */
 
 #include "RelayThreadPool.h"
+
+#include "FtlClient.h"
 #include "FtlStreamStore.h"
 #include "FtlStream.h"
 #include "JanusSession.h"
@@ -98,6 +100,14 @@ void RelayThreadPool::relayThreadMethod(unsigned int threadNumber)
         RtpRelayPacket packet = std::move(packetRelayQueue.front());
         packetRelayQueue.pop();
         lock.unlock();
+
+        // Are we relaying this packet to anyone?
+        const std::list<FtlStreamStore::RelayStore> relays =
+            ftlStreamStore->GetRelaysForChannelId(packet.channelId);
+        for (const auto& relay : relays)
+        {
+            relay.FtlClientInstance->RelayPacket(packet);
+        }
 
         // Find the stream we're sending this to the viewers of
         std::shared_ptr<FtlStream> originStream = 
