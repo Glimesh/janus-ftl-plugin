@@ -44,7 +44,7 @@ std::string DummyServiceConnection::GetHmacKey(ftl_channel_id_t channelId)
 
 ftl_stream_id_t DummyServiceConnection::StartStream(ftl_channel_id_t channelId)
 {
-    return channelId;
+    return currentStreamId++;
 }
 
 void DummyServiceConnection::UpdateStreamMetadata(ftl_stream_id_t streamId, StreamMetadata metadata)

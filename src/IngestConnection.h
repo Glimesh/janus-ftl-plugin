@@ -51,6 +51,8 @@ public:
     bool GetHasVideo();
     bool GetHasAudio();
     VideoCodecKind GetVideoCodec();
+    uint16_t GetVideoWidth();
+    uint16_t GetVideoHeight();
     AudioCodecKind GetAudioCodec();
     rtp_ssrc_t GetAudioSsrc();
     rtp_ssrc_t GetVideoSsrc();
@@ -103,7 +105,4 @@ private:
     void processAttributeCommand(std::string command);
     void processDotCommand();
     void processPingCommand();
-    // Utility methods
-    std::string byteArrayToHexString(uint8_t* byteArray, uint32_t length);
-    std::vector<uint8_t> hexStringToByteArray(std::string hexString);
 };

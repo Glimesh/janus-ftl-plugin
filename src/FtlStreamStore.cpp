@@ -200,6 +200,20 @@ std::set<std::shared_ptr<JanusSession>> FtlStreamStore::GetPendingViewersForChan
     return std::set<std::shared_ptr<JanusSession>>(); // Empty set
 }
 
+std::optional<ftl_channel_id_t> FtlStreamStore::GetPendingChannelIdForSession(
+    std::shared_ptr<JanusSession> session)
+{
+    std::lock_guard<std::mutex> lock(pendingSessionMutex);
+
+    // Look up the channel ID
+    if (pendingSessionChannelId.count(session) <= 0)
+    {
+        return std::nullopt;
+    }
+    uint16_t channelId = pendingSessionChannelId[session];
+    return channelId;
+}
+
 std::set<std::shared_ptr<JanusSession>> FtlStreamStore::ClearPendingViewersForChannelId(
     uint16_t channelId)
 {
@@ -246,5 +260,62 @@ void FtlStreamStore::RemovePendingViewershipForSession(std::shared_ptr<JanusSess
     {
         JANUS_LOG(LOG_WARN, "FTL: Failed to erase session from pending channel ID session set.");
     }
+}
+
+void FtlStreamStore::AddRelay(FtlStreamStore::RelayStore relay)
+{
+    std::lock_guard<std::mutex> lock(relaysMutex);
+
+    if (relaysByChannelId.count(relay.ChannelId) <= 0)
+    {
+        relaysByChannelId[relay.ChannelId] = std::list<RelayStore>();
+    }
+
+    relaysByChannelId[relay.ChannelId].push_back(relay);
+}
+
+std::optional<FtlStreamStore::RelayStore> FtlStreamStore::RemoveRelay(ftl_channel_id_t channelId, std::string targetHostname)
+{
+    std::lock_guard<std::mutex> lock(relaysMutex);
+
+    if (relaysByChannelId.count(channelId) <= 0)
+    {
+        return std::nullopt;
+    }
+
+    auto& relayList = relaysByChannelId[channelId];
+    for (auto it = relayList.begin(); it != relayList.end();)
+    {
+        auto& relay = *it;
+        if ((relay.ChannelId == channelId) && (relay.TargetHost == targetHostname))
+        {
+            RelayStore relayCopy = relay;
+            it = relayList.erase(it);
+            return relayCopy;
+        }
+        else
+        {
+            ++it;
+        }
+    }
+
+    return std::nullopt;
+}
+
+std::list<FtlStreamStore::RelayStore> FtlStreamStore::GetRelaysForChannelId(
+    ftl_channel_id_t channelId)
+{
+    std::lock_guard<std::mutex> lock(relaysMutex);
+    if (relaysByChannelId.count(channelId) <= 0)
+    {
+        return std::list<FtlStreamStore::RelayStore>();
+    }
+    return relaysByChannelId.at(channelId);
+}
+
+void FtlStreamStore::ClearRelays(ftl_channel_id_t channelId)
+{
+    std::lock_guard<std::mutex> lock(relaysMutex);
+    relaysByChannelId.erase(channelId);
 }
 #pragma endregion

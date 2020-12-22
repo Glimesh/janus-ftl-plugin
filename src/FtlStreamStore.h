@@ -10,11 +10,17 @@
 
 #pragma once
 
-#include <memory>
-#include <map>
-#include <set>
-#include <mutex>
+#include "FtlTypes.h"
 
+#include <list>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <set>
+#include <vector>
+
+class FtlClient;
 class FtlStream;
 class JanusSession;
 
@@ -24,6 +30,22 @@ class JanusSession;
 class FtlStreamStore
 {
 public:
+    /* Nested structs */
+    /**
+     * @brief
+     *  Used to manage the state of a relay between an incoming FTL stream and another node.
+     *  If this relay is active, FtlClient will be set to an instance of an FtlClient used to relay
+     *  stream data.
+     *  Otherwise, this is used to indicate that a relay is requested for a particular channel.
+     */
+    struct RelayStore
+    {
+        ftl_channel_id_t ChannelId;
+        std::string TargetHost;
+        std::vector<std::byte> StreamKey;
+        std::shared_ptr<FtlClient> FtlClientInstance;
+    };
+
     /**
      * @brief Adds the specified FtlStream instance to the stream store.
      * @param ftlStream The stream to add
@@ -100,6 +122,12 @@ public:
     std::set<std::shared_ptr<JanusSession>> GetPendingViewersForChannelId(uint16_t channelId);
 
     /**
+     * @brief Return the channel ID if a given session is pending viewership.
+     */
+    std::optional<ftl_channel_id_t> GetPendingChannelIdForSession(
+        std::shared_ptr<JanusSession> session);
+
+    /**
      * @brief Clears pending viewer store for a given channel ID
      * @param channelId Channel ID to clear pending viewers for
      * @return std::list<std::shared_ptr<JanusSession>> List of pending viewers that were cleared
@@ -111,6 +139,26 @@ public:
      * @param session Session to remove from pending viewer stores.
      */
     void RemovePendingViewershipForSession(std::shared_ptr<JanusSession> session);
+
+    /**
+     * @brief Adds a relay associated with a channel ID
+     */
+    void AddRelay(RelayStore relay);
+
+    /**
+     * @brief Removes a relay with the given channel ID and target hostname, returning a copy
+     */
+    std::optional<RelayStore> RemoveRelay(ftl_channel_id_t channelId, std::string targetHostname);
+
+    /**
+     * @brief Retrieves a relay for a given channel ID if one exists.
+     */
+    std::list<RelayStore> GetRelaysForChannelId(ftl_channel_id_t channelId);
+
+    /**
+     * @brief Removes references to any relays associated with the given channel ID
+     */
+    void ClearRelays(ftl_channel_id_t channelId);
 private:
     /* Private members */
     std::mutex channelIdMapMutex;
@@ -122,4 +170,6 @@ private:
     std::mutex pendingSessionMutex;
     std::map<uint16_t, std::set<std::shared_ptr<JanusSession>>> pendingChannelIdSessions;
     std::map<std::shared_ptr<JanusSession>, uint16_t> pendingSessionChannelId;
+    std::mutex relaysMutex;
+    std::map<ftl_channel_id_t, std::list<RelayStore>> relaysByChannelId;
 };

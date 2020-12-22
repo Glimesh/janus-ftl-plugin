@@ -16,6 +16,8 @@ extern "C"
     #include <rtcp.h>
 }
 
+#include <FtlOrchestrationClient.h>
+
 #include "Configuration.h"
 #include "RtpRelayPacket.h"
 #include "IngestServer.h"
@@ -75,6 +77,7 @@ private:
     std::shared_ptr<RelayThreadPool> relayThreadPool;
     std::unique_ptr<IngestServer> ingestServer;
     std::unique_ptr<Configuration> configuration;
+    std::shared_ptr<FtlConnection> orchestrationClient;
     uint16_t minMediaPort = 9000; // TODO: Migrate to Configuration
     uint16_t maxMediaPort = 65535; // TODO: Migrate to Configuration
     std::mutex sessionsMutex;
@@ -82,6 +85,7 @@ private:
     std::mutex portAssignmentMutex;
 
     /* Private methods */
+    void initOrchestratorConnection();
     void initServiceConnection();
     uint16_t newIngestFtlStream(std::shared_ptr<IngestConnection> connection);
     void ftlStreamClosed(FtlStream& ftlStream);
@@ -93,4 +97,9 @@ private:
     janus_plugin_result* handleStartMessage(std::shared_ptr<JanusSession> session, JsonPtr message, char* transaction);
     int sendJsep(std::shared_ptr<JanusSession> session, std::shared_ptr<FtlStream> ftlStream, char* transaction);
     std::string generateSdpOffer(std::shared_ptr<JanusSession> session, std::shared_ptr<FtlStream> ftlStream);
+    // Orchestrator message handling
+    void onOrchestratorConnectionClosed();
+    ConnectionResult onOrchestratorIntro(ConnectionIntroPayload payload);
+    ConnectionResult onOrchestratorOutro(ConnectionOutroPayload payload);
+    ConnectionResult onOrchestratorStreamRelay(ConnectionRelayPayload payload);
 };

@@ -12,6 +12,15 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
+
+enum class NodeKind
+{
+    Standalone = 0,
+    Ingest = 1,
+    // Relay = 2,
+    Edge = 3,
+};
 
 enum class ServiceConnectionKind
 {
@@ -27,6 +36,11 @@ public:
 
     /* Configuration values */
     std::string GetMyHostname();
+    NodeKind GetNodeKind();
+    std::string GetOrchestratorHostname();
+    uint16_t GetOrchestratorPort();
+    std::vector<std::byte> GetOrchestratorPsk();
+    std::string GetOrchestratorRegionCode();
     ServiceConnectionKind GetServiceConnectionKind();
     uint16_t GetServiceConnectionMetadataReportIntervalMs();
 
@@ -44,6 +58,11 @@ public:
 private:
     /* Backing stores */
     std::string myHostname;
+    NodeKind nodeKind = NodeKind::Standalone;
+    std::string orchestratorHostname;
+    uint16_t orchestratorPort = 8085;
+    std::vector<std::byte> orchestratorPsk;
+    std::string orchestratorRegionCode = "global";
     ServiceConnectionKind serviceConnectionKind = ServiceConnectionKind::DummyServiceConnection;
     uint16_t serviceConnectionMetadataReportIntervalMs = 4000;
 
@@ -57,4 +76,10 @@ private:
     bool glimeshServiceUseHttps = false;
     std::string glimeshServiceClientId;
     std::string glimeshServiceClientSecret;
+
+    /* Private methods */
+    /**
+     * @brief Takes a hex string of format "010203FF" and converts it to an array of bytes.
+     */
+    std::vector<std::byte> hexStringToByteArray(std::string hexString);
 };

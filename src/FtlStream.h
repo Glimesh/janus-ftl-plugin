@@ -22,14 +22,15 @@ extern "C"
     #include <rtp.h>
 }
 #include <atomic>
-#include <stdint.h>
-#include <string>
-#include <memory>
-#include <thread>
 #include <functional>
+#include <future>
 #include <list>
+#include <memory>
 #include <mutex>
 #include <set>
+#include <stdint.h>
+#include <string>
+#include <thread>
 
 class JanusSession;
 
@@ -44,7 +45,9 @@ public:
         const std::shared_ptr<RelayThreadPool> relayThreadPool,
         const std::shared_ptr<ServiceConnection> serviceConnection,
         const uint16_t metadataReportIntervalMs,
-        const std::string myHostname);
+        const std::string myHostname,
+        const bool nackLostPackets = true,
+        const bool generatePreviews = true);
 
     /* Public methods */
     void Start();
@@ -56,10 +59,13 @@ public:
     
     /* Getters/Setters */
     ftl_channel_id_t GetChannelId();
+    ftl_stream_id_t GetStreamId();
     uint16_t GetMediaPort();
     bool GetHasVideo();
     bool GetHasAudio();
     VideoCodecKind GetVideoCodec();
+    uint16_t GetVideoWidth();
+    uint16_t GetVideoHeight();
     AudioCodecKind GetAudioCodec();
     rtp_ssrc_t GetAudioSsrc();
     rtp_ssrc_t GetVideoSsrc();
@@ -81,6 +87,8 @@ private:
     const std::shared_ptr<ServiceConnection> serviceConnection;
     const uint16_t metadataReportIntervalMs;
     const std::string myHostname;
+    const bool nackLostPackets;
+    const bool generatePreviews;
     ftl_stream_id_t streamId;
     janus_rtp_switching_context rtpSwitchingContext;
     int mediaSocketHandle;
@@ -109,7 +117,7 @@ private:
 
     /* Private methods */
     void ingestConnectionClosed(IngestConnection& connection);
-    void startStreamThread();
+    void startStreamThread(std::promise<void>&& streamReadyPromise);
     void startStreamMetadataReportingThread();
     void processKeyframePacket(std::shared_ptr<std::vector<unsigned char>> rtpPacket);
     void markReceivedSequence(rtp_payload_type_t payloadType, rtp_sequence_num_t receivedSequence);

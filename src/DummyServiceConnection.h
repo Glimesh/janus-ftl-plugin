@@ -37,6 +37,7 @@ public:
 private:
     std::string hmacKey;
     std::string previewSavePath;
+    ftl_stream_id_t currentStreamId = 0;
 
     /**
      * @brief 

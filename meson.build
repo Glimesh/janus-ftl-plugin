@@ -6,6 +6,7 @@ project(
         'b_lundef=false', # Don't fail over undefined references, since we refer to some Janus code
         'b_asneeded=false', # Don't exclude libraries if we don't reference them directly
         'werror=true', # treat warnings as errors
+        'default_library=static',
     ],
 )
 
@@ -23,6 +24,8 @@ installdir = get_variable('INSTALL_PATH', (januspath + '/lib/janus/plugins'))
 sources = files([
     'src/Configuration.cpp',
     'src/DummyServiceConnection.cpp',
+    'src/EdgeNodeServiceConnection.cpp',
+    'src/FtlClient.cpp',
     'src/FtlStream.cpp',
     'src/FtlStreamStore.cpp',
     'src/GlimeshServiceConnection.cpp',
@@ -41,12 +44,16 @@ deps = [
     dependency('jansson'),
     dependency('libssl'),
     dependency('libcrypto'),
-    dependency('libavcodec')
+    dependency('libavcodec'),
+    # Meson wrapped dependencies
+    subproject('fmt', default_options: 'default_library=static').get_variable('fmt_dep'),
+    subproject('spdlog', default_options: 'external_fmt=true').get_variable('spdlog_dep'),
 ]
 
 incdir = include_directories(
     './src',
     './cpp-httplib',
+    './janus-ftl-orchestrator/inc',
     janusincludepath,
 )
 
@@ -57,4 +64,11 @@ shared_library(
     include_directories: incdir,
     install: true,
     install_dir: installdir
+)
+
+executable(
+    'ftlclienttest',
+    files(['src/ftlclienttest.cpp', 'src/FtlClient.cpp']),
+    dependencies: deps,
+    include_directories: incdir
 )

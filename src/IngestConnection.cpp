@@ -9,6 +9,9 @@
  */
 
 #include "IngestConnection.h"
+
+#include "Util.h"
+
 #include <unistd.h>
 extern "C"
 {
@@ -79,6 +82,16 @@ bool IngestConnection::GetHasAudio()
 VideoCodecKind IngestConnection::GetVideoCodec()
 {
     return videoCodec;
+}
+
+uint16_t IngestConnection::GetVideoWidth()
+{
+    return videoWidth;
+}
+
+uint16_t IngestConnection::GetVideoHeight()
+{
+    return videoHeight;
 }
 
 AudioCodecKind IngestConnection::GetAudioCodec()
@@ -238,7 +251,9 @@ void IngestConnection::processHmacCommand()
     {
         hmacPayload[i] = uniformDistribution(randomEngine);
     }
-    std::string hmacString = byteArrayToHexString(&hmacPayload[0], hmacPayload.size());
+    std::string hmacString = Util::ByteArrayToHexString(
+        reinterpret_cast<std::byte*>(&hmacPayload[0]),
+        hmacPayload.size());
     JANUS_LOG(LOG_INFO, "FTL: Sending HMAC payload: %s\n", hmacString.c_str());
     writeToSocket("200 ", 4);
     writeToSocket(hmacString.c_str(), hmacString.size());
@@ -256,16 +271,29 @@ void IngestConnection::processConnectCommand(std::string command)
         std::string hmacHashStr = matches[2].str();
 
         uint32_t channelId = static_cast<uint32_t>(std::stoul(channelIdStr));
-        std::vector<uint8_t> hmacHash = hexStringToByteArray(hmacHashStr);
+        std::vector<std::byte> hmacHash = Util::HexStringToByteArray(hmacHashStr);
 
         std::string key = serviceConnection->GetHmacKey(channelId);
 
-        uint8_t buffer[512];
+        std::byte buffer[512];
         uint32_t bufferLength;
-        HMAC(EVP_sha512(), key.c_str(), key.length(), &hmacPayload[0], hmacPayload.size(), buffer, &bufferLength);
+        HMAC(
+            EVP_sha512(),
+            key.c_str(),
+            key.length(),
+            &hmacPayload[0],
+            hmacPayload.size(),
+            reinterpret_cast<unsigned char*>(buffer),
+            &bufferLength);
 
-        JANUS_LOG(LOG_INFO, "FTL: Client hash: %s\n", hmacHashStr.c_str());
-        JANUS_LOG(LOG_INFO, "FTL: Server hash: %s\n", byteArrayToHexString(&buffer[0], bufferLength).c_str());
+        JANUS_LOG(
+            LOG_INFO,
+            "FTL: Client hash: %s\n",
+            hmacHashStr.c_str());
+        JANUS_LOG(
+            LOG_INFO,
+            "FTL: Server hash: %s\n",
+            Util::ByteArrayToHexString(&buffer[0], bufferLength).c_str());
 
         // Do the hashed values match?
         bool match = true;
@@ -431,35 +459,5 @@ void IngestConnection::processDotCommand()
 void IngestConnection::processPingCommand()
 {
     writeToSocket("201\n", 4);
-}
-
-std::string IngestConnection::byteArrayToHexString(uint8_t* byteArray, uint32_t length)
-{
-    std::stringstream returnValue;
-    returnValue << std::hex << std::setfill('0');
-    for (unsigned int i = 0; i < length; ++i)
-    {
-        returnValue << std::setw(2) << static_cast<unsigned>(byteArray[i]);
-    }
-    return returnValue.str();
-}
-
-std::vector<uint8_t> IngestConnection::hexStringToByteArray(std::string hexString)
-{
-    std::vector<uint8_t> retVal;
-    std::stringstream convertStream;
-
-    unsigned int buffer;
-    unsigned int offset = 0;
-    while (offset < hexString.length()) 
-    {
-        convertStream.clear();
-        convertStream << std::hex << hexString.substr(offset, 2);
-        convertStream >> std::hex >> buffer;
-        retVal.push_back(static_cast<uint8_t>(buffer));
-        offset += 2;
-    }
-
-    return retVal;
 }
 #pragma endregion

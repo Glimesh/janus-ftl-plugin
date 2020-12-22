@@ -31,13 +31,17 @@ FtlStream::FtlStream(
     const std::shared_ptr<RelayThreadPool> relayThreadPool,
     const std::shared_ptr<ServiceConnection> serviceConnection,
     const uint16_t metadataReportIntervalMs,
-    const std::string myHostname) : 
+    const std::string myHostname,
+    const bool nackLostPackets,
+    const bool generatePreviews) : 
     ingestConnection(ingestConnection),
     mediaPort(mediaPort),
     relayThreadPool(relayThreadPool),
     serviceConnection(serviceConnection),
     metadataReportIntervalMs(metadataReportIntervalMs),
-    myHostname(myHostname)
+    myHostname(myHostname),
+    nackLostPackets(nackLostPackets),
+    generatePreviews(generatePreviews)
 {
     // Bind to ingest callbacks
     ingestConnection->SetOnClosed(std::bind(
@@ -54,19 +58,29 @@ void FtlStream::Start()
     streamStartTime = std::time(nullptr);
 
     // Initialize PreviewGenerator
-    switch (GetVideoCodec())
+    if (generatePreviews)
     {
-    case VideoCodecKind::H264:
-        previewGenerator = std::make_unique<H264PreviewGenerator>();
-        break;
-    case VideoCodecKind::Unsupported:
-    default:
-        break;
+        switch (GetVideoCodec())
+        {
+        case VideoCodecKind::H264:
+            previewGenerator = std::make_unique<H264PreviewGenerator>();
+            break;
+        case VideoCodecKind::Unsupported:
+        default:
+            break;
+        }
     }
 
     // Start listening for incoming packets
-    streamThread = std::thread(&FtlStream::startStreamThread, this);
+    std::promise<void> streamThreadReadyPromise;
+    std::future<void> streamThreadReadyFuture = streamThreadReadyPromise.get_future();
+    streamThread = std::thread(
+        &FtlStream::startStreamThread,
+        this,
+        std::move(streamThreadReadyPromise));
     streamThread.detach();
+    // Wait for the stream thread to be ready
+    streamThreadReadyFuture.get();
 
     // Start thread for reporting stream metadata out
     streamMetadataReportingThread = 
@@ -144,6 +158,11 @@ ftl_channel_id_t FtlStream::GetChannelId()
     return ingestConnection->GetChannelId();
 }
 
+ftl_stream_id_t FtlStream::GetStreamId()
+{
+    return streamId;
+}
+
 uint16_t FtlStream::GetMediaPort()
 {
     return mediaPort;
@@ -162,6 +181,16 @@ bool FtlStream::GetHasAudio()
 VideoCodecKind FtlStream::GetVideoCodec()
 {
     return ingestConnection->GetVideoCodec();
+}
+
+uint16_t FtlStream::GetVideoWidth()
+{
+    return ingestConnection->GetVideoWidth();
+}
+
+uint16_t FtlStream::GetVideoHeight()
+{
+    return ingestConnection->GetVideoHeight();
 }
 
 AudioCodecKind FtlStream::GetAudioCodec()
@@ -203,7 +232,7 @@ void FtlStream::ingestConnectionClosed(IngestConnection& connection)
     stopping = true;
 }
 
-void FtlStream::startStreamThread()
+void FtlStream::startStreamThread(std::promise<void>&& streamReadyPromise)
 {
     sockaddr_in socketAddress;
     socketAddress.sin_family = AF_INET;
@@ -234,6 +263,9 @@ void FtlStream::startStreamThread()
 
     // Let the service know that we're streaming!
     streamId = serviceConnection->StartStream(GetChannelId());
+
+    // We're ready to start accepting packets.
+    streamReadyPromise.set_value();
 
     // Set up some values we'll be using in our read thread
     socklen_t addrlen;
@@ -333,9 +365,12 @@ void FtlStream::startStreamThread()
                     .channelId = GetChannelId()
                 });
 
-                // Check for any lost packets
-                markReceivedSequence(rtpHeader->type, sequenceNumber);
-                processLostPackets(remote, rtpHeader->type, sequenceNumber, rtpHeader->timestamp);
+                if (nackLostPackets)
+                {
+                    // Check for any lost packets
+                    markReceivedSequence(rtpHeader->type, sequenceNumber);
+                    processLostPackets(remote, rtpHeader->type, sequenceNumber, rtpHeader->timestamp);
+                }
             }
             else
             {
@@ -405,10 +440,10 @@ void FtlStream::startStreamMetadataReportingThread()
                 .streamerToIngestPingMs       = streamerToIngestPingMs,
                 .streamerClientVendorName     = ingestConnection->GetVendorName(),
                 .streamerClientVendorVersion  = ingestConnection->GetVendorVersion(),
-                .videoCodec                   = SupportedVideoCodecs::VideoCodecString(ingestConnection->GetVideoCodec()),
-                .audioCodec                   = SupportedAudioCodecs::AudioCodecString(ingestConnection->GetAudioCodec()),
-                .videoWidth                   = 1280,
-                .videoHeight                  = 720,
+                .videoCodec                   = SupportedVideoCodecs::VideoCodecString(GetVideoCodec()),
+                .audioCodec                   = SupportedAudioCodecs::AudioCodecString(GetAudioCodec()),
+                .videoWidth                   = GetVideoWidth(),
+                .videoHeight                  = GetVideoHeight(),
             });
 
         // Send a preview of the latest keyframe if needed

@@ -8,9 +8,11 @@
  * 
  */
 
+#include "FtlClient.h"
 #include "JanusFtl.h"
 #include "Configuration.h"
 #include "DummyServiceConnection.h"
+#include "EdgeNodeServiceConnection.h"
 #include "GlimeshServiceConnection.h"
 #include "JanssonPtr.h"
 #include <jansson.h>
@@ -34,6 +36,8 @@ int JanusFtl::Init(janus_callbacks* callback, const char* config_path)
 
     configuration = std::make_unique<Configuration>();
     configuration->Load();
+
+    initOrchestratorConnection();
 
     initServiceConnection();
 
@@ -79,6 +83,15 @@ struct janus_plugin_result* JanusFtl::HandleMessage(
 {
     JsonPtr messagePtr(message);
     JsonPtr jsepPtr(jsep);
+
+    // If we're not meant to be streaming to viewers, don't acknowledge any messages.
+    if (configuration->GetNodeKind() == NodeKind::Ingest)
+    {
+        JANUS_LOG(LOG_WARN, "FTL: Ingest service is ignoring incoming WebRTC message.\n");
+        return generateMessageErrorResponse(
+            FTL_PLUGIN_ERROR_INVALID_REQUEST,
+            "Server is ingest-only.");
+    }
 
     // Look up the session
     std::shared_ptr<JanusSession> session;
@@ -238,6 +251,48 @@ void JanusFtl::DestroySession(janus_plugin_session* handle, int* error)
     if (viewingStream != nullptr)
     {
         ftlStreamStore->RemoveViewer(viewingStream, session);
+
+        // If we're an Edge node and there are no more viewers for this channel, we can
+        // un-subscribe.
+        if ((configuration->GetNodeKind() == NodeKind::Edge) &&
+            (viewingStream->GetViewers().size() == 0))
+        {
+            JANUS_LOG(LOG_INFO,
+                "FTL: Last viewer for channel %d has disconnected - unsubscribing...\n",
+                viewingStream->GetChannelId());
+            orchestrationClient->SendChannelSubscription(ConnectionSubscriptionPayload
+                {
+                    .IsSubscribe = false,
+                    .ChannelId = viewingStream->GetChannelId(),
+                });
+        }
+    }
+
+    // If this session was marked as pending for a particular channel, remove that record
+    std::optional<ftl_channel_id_t> pendingChannelId = 
+        ftlStreamStore->GetPendingChannelIdForSession(session);
+    if (pendingChannelId.has_value())
+    {
+        // Remove this viewer
+        ftlStreamStore->RemovePendingViewershipForSession(session);
+
+        std::set<std::shared_ptr<JanusSession>> outstandingPendingViewers = 
+            ftlStreamStore->GetPendingViewersForChannelId(pendingChannelId.value());
+
+        // If we're an Edge node and there are no more pending viewers for this channel, we can
+        // un-subscribe.
+        if ((configuration->GetNodeKind() == NodeKind::Edge) &&
+            (outstandingPendingViewers.size() == 0))
+        {
+            JANUS_LOG(LOG_INFO,
+                "FTL: Last pending viewer for channel %d has disconnected - unsubscribing...\n",
+                pendingChannelId.value());
+            orchestrationClient->SendChannelSubscription(ConnectionSubscriptionPayload
+                {
+                    .IsSubscribe = false,
+                    .ChannelId = pendingChannelId.value(),
+                });
+        }
     }
 
     // TODO: hang up media
@@ -253,24 +308,73 @@ json_t* JanusFtl::QuerySession(janus_plugin_session* handle)
 #pragma endregion
 
 #pragma region Private methods
+void JanusFtl::initOrchestratorConnection()
+{
+    if (configuration->GetNodeKind() != NodeKind::Standalone)
+    {
+        JANUS_LOG(
+            LOG_INFO,
+            "FTL: Connecting to Orchestration service @ %s:%d...\n",
+            configuration->GetOrchestratorHostname().c_str(),
+            configuration->GetOrchestratorPort());
+        
+        // Open Orchestrator connection
+        orchestrationClient = FtlOrchestrationClient::Connect(
+            configuration->GetOrchestratorHostname(),
+            configuration->GetOrchestratorPsk(),
+            configuration->GetMyHostname(),
+            configuration->GetOrchestratorPort());
+        
+        // Bind to events from Orchestrator connection
+        orchestrationClient->SetOnConnectionClosed(
+            std::bind(&JanusFtl::onOrchestratorConnectionClosed, this));
+        orchestrationClient->SetOnIntro(
+            std::bind(&JanusFtl::onOrchestratorIntro, this, std::placeholders::_1));
+        orchestrationClient->SetOnOutro(
+            std::bind(&JanusFtl::onOrchestratorOutro, this, std::placeholders::_1));
+        orchestrationClient->SetOnStreamRelay(
+            std::bind(&JanusFtl::onOrchestratorStreamRelay, this, std::placeholders::_1));
+
+        // Start the connection and send an Intro
+        orchestrationClient->Start();
+        orchestrationClient->SendIntro(ConnectionIntroPayload
+            {
+                .VersionMajor = 0,
+                .VersionMinor = 0,
+                .VersionRevision = 0,
+                .RelayLayer = 0,
+                .RegionCode = configuration->GetOrchestratorRegionCode(),
+                .Hostname = configuration->GetMyHostname(),
+            });
+    }
+}
+
 void JanusFtl::initServiceConnection()
 {
-    switch (configuration->GetServiceConnectionKind())
+    // If we are configured to be an edge node, we *must* use the EdgeNodeServiceConnection
+    if (configuration->GetNodeKind() == NodeKind::Edge)
     {
-    case ServiceConnectionKind::GlimeshServiceConnection:
-        serviceConnection = std::make_shared<GlimeshServiceConnection>(
-            configuration->GetGlimeshServiceHostname(),
-            configuration->GetGlimeshServicePort(),
-            configuration->GetGlimeshServiceUseHttps(),
-            configuration->GetGlimeshServiceClientId(),
-            configuration->GetGlimeshServiceClientSecret());
-        break;
-    case ServiceConnectionKind::DummyServiceConnection:
-    default:
-        serviceConnection = std::make_shared<DummyServiceConnection>(
-            configuration->GetDummyHmacKey(),
-            configuration->GetDummyPreviewImagePath());
-        break;
+        serviceConnection = std::make_shared<EdgeNodeServiceConnection>();
+    }
+    else
+    {
+        switch (configuration->GetServiceConnectionKind())
+        {
+        case ServiceConnectionKind::GlimeshServiceConnection:
+            serviceConnection = std::make_shared<GlimeshServiceConnection>(
+                configuration->GetGlimeshServiceHostname(),
+                configuration->GetGlimeshServicePort(),
+                configuration->GetGlimeshServiceUseHttps(),
+                configuration->GetGlimeshServiceClientId(),
+                configuration->GetGlimeshServiceClientSecret());
+            break;
+        case ServiceConnectionKind::DummyServiceConnection:
+        default:
+            serviceConnection = std::make_shared<DummyServiceConnection>(
+                configuration->GetDummyHmacKey(),
+                configuration->GetDummyPreviewImagePath());
+            break;
+        }
     }
 
     serviceConnection->Init();
@@ -296,19 +400,41 @@ uint16_t JanusFtl::newIngestFtlStream(std::shared_ptr<IngestConnection> connecti
     }
 
     // Spin up a new FTL stream
+    bool nackLostPackets = ((configuration->GetNodeKind() == NodeKind::Standalone) || 
+        (configuration->GetNodeKind() == NodeKind::Ingest));
+    bool generatePreviews = ((configuration->GetNodeKind() == NodeKind::Standalone) || 
+        (configuration->GetNodeKind() == NodeKind::Ingest));
     auto ftlStream = std::make_shared<FtlStream>(
         connection,
         targetPort,
         relayThreadPool,
         serviceConnection,
         configuration->GetServiceConnectionMetadataReportIntervalMs(),
-        configuration->GetMyHostname());
+        configuration->GetMyHostname(),
+        nackLostPackets,
+        generatePreviews);
     ftlStream->SetOnClosed(std::bind(
         &JanusFtl::ftlStreamClosed,
         this,
         std::placeholders::_1));
     ftlStreamStore->AddStream(ftlStream);
     ftlStream->Start();
+
+    // If we are configured as an Ingest node, notify the Orchestrator that a stream has started.
+    if ((configuration->GetNodeKind() == NodeKind::Ingest) && (orchestrationClient != nullptr))
+    {
+        JANUS_LOG(
+            LOG_INFO,
+            "FTL: Publishing channel %d / stream %d to Orchestrator...\n",
+            ftlStream->GetChannelId(),
+            ftlStream->GetStreamId());
+        orchestrationClient->SendStreamPublish(ConnectionPublishPayload
+            {
+                .IsPublish = true,
+                .ChannelId = ftlStream->GetChannelId(),
+                .StreamId = ftlStream->GetStreamId(),
+            });
+    }
 
     // Add any pending viewers
     std::set<std::shared_ptr<JanusSession>> pendingViewers = 
@@ -350,6 +476,37 @@ void JanusFtl::ftlStreamClosed(FtlStream& ftlStream)
 
         // TODO: Tell the viewers that this stream has stopped
     }
+
+    // If we are configured as an Ingest node, notify the Orchestrator that a stream has ended.
+    if ((configuration->GetNodeKind() == NodeKind::Ingest) && (orchestrationClient != nullptr))
+    {
+        JANUS_LOG(
+            LOG_INFO,
+            "FTL: Unpublishing channel %d / stream %d from Orchestrator...\n",
+            stream->GetChannelId(),
+            stream->GetStreamId());
+        orchestrationClient->SendStreamPublish(ConnectionPublishPayload
+            {
+                .IsPublish = false,
+                .ChannelId = stream->GetChannelId(),
+                .StreamId = stream->GetStreamId(),
+            });
+    }
+
+    // If relays exist for this stream, stop and remove them
+    std::list<FtlStreamStore::RelayStore> relays = 
+        ftlStreamStore->GetRelaysForChannelId(stream->GetChannelId());
+    for (const auto& relay : relays)
+    {
+        JANUS_LOG(
+            LOG_INFO,
+            "FTL: Stopping %s relay for channel %d / stream %d...\n",
+            relay.TargetHost.c_str(),
+            stream->GetChannelId(),
+            stream->GetStreamId());
+        relay.FtlClientInstance->Stop();
+    }
+    ftlStreamStore->ClearRelays(stream->GetChannelId());
 
     ftlStreamStore->RemoveStream(stream);
 }
@@ -404,6 +561,35 @@ janus_plugin_result* JanusFtl::handleWatchMessage(
     if (ftlStream == nullptr)
     {
         // This channel doesn't have a stream running!
+
+        // If we're an Edge node and this is a first viewer for a given channel,
+        // request that this channel be relayed to us.
+        if ((configuration->GetNodeKind() == NodeKind::Edge) &&
+            (ftlStreamStore->GetPendingViewersForChannelId(channelId).size() == 0))
+        {
+            // Generate a new stream key for incoming relay of this channel
+            const auto& edgeServiceConnection = 
+                std::dynamic_pointer_cast<EdgeNodeServiceConnection>(
+                    serviceConnection);
+            if (edgeServiceConnection == nullptr)
+            {
+                throw std::runtime_error(
+                    "Unexpected service connection type - expected EdgeNodeServiceConnection.");
+            }
+            std::vector<std::byte> streamKey = edgeServiceConnection->ProvisionStreamKey(channelId);
+
+            // Subscribe for relay of this stream
+            JANUS_LOG(LOG_INFO,
+                "FTL: First viewer for channel %d - subscribing...\n",
+               channelId);
+            orchestrationClient->SendChannelSubscription(ConnectionSubscriptionPayload
+                {
+                    .IsSubscribe = true,
+                    .ChannelId = channelId,
+                    .StreamKey = streamKey,
+                });
+        }
+
         // Add this session to a pending viewership list.
         JANUS_LOG(
             LOG_INFO,
@@ -519,4 +705,145 @@ std::string JanusFtl::generateSdpOffer(
     }
     return offerStream.str();
 }
-#pragma endregion
+
+void JanusFtl::onOrchestratorConnectionClosed()
+{
+    // TODO: We should reconnect.
+    throw std::runtime_error("Connection to Orchestrator was closed unexpectedly.");
+}
+
+ConnectionResult JanusFtl::onOrchestratorIntro(ConnectionIntroPayload payload)
+{
+    JANUS_LOG(LOG_INFO, "FTL: Received Intro from Orchestrator.\n");
+    return ConnectionResult
+    {
+        .IsSuccess = true,
+    };
+}
+
+ConnectionResult JanusFtl::onOrchestratorOutro(ConnectionOutroPayload payload)
+{
+    JANUS_LOG(
+        LOG_INFO,
+        "FTL: Received Outro from Orchestrator: %s\n",
+        payload.DisconnectReason.c_str());
+
+    return ConnectionResult
+    {
+        .IsSuccess = true,
+    };
+}
+
+ConnectionResult JanusFtl::onOrchestratorStreamRelay(ConnectionRelayPayload payload)
+{
+    if (payload.IsStartRelay)
+    {
+        JANUS_LOG(
+            LOG_INFO,
+            "FTL: Start Stream Relay request from Orchestrator: Channel %d, Stream %d, Target %s\n",
+            payload.ChannelId,
+            payload.StreamId,
+            payload.TargetHostname.c_str());
+
+        // Do we have an active stream?
+        std::shared_ptr<FtlStream> activeStream = 
+            ftlStreamStore->GetStreamByChannelId(payload.ChannelId);
+        if (activeStream == nullptr)
+        {
+            JANUS_LOG(
+                LOG_ERR,
+                "FTL: Orchestrator requested a relay for channel that is not streaming."
+                "Target hostname: %s, Channel ID: %d\n",
+                payload.TargetHostname.c_str(),
+                payload.ChannelId);
+            return ConnectionResult
+                {
+                    .IsSuccess = false,
+                };
+        }
+
+        // Start the relay now!
+        std::shared_ptr<FtlClient> relayClient = std::make_shared<FtlClient>(
+            payload.TargetHostname,
+            payload.ChannelId,
+            payload.StreamKey);
+        Result<void> connectResult = relayClient->ConnectAsync(FtlClient::ConnectMetadata
+            {
+                .VendorName = "janus-ftl-plugin",
+                .VendorVersion = "0.0.0", // TODO: Versioning
+                .HasVideo = activeStream->GetHasVideo(),
+                .VideoCodec = 
+                    SupportedVideoCodecs::VideoCodecString(activeStream->GetVideoCodec()),
+                .VideoHeight = activeStream->GetVideoHeight(),
+                .VideoWidth = activeStream->GetVideoWidth(),
+                .VideoPayloadType = activeStream->GetVideoPayloadType(),
+                .VideoIngestSsrc = activeStream->GetVideoSsrc(),
+                .HasAudio = activeStream->GetHasAudio(),
+                .AudioCodec = 
+                    SupportedAudioCodecs::AudioCodecString(activeStream->GetAudioCodec()),
+                .AudioPayloadType = activeStream->GetAudioPayloadType(),
+                .AudioIngestSsrc = activeStream->GetAudioSsrc(),
+            });
+        if (connectResult.IsError)
+        {
+            JANUS_LOG(
+                LOG_ERR,
+                "FTL: Failed to connect to relay target %s for channel %d: %s\n",
+                payload.TargetHostname.c_str(),
+                payload.ChannelId,
+                connectResult.ErrorMessage.c_str());
+            return ConnectionResult
+                {
+                    .IsSuccess = false,
+                };
+        }
+
+        ftlStreamStore->AddRelay(FtlStreamStore::RelayStore
+            {
+                .ChannelId = payload.ChannelId,
+                .TargetHost = payload.TargetHostname,
+                .StreamKey = payload.StreamKey,
+                .FtlClientInstance = relayClient,
+            });
+        
+        return ConnectionResult
+        {
+            .IsSuccess = true,
+        };
+    }
+    else
+    {
+        JANUS_LOG(
+            LOG_INFO,
+            "FTL: End Stream Relay request from Orchestrator: Channel %d, Stream %d, Target: %s\n",
+            payload.ChannelId,
+            payload.StreamId,
+            payload.TargetHostname.c_str());
+
+        // Remove and stop the relay
+        std::optional<FtlStreamStore::RelayStore> relay = 
+            ftlStreamStore->RemoveRelay(payload.ChannelId, payload.TargetHostname);
+        if (relay.has_value() == false)
+        {
+            JANUS_LOG(
+                LOG_WARN,
+                "FTL: Orchestrator requested to stop non-existant relay: "
+                "Channel %d, Stream %d, Target: %s\n",
+                payload.ChannelId,
+                payload.StreamId,
+                payload.TargetHostname.c_str());
+        }
+        else
+        {
+            // Stop the relay
+            relay.value().FtlClientInstance->Stop();
+        }
+
+        return ConnectionResult
+        {
+            .IsSuccess = true,
+        };
+    }
+    
+}
+#pragma endregion Private methods
