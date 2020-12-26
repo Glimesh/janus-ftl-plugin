@@ -257,6 +257,17 @@ void JanusFtl::DestroySession(janus_plugin_session* handle, int* error)
         if ((configuration->GetNodeKind() == NodeKind::Edge) &&
             (viewingStream->GetViewers().size() == 0))
         {
+            // Remove temporary stream key
+            const auto& edgeServiceConnection = 
+                std::dynamic_pointer_cast<EdgeNodeServiceConnection>(
+                    serviceConnection);
+            if (edgeServiceConnection == nullptr)
+            {
+                throw std::runtime_error(
+                    "Unexpected service connection type - expected EdgeNodeServiceConnection.");
+            }
+            edgeServiceConnection->ClearStreamKey(viewingStream->GetChannelId());
+
             JANUS_LOG(LOG_INFO,
                 "FTL: Last viewer for channel %d has disconnected - unsubscribing...\n",
                 viewingStream->GetChannelId());
@@ -284,6 +295,17 @@ void JanusFtl::DestroySession(janus_plugin_session* handle, int* error)
         if ((configuration->GetNodeKind() == NodeKind::Edge) &&
             (outstandingPendingViewers.size() == 0))
         {
+            // Remove temporary stream key
+            const auto& edgeServiceConnection = 
+                std::dynamic_pointer_cast<EdgeNodeServiceConnection>(
+                    serviceConnection);
+            if (edgeServiceConnection == nullptr)
+            {
+                throw std::runtime_error(
+                    "Unexpected service connection type - expected EdgeNodeServiceConnection.");
+            }
+            edgeServiceConnection->ClearStreamKey(pendingChannelId.value());
+
             JANUS_LOG(LOG_INFO,
                 "FTL: Last pending viewer for channel %d has disconnected - unsubscribing...\n",
                 pendingChannelId.value());
