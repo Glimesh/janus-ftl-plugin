@@ -233,6 +233,7 @@ void JanusFtl::DataReady(janus_plugin_session* handle)
 void JanusFtl::HangUpMedia(janus_plugin_session* handle)
 {
     // TODO
+    JANUS_LOG(LOG_WARN, "FTL: HangUpMedia called by session, but we're not handling it!\n");
 }
 
 void JanusFtl::DestroySession(janus_plugin_session* handle, int* error)
