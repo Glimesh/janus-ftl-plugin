@@ -233,21 +233,7 @@ void JanusFtl::DataReady(janus_plugin_session* handle)
 void JanusFtl::HangUpMedia(janus_plugin_session* handle)
 {
     // TODO
-    JANUS_LOG(LOG_INFO, "FTL: HangUpMedia\n");
-
-    std::shared_ptr<JanusSession> session;
-    {
-        std::lock_guard<std::mutex> lock(sessionsMutex);
-        if (sessions.count(handle) <= 0)
-        {
-            JANUS_LOG(LOG_ERR, "FTL: No session associated with this handle...\n");
-            return;
-        }
-        session = sessions[handle];
-    }
-
-    session->SetIsStarted(false);
-    session->ResetRtpSwitchingContext();
+    JANUS_LOG(LOG_WARN, "FTL: HangUpMedia called by session, but we're not handling it!\n");
 }
 
 void JanusFtl::DestroySession(janus_plugin_session* handle, int* error)
