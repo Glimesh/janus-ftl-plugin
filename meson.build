@@ -22,20 +22,24 @@ janusincludepath = get_variable('JANUS_INC_PATH', (januspath + '/include/janus')
 installdir = get_variable('INSTALL_PATH', (januspath + '/lib/janus/plugins'))
 
 sources = files([
+    # Preview Generators
+    'src/PreviewGenerators/H264PreviewGenerator.cpp',
+    # Service Connections
+    'src/ServiceConnections/DummyServiceConnection.cpp',
+    'src/ServiceConnections/EdgeNodeServiceConnection.cpp',
+    'src/ServiceConnections/GlimeshServiceConnection.cpp',
+    # Library
     'src/Configuration.cpp',
-    'src/DummyServiceConnection.cpp',
-    'src/EdgeNodeServiceConnection.cpp',
     'src/FtlClient.cpp',
     'src/FtlStream.cpp',
     'src/FtlStreamStore.cpp',
-    'src/GlimeshServiceConnection.cpp',
-    'src/H264PreviewGenerator.cpp',
     'src/IngestConnection.cpp',
     'src/IngestServer.cpp',
-    'src/janus_ftl.cpp',
     'src/JanusSession.cpp',
     'src/JanusFtl.cpp',
-    'src/RelayThreadPool.cpp'
+    'src/RelayThreadPool.cpp',
+    # Library entrypoint
+    'src/entrypoint.cpp',
 ])
 
 deps = [
@@ -64,11 +68,4 @@ shared_library(
     include_directories: incdir,
     install: true,
     install_dir: installdir
-)
-
-executable(
-    'ftlclienttest',
-    files(['src/ftlclienttest.cpp', 'src/FtlClient.cpp']),
-    dependencies: deps,
-    include_directories: incdir
 )

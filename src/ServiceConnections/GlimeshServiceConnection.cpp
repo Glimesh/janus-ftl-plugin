@@ -9,7 +9,9 @@
  */
 
 #include "GlimeshServiceConnection.h"
-#include "FtlExceptions.h"
+
+#include "../Utilities/FtlTypes.h"
+
 #include <jansson.h>
 extern "C"
 {

@@ -10,6 +10,15 @@
 
 #pragma once
 
+#include "Configuration.h"
+#include "FtlStream.h"
+#include "FtlStreamStore.h"
+#include "IngestServer.h"
+#include "JanssonPtr.h"
+#include "JanusSession.h"
+#include "ServiceConnections/ServiceConnection.h"
+#include "Utilities/FtlTypes.h"
+
 extern "C"
 {
     #include <plugins/plugin.h>
@@ -18,14 +27,6 @@ extern "C"
 
 #include <FtlOrchestrationClient.h>
 
-#include "Configuration.h"
-#include "RtpRelayPacket.h"
-#include "IngestServer.h"
-#include "ServiceConnection.h"
-#include "JanusSession.h"
-#include "FtlStream.h"
-#include "JanssonPtr.h"
-#include "FtlStreamStore.h"
 #include <memory>
 #include <map>
 #include <mutex>

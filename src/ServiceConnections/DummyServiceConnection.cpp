@@ -9,7 +9,8 @@
  */
 
 #include "DummyServiceConnection.h"
-#include "FtlExceptions.h"
+
+#include "../Utilities/FtlTypes.h"
 
 #include <fstream>
 #include <iostream>

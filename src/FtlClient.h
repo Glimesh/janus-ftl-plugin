@@ -7,9 +7,8 @@
 
 #pragma once
 
-#include "FtlTypes.h"
-#include "Result.h"
-#include "RtpRelayPacket.h"
+#include "Utilities/FtlTypes.h"
+#include "Utilities/Result.h"
 
 extern "C"
 {

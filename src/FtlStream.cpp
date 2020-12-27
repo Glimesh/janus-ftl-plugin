@@ -8,13 +8,15 @@
  * 
  */
 
-#include "FtlExceptions.h"
 #include "FtlStream.h"
+
 #include "JanusSession.h"
+
 #include <algorithm>
 #include <fstream>
 #include <iostream>
 #include <poll.h>
+
 extern "C"
 {
     #include <unistd.h>

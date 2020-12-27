@@ -9,8 +9,7 @@
  */
 
 #include "H264PreviewGenerator.h"
-#include "FtlExceptions.h"
-#include "Keyframe.h"
+
 extern "C"
 {
     #include <rtp.h>

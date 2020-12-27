@@ -10,18 +10,19 @@
 
 #include "IngestConnection.h"
 
-#include "Util.h"
+#include "Utilities/Util.h"
 
+#include <arpa/inet.h>
+#include <iomanip>
+#include <openssl/hmac.h>
+#include <sstream>
+#include <sys/socket.h>
 #include <unistd.h>
+
 extern "C"
 {
     #include <debug.h>
-    #include <arpa/inet.h>
 }
-#include <sstream>
-#include <iomanip>
-#include <openssl/hmac.h>
-#include <sys/socket.h>
 
 const std::array<char, 4> IngestConnection::commandDelimiter = { '\r', '\n', '\r', '\n' };
 

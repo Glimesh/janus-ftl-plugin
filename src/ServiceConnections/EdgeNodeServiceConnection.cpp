@@ -7,7 +7,7 @@
 
 #include "EdgeNodeServiceConnection.h"
 
-#include "Util.h"
+#include "../Utilities/Util.h"
 
 #include <algorithm>
 
