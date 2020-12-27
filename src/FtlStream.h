@@ -9,13 +9,10 @@
  */
 #pragma once
 
-#include "RtpRelayPacket.h"
-#include "FtlTypes.h"
-#include "H264PreviewGenerator.h"
 #include "IngestConnection.h"
+#include "PreviewGenerators/H264PreviewGenerator.h"
 #include "RelayThreadPool.h"
-#include "StreamMetadata.h"
-#include "Keyframe.h"
+#include "Utilities/FtlTypes.h"
 
 extern "C"
 {

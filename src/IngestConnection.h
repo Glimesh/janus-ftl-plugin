@@ -10,10 +10,8 @@
 
 #pragma once
 
-#include "ServiceConnection.h"
-#include "AudioCodec.h"
-#include "VideoCodec.h"
-#include "FtlTypes.h"
+#include "ServiceConnections/ServiceConnection.h"
+#include "Utilities/FtlTypes.h"
 
 #include <thread>
 #include <random>

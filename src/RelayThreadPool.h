@@ -10,7 +10,7 @@
 
 #pragma once
 
-#include "RtpRelayPacket.h"
+#include "Utilities/FtlTypes.h"
 
 #include <atomic>
 #include <memory>

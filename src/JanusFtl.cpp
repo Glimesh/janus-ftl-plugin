@@ -8,19 +8,20 @@
  * 
  */
 
+#include "Configuration.h"
 #include "FtlClient.h"
 #include "JanusFtl.h"
-#include "Configuration.h"
-#include "DummyServiceConnection.h"
-#include "EdgeNodeServiceConnection.h"
-#include "GlimeshServiceConnection.h"
 #include "JanssonPtr.h"
-#include <jansson.h>
+#include "ServiceConnections/DummyServiceConnection.h"
+#include "ServiceConnections/EdgeNodeServiceConnection.h"
+#include "ServiceConnections/GlimeshServiceConnection.h"
+
 extern "C"
 {
     #include <apierror.h>
-    #include <rtcp.h>
     #include <debug.h>
+    #include <jansson.h>
+    #include <rtcp.h>
 }
 
 #pragma region Constructor/Destructor

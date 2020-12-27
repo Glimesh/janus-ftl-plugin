@@ -9,3 +9,6 @@ build/
 builddir/
 subprojects/*
 !subprojects/*.wrap
+
+# Any local utility scripts
+*.sh

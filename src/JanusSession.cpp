@@ -9,6 +9,7 @@
  */
 
 #include "JanusSession.h"
+
 extern "C"
 {
     #include <utils.h>

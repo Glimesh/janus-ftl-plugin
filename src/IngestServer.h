@@ -11,7 +11,8 @@
 #pragma once
 
 #include "IngestConnection.h"
-#include "ServiceConnection.h"
+#include "ServiceConnections/ServiceConnection.h"
+
 #include <sys/socket.h>
 #include <vector>
 #include <thread>

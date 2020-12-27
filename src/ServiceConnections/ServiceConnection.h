@@ -10,8 +10,7 @@
 
 #pragma once
 
-#include "StreamMetadata.h"
-#include "FtlTypes.h"
+#include "../Utilities/FtlTypes.h"
 
 #include <string>
 #include <vector>
