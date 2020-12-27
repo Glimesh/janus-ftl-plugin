@@ -69,3 +69,28 @@ shared_library(
     install: true,
     install_dir: installdir
 )
+
+#
+# Test binary
+#
+
+test_sources = files([
+    # Entrypoint
+    'test/test.cpp',
+])
+
+test_incdirs = include_directories(
+    './test',
+    './src',
+)
+
+test_deps = [
+    subproject('catch2').get_variable('catch2_dep'),
+]
+
+executable(
+    'janus-ftl-plugin-test',
+    test_sources,
+    dependencies: test_deps,
+    include_directories: test_incdirs,
+)
