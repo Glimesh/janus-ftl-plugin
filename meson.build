@@ -16,6 +16,9 @@ add_project_arguments('-Wno-unknown-pragmas', language: 'cpp')
 # Tell cpp-httplib that we want HTTPS support
 add_project_arguments('-DCPPHTTPLIB_OPENSSL_SUPPORT', language: 'cpp') 
 
+# Tell spdlog that we're including our own copy of fmt
+add_project_arguments('-DSPDLOG_FMT_EXTERNAL', language: 'cpp')
+
 # Set Janus paths from env vars, or sane defaults
 januspath = get_variable('JANUS_PATH', '/opt/janus')
 janusincludepath = get_variable('JANUS_INC_PATH', (januspath + '/include/janus'))
@@ -28,6 +31,8 @@ sources = files([
     'src/ServiceConnections/DummyServiceConnection.cpp',
     'src/ServiceConnections/EdgeNodeServiceConnection.cpp',
     'src/ServiceConnections/GlimeshServiceConnection.cpp',
+    # Connection Transports
+    'src/ConnectionTransports/TcpSocketConnectionTransport.cpp',
     # Library
     'src/Configuration.cpp',
     'src/FtlClient.cpp',
@@ -51,7 +56,7 @@ deps = [
     dependency('libavcodec'),
     # Meson wrapped dependencies
     subproject('fmt', default_options: 'default_library=static').get_variable('fmt_dep'),
-    subproject('spdlog', default_options: 'external_fmt=true').get_variable('spdlog_dep'),
+    subproject('spdlog').get_variable('spdlog_dep'),
 ]
 
 incdir = include_directories(
@@ -85,6 +90,7 @@ test_incdirs = include_directories(
 )
 
 test_deps = [
+    subproject('spdlog').get_variable('spdlog_dep'),
     subproject('catch2').get_variable('catch2_dep'),
 ]
 

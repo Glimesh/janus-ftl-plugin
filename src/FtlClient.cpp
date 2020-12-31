@@ -87,7 +87,12 @@ void FtlClient::Stop()
             shutdown(mediaSocketHandle, SHUT_RDWR);
             close(mediaSocketHandle);
         }
-        connectionThreadEndedFuture.wait();
+
+        // Wait for the connection thread (only if it has actually started)
+        if (connectionThreadEndedFuture.valid())
+        {
+            connectionThreadEndedFuture.wait();
+        }
     }
     else if (isStopping && !isStopped)
     {
