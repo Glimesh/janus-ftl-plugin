@@ -12,18 +12,24 @@
 
 #include "ServiceConnections/ServiceConnection.h"
 #include "Utilities/FtlTypes.h"
+#include "Utilities/Result.h"
 
-#include <thread>
+#include <functional>
+#include <map>
+#include <memory>
 #include <random>
 #include <regex>
-#include <memory>
-#include <map>
-#include <functional>
+#include <sstream>
+#include <thread>
+#include <vector>
 
 extern "C"
 {
     #include <netinet/in.h>
 }
+
+// Forward declarations
+class ConnectionTransport;
 
 /**
  * @brief This class manages the FTL ingest connection.
@@ -34,15 +40,15 @@ class IngestConnection
 public:
     /* Constructor/Destructor */
     IngestConnection(
-        int connectionHandle,
-        sockaddr_in acceptAddress,
+        std::unique_ptr<ConnectionTransport> controlConnectionTransport,
         std::shared_ptr<ServiceConnection> serviceConnection);
 
     /* Public methods */
-    void Start();
+    Result<void> Start();
     void Stop();
     // Getters/Setters
-    sockaddr_in GetAcceptAddress();
+    std::optional<sockaddr_in> GetAddr();
+    std::optional<sockaddr_in6> GetAddr6();
     ftl_channel_id_t GetChannelId();
     std::string GetVendorName();
     std::string GetVendorVersion();
@@ -57,22 +63,23 @@ public:
     rtp_payload_type_t GetAudioPayloadType();
     rtp_payload_type_t GetVideoPayloadType();
     // Callbacks
-    void SetOnClosed(std::function<void (IngestConnection&)> callback);
-    void SetOnRequestMediaConnection(std::function<uint16_t (IngestConnection&)> callback);
+    void SetOnClosed(std::function<void(void)> callback);
+    void SetOnRequestMediaConnection(std::function<uint16_t(void)> callback);
 
 private:
+    /* Constants */
+    static constexpr int HMAC_PAYLOAD_SIZE = 128;
     /* Private static members */
     static const std::array<char, 4> commandDelimiter;
     /* Private members */
+    const std::unique_ptr<ConnectionTransport> controlConnectionTransport;
+    std::stringstream commandStream;
     bool isAuthenticated = false;
     bool isStreaming = false;
     uint32_t channelId = 0;
-    const int connectionHandle;
-    const sockaddr_in acceptAddress;
     const std::shared_ptr<ServiceConnection> serviceConnection;
     std::thread connectionThread;
-    std::array<uint8_t, 128> hmacPayload;
-    std::default_random_engine randomEngine { std::random_device()() };
+    std::vector<std::byte> hmacPayload { 0 };
     // Stream metadata
     std::string vendorName;
     std::string vendorVersion;
@@ -90,12 +97,14 @@ private:
     std::regex connectPattern = std::regex(R"~(CONNECT ([0-9]+) \$([0-9a-f]+))~");
     std::regex attributePattern = std::regex(R"~((.+): (.+))~");
     // Callbacks
-    std::function<void (IngestConnection&)> onClosed;
-    std::function<uint16_t (IngestConnection&)> onRequestMediaConnection;
+    std::function<void(void)> onClosed;
+    std::function<uint16_t(void)> onRequestMediaConnection;
 
     /* Private methods */
-    void startConnectionThread();
-    void writeToSocket(const char* buffer, const size_t bufferSize);
+    void writeStringToControlConnection(const std::string& str);
+    // ConnectionTransport callbacks
+    void onConnectionTransportClosed();
+    void onConnectionTransportBytesReceived(const std::vector<std::byte>& bytes);
     // Commands
     void processCommand(std::string command);
     void processHmacCommand();

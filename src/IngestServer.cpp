@@ -9,15 +9,19 @@
  */
 
 #include "IngestServer.h"
+
+#include "Utilities/Util.h"
+
+#include <cerrno>
+#include <fmt/core.h>
+#include <memory>
+#include <netinet/in.h>
+#include <stdexcept>
+#include <unistd.h>
 extern "C"
 {
     #include <debug.h>
 }
-#include <netinet/in.h>
-#include <cerrno>
-#include <stdexcept>
-#include <memory>
-#include <unistd.h>
 
 #pragma region Constructor/Destructor
 IngestServer::IngestServer(
@@ -39,6 +43,20 @@ void IngestServer::Start()
     socketAddress.sin_port = htons(listenPort);
 
     listenSocketHandle = socket(AF_INET, SOCK_STREAM, 0);
+    if (listenSocketHandle < 0)
+    {
+        int error = errno;
+        throw std::runtime_error(
+            fmt::format(
+                "Unable to create listen socket! Error {}: {}",
+                error,
+                Util::ErrnoToString(error)));
+    }
+
+    // Allow re-use so we don't get hung up trying to rebind
+    int reUseOption = 1;
+    setsockopt(listenSocketHandle, SOL_SOCKET, SO_REUSEADDR, &reUseOption, sizeof(reUseOption));
+
     int bindResult = bind(
         listenSocketHandle,
         (const sockaddr*)&socketAddress,

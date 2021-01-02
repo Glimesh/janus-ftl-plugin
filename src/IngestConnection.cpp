@@ -10,12 +10,14 @@
 
 #include "IngestConnection.h"
 
+#include "ConnectionTransports/ConnectionTransport.h"
 #include "Utilities/Util.h"
 
 #include <arpa/inet.h>
+#include <fmt/core.h>
 #include <iomanip>
 #include <openssl/hmac.h>
-#include <sstream>
+#include <optional>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -28,31 +30,48 @@ const std::array<char, 4> IngestConnection::commandDelimiter = { '\r', '\n', '\r
 
 #pragma region Constructor/Destructor
 IngestConnection::IngestConnection(
-    int connectionHandle,
-    sockaddr_in acceptAddress,
+    std::unique_ptr<ConnectionTransport> controlConnectionTransport,
     std::shared_ptr<ServiceConnection> serviceConnection) : 
-    connectionHandle(connectionHandle),
-    acceptAddress(acceptAddress),
+    controlConnectionTransport(std::move(controlConnectionTransport)),
     serviceConnection(serviceConnection)
 { }
 #pragma endregion
 
 #pragma region Public methods
-void IngestConnection::Start()
+Result<void> IngestConnection::Start()
 {
-    connectionThread = std::thread(&IngestConnection::startConnectionThread, this);
-    connectionThread.detach();
+    // Bind to control connection events
+    controlConnectionTransport->SetOnConnectionClosed(
+        std::bind(&IngestConnection::onConnectionTransportClosed, this));
+    controlConnectionTransport->SetOnBytesReceived(
+        std::bind(
+            &IngestConnection::onConnectionTransportBytesReceived,
+            this,
+            std::placeholders::_1));
+
+    // Attempt to start the connection transport
+    Result<void> controlStartResult = controlConnectionTransport->StartAsync();
+    if (controlStartResult.IsError)
+    {
+        return controlStartResult;
+    }
+    return Result<void>::Success();
 }
 
 void IngestConnection::Stop()
 {
     // TODO: Try to tell the client nicely that we're outta here
-    close(connectionHandle);
+    controlConnectionTransport->Stop();
 }
 
-sockaddr_in IngestConnection::GetAcceptAddress()
+std::optional<sockaddr_in> IngestConnection::GetAddr()
 {
-    return acceptAddress;
+    return controlConnectionTransport->GetAddr();
+}
+
+std::optional<sockaddr_in6> IngestConnection::GetAddr6()
+{
+    return controlConnectionTransport->GetAddr6();
 }
 
 ftl_channel_id_t IngestConnection::GetChannelId()
@@ -120,98 +139,62 @@ rtp_payload_type_t IngestConnection::GetVideoPayloadType()
     return videoPayloadType;
 }
 
-void IngestConnection::SetOnClosed(std::function<void (IngestConnection&)> callback)
+void IngestConnection::SetOnClosed(std::function<void(void)> callback)
 {
     onClosed = callback;
 }
 
-void IngestConnection::SetOnRequestMediaConnection(
-    std::function<uint16_t (IngestConnection&)> callback)
+void IngestConnection::SetOnRequestMediaConnection(std::function<uint16_t(void)> callback)
 {
     onRequestMediaConnection = callback;
 }
 #pragma endregion
 
 #pragma region Private methods
-void IngestConnection::startConnectionThread()
+void IngestConnection::writeStringToControlConnection(const std::string& str)
 {
-    char ipBuf[32];
-    inet_ntop(AF_INET, &acceptAddress.sin_addr.s_addr, &ipBuf[0], sizeof(ipBuf));
-
-    JANUS_LOG(LOG_INFO, "FTL: Starting ingest connection thread for %s\n", ipBuf);
-
-
-    char buffer[512];
-    std::stringstream cmdStrStream;
-    while (true)
+    std::vector<std::byte> writeBytes;
+    writeBytes.reserve(str.size());
+    for (const char& c : str)
     {
-        int bytesRead = read(connectionHandle, buffer, sizeof(buffer) - 1);
-        if (bytesRead == -1)
+        writeBytes.push_back(static_cast<std::byte>(c));
+    }
+    controlConnectionTransport->Write(writeBytes);
+}
+
+void IngestConnection::onConnectionTransportClosed()
+{
+    if (onClosed)
+    {
+        onClosed();
+    }
+}
+
+void IngestConnection::onConnectionTransportBytesReceived(const std::vector<std::byte>& bytes)
+{
+    unsigned int delimiterCharactersRead = 0;
+    for (int i = 0; i < bytes.size(); ++i)
+    {
+        char incomingCharacter = static_cast<char>(bytes[i]);
+        commandStream << incomingCharacter;
+        if (incomingCharacter == commandDelimiter.at(delimiterCharactersRead))
         {
-            if (errno == EINVAL)
+            ++delimiterCharactersRead;
+            if (delimiterCharactersRead >= commandDelimiter.size())
             {
-                JANUS_LOG(LOG_INFO, "FTL: Ingest connection is being shut down.\n");
+                // We've read a command.
+                std::string command = commandStream.str();
+                command = command.substr(0, command.length() - 4); // strip delimiter
+                commandStream.str({});
+                commandStream.clear();
+                delimiterCharactersRead = 0;
+                processCommand(command);
             }
-            else
-            {
-                JANUS_LOG(LOG_INFO, "FTL: Unknown socket read error.\n");
-            }
-            break;
-        }
-        else if (bytesRead == 0)
-        {
-            // TODO: Handle client closing connection
-            JANUS_LOG(LOG_INFO, "FTL: Client closed ingest connection.\n");
-            break;
         }
         else
         {
-            unsigned int delimiterCharactersRead = 0;
-            for (int i = 0; i < bytesRead; ++i)
-            {
-                cmdStrStream << buffer[i];
-                if (buffer[i] == commandDelimiter.at(delimiterCharactersRead))
-                {
-                    ++delimiterCharactersRead;
-                    if (delimiterCharactersRead >= commandDelimiter.size())
-                    {
-                        // We've read a command.
-                        std::string command = cmdStrStream.str();
-                        command = command.substr(0, command.length() - 4); // strip delimiter
-                        cmdStrStream.str({});
-                        cmdStrStream.clear();
-                        delimiterCharactersRead = 0;
-                        processCommand(command);
-                    }
-                }
-                else
-                {
-                    delimiterCharactersRead = 0;
-                }
-            }
+            delimiterCharactersRead = 0;
         }
-    }
-
-    if (onClosed != nullptr)
-    {
-        onClosed(*this);
-    }
-
-    JANUS_LOG(LOG_INFO, "FTL: Ingest connection thread terminating\n");
-}
-
-void IngestConnection::writeToSocket(const char* buffer, const size_t bufferSize)
-{
-    int written = write(connectionHandle, buffer, bufferSize);
-    if (written == -1)
-    {
-        std::stringstream errStr;
-        errStr << "Error writing to ingest socket: " << errno;
-        throw std::runtime_error(errStr.str());
-    }
-    else if (static_cast<size_t>(written) != bufferSize)
-    {
-        throw std::runtime_error("Could not write entire buffer to ingest socket.");
     }
 }
 
@@ -247,18 +230,12 @@ void IngestConnection::processHmacCommand()
 {
     // Calculate a new random hmac payload, then send it.
     // We'll need to print it out as a string of hex bytes (00 - ff)
-    std::uniform_int_distribution<uint8_t> uniformDistribution(0x00, 0xFF);
-    for (unsigned int i = 0; i < hmacPayload.size(); ++i)
-    {
-        hmacPayload[i] = uniformDistribution(randomEngine);
-    }
+    hmacPayload = Util::GenerateRandomBinaryPayload(HMAC_PAYLOAD_SIZE);
     std::string hmacString = Util::ByteArrayToHexString(
         reinterpret_cast<std::byte*>(&hmacPayload[0]),
         hmacPayload.size());
     JANUS_LOG(LOG_INFO, "FTL: Sending HMAC payload: %s\n", hmacString.c_str());
-    writeToSocket("200 ", 4);
-    writeToSocket(hmacString.c_str(), hmacString.size());
-    writeToSocket("\n", 1);
+    writeStringToControlConnection(fmt::format("200 {}\n", hmacString));
 }
 
 void IngestConnection::processConnectCommand(std::string command)
@@ -282,7 +259,7 @@ void IngestConnection::processConnectCommand(std::string command)
             EVP_sha512(),
             key.c_str(),
             key.length(),
-            &hmacPayload[0],
+            reinterpret_cast<const unsigned char*>(hmacPayload.data()),
             hmacPayload.size(),
             reinterpret_cast<unsigned char*>(buffer),
             &bufferLength);
@@ -317,7 +294,7 @@ void IngestConnection::processConnectCommand(std::string command)
         if (match)
         {
             JANUS_LOG(LOG_INFO, "FTL: Hashes match!\n");
-            writeToSocket("200\n", 4);
+            writeStringToControlConnection("200\n");
             this->channelId = channelId;
             isAuthenticated = true;
         }
@@ -422,7 +399,7 @@ void IngestConnection::processDotCommand()
     }
     else if (!hasAudio && !hasVideo)
     {
-        JANUS_LOG(LOG_WARN, "FTL: Stream requires at least one audio and/or video stream.");
+        JANUS_LOG(LOG_WARN, "FTL: Stream requires at least one audio and/or video stream.\n");
         // TODO: Throw error and kill connection
         return;
     }
@@ -430,7 +407,7 @@ void IngestConnection::processDotCommand()
         (audioPayloadType == 0 || audioSsrc == 0 || audioCodec == AudioCodecKind::Unsupported))
     {
         JANUS_LOG(LOG_WARN, "FTL: Audio stream requires AudioPayloadType, AudioIngestSSRC,"
-            " and valid AudioCodec.");
+            " and valid AudioCodec.\n");
         // TODO: Throw error and kill connection
         return;
     }
@@ -438,7 +415,7 @@ void IngestConnection::processDotCommand()
         (videoPayloadType == 0 || videoSsrc == 0 || videoCodec == VideoCodecKind::Unsupported))
     {
         JANUS_LOG(LOG_WARN, "FTL: Video stream requires VideoPayloadType, VideoIngestSSRC,"
-            " and valid VideoCodec.");
+            " and valid VideoCodec.\n");
         // TODO: Throw error and kill connection
         return;
     }
@@ -449,16 +426,13 @@ void IngestConnection::processDotCommand()
         return;
     }
 
-    uint16_t assignedPort = onRequestMediaConnection(*this);
+    uint16_t assignedPort = onRequestMediaConnection();
     isStreaming = true;
-    std::stringstream response;
-    response << "200 hi. Use UDP port " << assignedPort << "\n";
-    std::string responseStr = response.str();
-    writeToSocket(responseStr.c_str(), responseStr.length());
+    writeStringToControlConnection(fmt::format("200 hi. Use UDP port {}\n", assignedPort));
 }
 
 void IngestConnection::processPingCommand()
 {
-    writeToSocket("201\n", 4);
+    writeStringToControlConnection("201\n");
 }
 #pragma endregion

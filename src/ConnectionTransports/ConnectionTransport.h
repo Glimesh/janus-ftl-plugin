@@ -10,6 +10,8 @@
 #include "Utilities/Result.h"
 
 #include <functional>
+#include <netinet/in.h>
+#include <optional>
 #include <vector>
 
 /**
@@ -22,6 +24,16 @@ class ConnectionTransport
 {
 public:
     virtual ~ConnectionTransport() = default;
+
+    /**
+     * @brief Gets the IPv4 address of this connection, if it has one
+     */
+    virtual std::optional<sockaddr_in> GetAddr() = 0;
+
+    /**
+     * @brief Gets the IPv6 address of this connection, if it has one
+     */
+    virtual std::optional<sockaddr_in6> GetAddr6() = 0;
 
     /**
      * @brief
