@@ -33,6 +33,8 @@ sources = files([
     'src/ServiceConnections/GlimeshServiceConnection.cpp',
     # Connection Transports
     'src/ConnectionTransports/TcpSocketConnectionTransport.cpp',
+    # Connection Listeners
+    'src/ConnectionListeners/TcpConnectionListener.cpp',
     # Library
     'src/Configuration.cpp',
     'src/FtlClient.cpp',
