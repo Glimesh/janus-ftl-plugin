@@ -28,6 +28,5 @@ public:
      */
     virtual std::unique_ptr<ConnectionTransport> CreateConnection(
         int port,
-        std::optional<sockaddr_in> targetAddr,
-        std::optional<sockaddr_in6> targetAddr6) = 0;
+        sockaddr_in targetAddr) = 0;
 };
