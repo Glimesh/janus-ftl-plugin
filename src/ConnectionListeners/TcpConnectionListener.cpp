@@ -7,7 +7,7 @@
 
 #include "TcpConnectionListener.h"
 
-#include "../ConnectionTransports/TcpSocketConnectionTransport.h"
+#include "../ConnectionTransports/NetworkSocketConnectionTransport.h"
 #include "../Utilities/Util.h"
 
 #include <fmt/core.h>
@@ -17,14 +17,14 @@
 #pragma region Constructor/Destructor
 TcpConnectionListener::TcpConnectionListener(
     const int listenPort,
-    const int socketQueueLimit = SOMAXCONN) :
+    const int socketQueueLimit) :
     listenPort(listenPort),
     socketQueueLimit(socketQueueLimit)
 { }
 #pragma endregion Constructor/Destructor
 
 #pragma region ConnectionTransport implementation
-void TcpConnectionListener::Listen(std::promise<void>&& readyPromise = std::promise<void>())
+void TcpConnectionListener::Listen(std::promise<void>&& readyPromise)
 {
     // TODO IPv6 binding, configurable binding interfaces...
     sockaddr_in socketAddress = { 0 };
@@ -112,7 +112,9 @@ void TcpConnectionListener::Listen(std::promise<void>&& readyPromise = std::prom
             getpeername(connectionHandle, reinterpret_cast<sockaddr*>(&acceptAddress), &acceptLen);
             // JANUS_LOG(LOG_INFO, "FTL: Ingest server accepted connection...\n");
             // Create a ConnectionTransport for this new connection
-            auto transport = std::make_unique<TcpSocketConnectionTransport>(connectionHandle);
+            auto transport = std::make_unique<NetworkSocketConnectionTransport>(
+                NetworkSocketConnectionKind::Tcp,
+                connectionHandle);
             if (onNewConnection)
             {
                 onNewConnection(std::move(transport));

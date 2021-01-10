@@ -1,5 +1,5 @@
 /**
- * @file TcpSocketConnectionTransport.h
+ * @file NetworkSocketConnectionTransport.h
  * @author Hayden McAfee (hayden@outlook.com)
  * @date 2020-12-27
  * @copyright Copyright (c) 2020 Hayden McAfee
@@ -13,19 +13,31 @@
 #include <functional>
 #include <future>
 #include <mutex>
+#include <optional>
 #include <thread>
 #include <vector>
 
+enum class NetworkSocketConnectionKind
+{
+    Tcp = 0,
+    Udp,
+};
+
 /**
- * @brief ConnectionTransport implementation for a TCP socket connection
+ * @brief ConnectionTransport implementation for a TCP/UDP socket connection
  */
-class TcpSocketConnectionTransport : public ConnectionTransport
+class NetworkSocketConnectionTransport : public ConnectionTransport
 {
 public:
     /* Constructor/Destructor */
-    TcpSocketConnectionTransport(int socketHandle);
+    NetworkSocketConnectionTransport(
+        NetworkSocketConnectionKind kind,
+        int socketHandle,
+        std::optional<sockaddr_in> targetAddr = std::nullopt);
 
     /* ConnectionTransport Implementation */
+    std::optional<sockaddr_in> GetAddr() override;
+    std::optional<sockaddr_in6> GetAddr6() override;
     Result<void> StartAsync() override;
     void Stop() override;
     void Write(const std::vector<std::byte>& bytes) override;
@@ -38,7 +50,9 @@ private:
     static constexpr int BUFFER_SIZE = 512;
 
     /* Private fields */
+    const NetworkSocketConnectionKind connectionKind;
     const int socketHandle = 0;
+    const std::optional<sockaddr_in> targetAddr = std::nullopt;
     std::atomic<bool> isStopping { false }; // Indicates that the socket has been requested to close
     std::atomic<bool> isStopped { false };  // Indicates that the socket has finished closing
     std::thread connectionThread;

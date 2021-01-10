@@ -110,7 +110,7 @@ void FtlClient::RelayPacket(RtpRelayPacket packet)
 {
     if (mediaSocketHandle != 0)
     {
-        write(mediaSocketHandle, packet.rtpPacketPayload->data(), packet.rtpPacketPayload->size());
+        write(mediaSocketHandle, packet.rtpPacketPayload.data(), packet.rtpPacketPayload.size());
     }
 }
 #pragma endregion Public methods

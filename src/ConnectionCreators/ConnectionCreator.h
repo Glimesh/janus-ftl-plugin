@@ -21,7 +21,7 @@ class ConnectionTransport;
 class ConnectionCreator
 {
 public:
-    ~ConnectionCreator() = default;
+    virtual ~ConnectionCreator() = default;
 
     /**
      * @brief Create a ConnectionTransport targeting the provided port and IPv4/v6 addresses.

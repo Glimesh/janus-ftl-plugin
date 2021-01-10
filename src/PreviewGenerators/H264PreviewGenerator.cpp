@@ -25,8 +25,11 @@ std::vector<uint8_t> H264PreviewGenerator::GenerateJpegImage(const Keyframe& key
     {
         // Grab the payload out of the RTP packet
         int payloadLength = 0;
-        char* payload = 
-            janus_rtp_payload(reinterpret_cast<char*>(packet->data()), packet->size(), &payloadLength);
+        // TODO: Replace janus_rtp_payload
+        char* payload = janus_rtp_payload(
+            const_cast<char*>(reinterpret_cast<const char*>(packet.data())),
+            packet.size(),
+            &payloadLength);
         
         if (!payload || payloadLength < 2)
         {

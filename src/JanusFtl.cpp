@@ -435,12 +435,13 @@ uint16_t JanusFtl::newIngestFtlStream(std::shared_ptr<IngestConnection> connecti
         serviceConnection,
         configuration->GetServiceConnectionMetadataReportIntervalMs(),
         configuration->GetMyHostname(),
+        targetPort,
         nackLostPackets,
         generatePreviews);
     ftlStream->SetOnClosed(std::bind(
         &JanusFtl::ftlStreamClosed,
         this,
-        std::placeholders::_1));
+        std::weak_ptr<FtlStream>(ftlStream)));
     ftlStreamStore->AddStream(ftlStream);
     ftlStream->Start();
 
@@ -475,64 +476,59 @@ uint16_t JanusFtl::newIngestFtlStream(std::shared_ptr<IngestConnection> connecti
     return targetPort;
 }
 
-void JanusFtl::ftlStreamClosed(FtlStream& ftlStream)
+void JanusFtl::ftlStreamClosed(std::weak_ptr<FtlStream> weakStream)
 {
-    // Try to find stream in stream store
-    std::shared_ptr<FtlStream> stream = 
-        ftlStreamStore->GetStreamByChannelId(ftlStream.GetChannelId());
-    if (stream == nullptr)
+    if (auto stream = weakStream.lock())
     {
-        stream = ftlStreamStore->GetStreamByMediaPort(ftlStream.GetMediaPort());
+        uint16_t channelId = stream->GetChannelId();
+        
+        // Remove viewers from stream and place them back into pending status
+        std::list<std::shared_ptr<JanusSession>> viewers = stream->GetViewers();
+        for (const std::shared_ptr<JanusSession>& viewer : viewers)
+        {
+            ftlStreamStore->RemoveViewer(stream, viewer);
+            ftlStreamStore->AddPendingViewerForChannelId(channelId, viewer);
+
+            // TODO: Tell the viewers that this stream has stopped
+        }
+
+        // If we are configured as an Ingest node, notify the Orchestrator that a stream has ended.
+        if ((configuration->GetNodeKind() == NodeKind::Ingest) && (orchestrationClient != nullptr))
+        {
+            JANUS_LOG(
+                LOG_INFO,
+                "FTL: Unpublishing channel %d / stream %d from Orchestrator...\n",
+                stream->GetChannelId(),
+                stream->GetStreamId());
+            orchestrationClient->SendStreamPublish(ConnectionPublishPayload
+                {
+                    .IsPublish = false,
+                    .ChannelId = stream->GetChannelId(),
+                    .StreamId = stream->GetStreamId(),
+                });
+        }
+
+        // If relays exist for this stream, stop and remove them
+        std::list<FtlStreamStore::RelayStore> relays = 
+            ftlStreamStore->GetRelaysForChannelId(stream->GetChannelId());
+        for (const auto& relay : relays)
+        {
+            JANUS_LOG(
+                LOG_INFO,
+                "FTL: Stopping %s relay for channel %d / stream %d...\n",
+                relay.TargetHost.c_str(),
+                stream->GetChannelId(),
+                stream->GetStreamId());
+            relay.FtlClientInstance->Stop();
+        }
+        ftlStreamStore->ClearRelays(stream->GetChannelId());
+
+        ftlStreamStore->RemoveStream(stream);
     }
-    if (stream == nullptr)
+    else
     {
-        throw std::runtime_error("Stream reporting closed could not be found.");
+        spdlog::error("Received stream closed for FtlStream, but it has already been destroyed.");
     }
-
-    uint16_t channelId = stream->GetChannelId();
-    
-    // Remove viewers from stream and place them back into pending status
-    std::list<std::shared_ptr<JanusSession>> viewers = stream->GetViewers();
-    for (const std::shared_ptr<JanusSession>& viewer : viewers)
-    {
-        ftlStreamStore->RemoveViewer(stream, viewer);
-        ftlStreamStore->AddPendingViewerForChannelId(channelId, viewer);
-
-        // TODO: Tell the viewers that this stream has stopped
-    }
-
-    // If we are configured as an Ingest node, notify the Orchestrator that a stream has ended.
-    if ((configuration->GetNodeKind() == NodeKind::Ingest) && (orchestrationClient != nullptr))
-    {
-        JANUS_LOG(
-            LOG_INFO,
-            "FTL: Unpublishing channel %d / stream %d from Orchestrator...\n",
-            stream->GetChannelId(),
-            stream->GetStreamId());
-        orchestrationClient->SendStreamPublish(ConnectionPublishPayload
-            {
-                .IsPublish = false,
-                .ChannelId = stream->GetChannelId(),
-                .StreamId = stream->GetStreamId(),
-            });
-    }
-
-    // If relays exist for this stream, stop and remove them
-    std::list<FtlStreamStore::RelayStore> relays = 
-        ftlStreamStore->GetRelaysForChannelId(stream->GetChannelId());
-    for (const auto& relay : relays)
-    {
-        JANUS_LOG(
-            LOG_INFO,
-            "FTL: Stopping %s relay for channel %d / stream %d...\n",
-            relay.TargetHost.c_str(),
-            stream->GetChannelId(),
-            stream->GetStreamId());
-        relay.FtlClientInstance->Stop();
-    }
-    ftlStreamStore->ClearRelays(stream->GetChannelId());
-
-    ftlStreamStore->RemoveStream(stream);
 }
 
 void JanusFtl::handlePsfbRtcpPacket(janus_plugin_session* handle, janus_rtcp_header* packet)

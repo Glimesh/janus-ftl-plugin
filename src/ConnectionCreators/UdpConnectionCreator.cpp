@@ -7,7 +7,7 @@
 
 #include "UdpConnectionCreator.h"
 
-#include "../ConnectionTransports/UdpConnectionTransport.h"
+#include "../ConnectionTransports/NetworkSocketConnectionTransport.h"
 #include "../Utilities/Util.h"
 
 #include <fmt/core.h>
@@ -45,9 +45,12 @@ std::unique_ptr<ConnectionTransport> UdpConnectionCreator::CreateConnection(
     {
         int error = errno;
         throw std::runtime_error(fmt::format(
-            "Couldn't bind UDP socket. Error {}: {}", error, Util::ErrnoToString(error));
+            "Couldn't bind UDP socket. Error {}: {}", error, Util::ErrnoToString(error)));
     }
 
-    return std::make_unique<UdpConnectionTransport>(socketHandle, targetAddr);
+    return std::make_unique<NetworkSocketConnectionTransport>(
+        NetworkSocketConnectionKind::Udp,
+        socketHandle,
+        targetAddr);
 }
 #pragma endregion ConnectionCreator implementation

@@ -173,7 +173,7 @@ void IngestConnection::onConnectionTransportClosed()
 void IngestConnection::onConnectionTransportBytesReceived(const std::vector<std::byte>& bytes)
 {
     unsigned int delimiterCharactersRead = 0;
-    for (int i = 0; i < bytes.size(); ++i)
+    for (size_t i = 0; i < bytes.size(); ++i)
     {
         char incomingCharacter = static_cast<char>(bytes[i]);
         commandStream << incomingCharacter;

@@ -89,7 +89,7 @@ private:
     void initOrchestratorConnection();
     void initServiceConnection();
     uint16_t newIngestFtlStream(std::shared_ptr<IngestConnection> connection);
-    void ftlStreamClosed(FtlStream& ftlStream);
+    void ftlStreamClosed(std::weak_ptr<FtlStream> weakStream);
     // Packet handling
     void handlePsfbRtcpPacket(janus_plugin_session* handle, janus_rtcp_header* packet);
     // Message handling

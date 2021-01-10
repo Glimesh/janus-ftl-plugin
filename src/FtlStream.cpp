@@ -10,12 +10,15 @@
 
 #include "FtlStream.h"
 
+#include "ConnectionTransports/ConnectionTransport.h"
 #include "JanusSession.h"
 
 #include <algorithm>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <poll.h>
+#include <spdlog/spdlog.h>
 
 extern "C"
 {
@@ -28,34 +31,48 @@ extern "C"
 
 #pragma region Constructor/Destructor
 FtlStream::FtlStream(
-    const std::shared_ptr<IngestConnection> ingestConnection,
-    const uint16_t mediaPort,
-    const std::shared_ptr<RelayThreadPool> relayThreadPool,
-    const std::shared_ptr<ServiceConnection> serviceConnection,
+    std::unique_ptr<IngestConnection> ingestConnection,
+    std::unique_ptr<ConnectionTransport> mediaTransport,
+    RelayThreadPool& relayThreadPool,
+    ServiceConnection& serviceConnection,
     const uint16_t metadataReportIntervalMs,
     const std::string myHostname,
+    const int mediaPort,
     const bool nackLostPackets,
     const bool generatePreviews) : 
-    ingestConnection(ingestConnection),
-    mediaPort(mediaPort),
+    ingestConnection(std::move(ingestConnection)),
+    mediaTransport(std::move(mediaTransport)),
     relayThreadPool(relayThreadPool),
     serviceConnection(serviceConnection),
     metadataReportIntervalMs(metadataReportIntervalMs),
     myHostname(myHostname),
+    mediaPort(mediaPort),
     nackLostPackets(nackLostPackets),
     generatePreviews(generatePreviews)
 {
+    // Bind to media transport callbacks
+    mediaTransport->SetOnBytesReceived(
+        std::bind(
+            &FtlStream::mediaBytesReceived,
+            this,
+            std::placeholders::_1));
+    mediaTransport->SetOnConnectionClosed(std::bind(&FtlStream::mediaConnectionClosed, this));
     // Bind to ingest callbacks
-    ingestConnection->SetOnClosed(std::bind(
-        &FtlStream::ingestConnectionClosed,
-        this,
-        std::placeholders::_1));
+    ingestConnection->SetOnClosed(std::bind(&FtlStream::ingestConnectionClosed, this));
 }
 #pragma endregion
 
 #pragma region Public methods
-void FtlStream::Start()
+Result<void> FtlStream::Start()
 {
+    // Fire up our media connection
+    Result<void> mediaStartResult = mediaTransport->StartAsync();
+    if (mediaStartResult.IsError)
+    {
+        // TODO: Close ingest.
+        return mediaStartResult;
+    }
+
     // Mark our start time
     streamStartTime = std::time(nullptr);
 
@@ -73,21 +90,15 @@ void FtlStream::Start()
         }
     }
 
-    // Start listening for incoming packets
-    std::promise<void> streamThreadReadyPromise;
-    std::future<void> streamThreadReadyFuture = streamThreadReadyPromise.get_future();
-    streamThread = std::thread(
-        &FtlStream::startStreamThread,
-        this,
-        std::move(streamThreadReadyPromise));
-    streamThread.detach();
-    // Wait for the stream thread to be ready
-    streamThreadReadyFuture.get();
-
     // Start thread for reporting stream metadata out
     streamMetadataReportingThread = 
         std::thread(&FtlStream::startStreamMetadataReportingThread, this);
     streamMetadataReportingThread.detach();
+
+    // Tell our service connection that we're starting to stream
+    streamId = serviceConnection.StartStream(GetChannelId());
+
+    return Result<void>::Success();
 }
 
 void FtlStream::Stop()
@@ -96,10 +107,6 @@ void FtlStream::Stop()
     ingestConnection->Stop();
     
     // Join our outstanding threads
-    if (streamThread.joinable())
-    {
-        streamThread.join();
-    }
     if (streamMetadataReportingThread.joinable())
     {
         streamMetadataReportingThread.join();
@@ -122,7 +129,7 @@ void FtlStream::RemoveViewer(std::shared_ptr<JanusSession> viewerSession)
     keyframeSentToViewers.erase(viewerSession);
 }
 
-void FtlStream::SetOnClosed(std::function<void (FtlStream&)> callback)
+void FtlStream::SetOnClosed(std::function<void (void)> callback)
 {
     onClosed = callback;
 }
@@ -155,6 +162,11 @@ void FtlStream::SendKeyframeToViewer(std::shared_ptr<JanusSession> viewerSession
 #pragma endregion
 
 #pragma region Getters/Setters
+int FtlStream::GetMediaPort()
+{
+    return mediaPort;
+}
+
 ftl_channel_id_t FtlStream::GetChannelId()
 {
     return ingestConnection->GetChannelId();
@@ -163,11 +175,6 @@ ftl_channel_id_t FtlStream::GetChannelId()
 ftl_stream_id_t FtlStream::GetStreamId()
 {
     return streamId;
-}
-
-uint16_t FtlStream::GetMediaPort()
-{
-    return mediaPort;
 }
 
 bool FtlStream::GetHasVideo()
@@ -228,189 +235,94 @@ std::list<std::shared_ptr<JanusSession>> FtlStream::GetViewers()
 #pragma endregion
 
 #pragma region Private methods
-void FtlStream::ingestConnectionClosed(IngestConnection& connection)
+void FtlStream::ingestConnectionClosed()
 {
     // Ingest connection was closed, let's stop this stream.
     stopping = true;
 }
 
-void FtlStream::startStreamThread(std::promise<void>&& streamReadyPromise)
+void FtlStream::mediaBytesReceived(const std::vector<std::byte>& bytes)
 {
-    sockaddr_in socketAddress;
-    socketAddress.sin_family = AF_INET;
-    socketAddress.sin_addr.s_addr = htonl(INADDR_ANY);
-    socketAddress.sin_port = htons(mediaPort);
-
-    mediaSocketHandle = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-
-    int bindResult = bind(
-        mediaSocketHandle,
-        (const sockaddr*)&socketAddress,
-        sizeof(socketAddress));
-
-    JANUS_LOG(LOG_INFO, "FTL: Started media connection for %d on port %d\n", GetChannelId(), mediaPort);
-    switch (bindResult)
+    if (bytes.size() < 12)
     {
-    case 0:
-        break;
-    case EADDRINUSE:
-        throw std::runtime_error("FTL stream could not bind to media socket, "
-            "this address is already in use.");
-    case EACCES:
-        throw std::runtime_error("FTL stream could not bind to media socket, "
-            "access was denied.");
-    default:
-        throw std::runtime_error("FTL stream could not bind to media socket.");
+        // This packet is too small to have an RTP header.
+        spdlog::warn(
+            "Channel {} received non-RTP packet of size {} (< 12 bytes). Discarding...",
+            GetChannelId(),
+            bytes.size());
+        return;
     }
 
-    // Let the service know that we're streaming!
-    streamId = serviceConnection->StartStream(GetChannelId());
+    // Parse out RTP packet
+    const janus_rtp_header* rtpHeader = reinterpret_cast<const janus_rtp_header*>(bytes.data());
+    const rtp_sequence_num_t sequenceNumber = ntohs(rtpHeader->seq_number);
 
-    // We're ready to start accepting packets.
-    streamReadyPromise.set_value();
-
-    // Set up some values we'll be using in our read thread
-    socklen_t addrlen;
-    sockaddr_in remote;
-    char buffer[1500] = { 0 };
-    int bytesRead = 0;
-    // Set up poll
-    struct pollfd fds[1];
-    fds[0].fd = mediaSocketHandle;
-    fds[0].events = POLLIN;
-    fds[0].revents = 0;
-    while (true)
+    // Process audio/video packets
+    if ((rtpHeader->type == GetAudioPayloadType()) || 
+        (rtpHeader->type == GetVideoPayloadType()))
     {
-        // Are we stopping?
-        if (stopping)
+        // Count it!
+        ++numPacketsReceived;
+
+        // Do additional processing on video packets
+        if (rtpHeader->type == GetVideoPayloadType())
         {
-            // Close the socket handle
-            close(mediaSocketHandle);
-            break;
+            processKeyframePacket(bytes);
         }
 
-        int pollResult = poll(fds, 1, 1000);
+        // Relay the packet
+        RtpRelayPacketKind packetKind = rtpHeader->type == GetVideoPayloadType() ? 
+            RtpRelayPacketKind::Video : RtpRelayPacketKind::Audio;
 
-        if (pollResult < 0)
+        relayThreadPool.RelayPacket({
+            .rtpPacketPayload = bytes,
+            .type = packetKind,
+            .channelId = GetChannelId()
+        });
+
+        if (nackLostPackets)
         {
-            // We've lost our socket
-            JANUS_LOG(LOG_ERR, "FTL: Unknown media connection read error.\n");
-            break;
-        }
-        else if (pollResult == 0)
-        {
-            // No new data
-            continue;
-        }
-
-        // We've got a poll event, let's process it.
-        if (fds[0].revents & (POLLERR | POLLHUP))
-        {
-            JANUS_LOG(LOG_ERR, "FTL: Media connection polling error.\n");
-            break;
-        }
-        else if (fds[0].revents & POLLIN)
-        {
-            // Ooh, yummy data
-            addrlen = sizeof(remote);
-            bytesRead = recvfrom(
-                mediaSocketHandle,
-                buffer,
-                sizeof(buffer),
-                0,
-                (struct sockaddr*)&remote,
-                &addrlen);
-
-            if (remote.sin_addr.s_addr != ingestConnection->GetAcceptAddress().sin_addr.s_addr)
-            {
-                JANUS_LOG(
-                    LOG_ERR,
-                    "FTL: Channel %u received packet from unexpected address.\n",
-                    GetChannelId());
-                continue;
-            }
-
-            if (bytesRead < 12)
-            {
-                // This packet is too small to have an RTP header.
-                JANUS_LOG(LOG_WARN, "FTL: Channel %u received non-RTP packet.\n", GetChannelId());
-                continue;
-            }
-
-            // Parse out RTP packet
-            janus_rtp_header* rtpHeader = (janus_rtp_header*)buffer;
-            rtp_sequence_num_t sequenceNumber = ntohs(rtpHeader->seq_number);
-
-            // Process audio/video packets
-            if ((rtpHeader->type == GetAudioPayloadType()) || 
-                (rtpHeader->type == GetVideoPayloadType()))
-            {
-                // Count it!
-                ++numPacketsReceived;
-
-                std::shared_ptr<std::vector<unsigned char>> rtpPacket =
-                    std::make_shared<std::vector<unsigned char>>(buffer, buffer + bytesRead);
-
-                // Do additional processing on video packets
-                if (rtpHeader->type == GetVideoPayloadType())
-                {
-                    processKeyframePacket(rtpPacket);
-                }
-
-                // Relay the packet
-                RtpRelayPacketKind packetKind = rtpHeader->type == GetVideoPayloadType() ? 
-                    RtpRelayPacketKind::Video : RtpRelayPacketKind::Audio;
-                
-                relayThreadPool->RelayPacket({
-                    .rtpPacketPayload = rtpPacket,
-                    .type = packetKind,
-                    .channelId = GetChannelId()
-                });
-
-                if (nackLostPackets)
-                {
-                    // Check for any lost packets
-                    markReceivedSequence(rtpHeader->type, sequenceNumber);
-                    processLostPackets(remote, rtpHeader->type, sequenceNumber, rtpHeader->timestamp);
-                }
-            }
-            else
-            {
-                // FTL implementation uses the marker bit space for payload types above 127
-                // when the payload type is not audio or video. So we need to reconstruct it.
-                uint8_t payloadType = 
-                    ((static_cast<uint8_t>(rtpHeader->markerbit) << 7) | 
-                    static_cast<uint8_t>(rtpHeader->type));
-                
-                if (payloadType == FTL_PAYLOAD_TYPE_PING)
-                {
-                    handlePing(rtpHeader, bytesRead);
-                }
-                else if (payloadType == FTL_PAYLOAD_TYPE_SENDER_REPORT)
-                {
-                    handleSenderReport(rtpHeader, bytesRead);
-                }
-                else
-                {
-                    JANUS_LOG(
-                        LOG_WARN,
-                        "FTL: Unknown RTP payload type %d (orig %d)\n",
-                        payloadType,
-                        rtpHeader->type);
-                }
-            }
+            // Check for any lost packets
+            markReceivedSequence(rtpHeader->type, sequenceNumber);
+            processLostPackets(rtpHeader->type, sequenceNumber, rtpHeader->timestamp);
         }
     }
+    else
+    {
+        // FTL implementation uses the marker bit space for payload types above 127
+        // when the payload type is not audio or video. So we need to reconstruct it.
+        uint8_t payloadType = 
+            ((static_cast<uint8_t>(rtpHeader->markerbit) << 7) | 
+            static_cast<uint8_t>(rtpHeader->type));
+        
+        if (payloadType == FTL_PAYLOAD_TYPE_PING)
+        {
+            handlePing(rtpHeader, bytes.size());
+        }
+        else if (payloadType == FTL_PAYLOAD_TYPE_SENDER_REPORT)
+        {
+            handleSenderReport(rtpHeader, bytes.size());
+        }
+        else
+        {
+            JANUS_LOG(
+                LOG_WARN,
+                "FTL: Unknown RTP payload type %d (orig %d)\n",
+                payloadType,
+                rtpHeader->type);
+        }
+    }
+}
 
-    // We're no longer listening to incoming packets.
-
+void FtlStream::mediaConnectionClosed()
+{
     // Tell the service this stream has ended.
-    serviceConnection->EndStream(streamId);
+    serviceConnection.EndStream(streamId);
 
     // TODO: Tell the sessions that we're going away
     if (onClosed != nullptr)
     {
-        onClosed(*this);
+        onClosed();
     }
 }
 
@@ -429,7 +341,7 @@ void FtlStream::startStreamMetadataReportingThread()
         std::time_t currentTime = std::time(nullptr);
         uint32_t streamTimeSeconds = currentTime - streamStartTime;
 
-        serviceConnection->UpdateStreamMetadata(
+        serviceConnection.UpdateStreamMetadata(
             streamId,
             {
                 .ingestServerHostname         = myHostname,
@@ -464,7 +376,7 @@ void FtlStream::startStreamMetadataReportingThread()
             {
                 std::vector<uint8_t> jpegData = 
                     previewGenerator->GenerateJpegImage(previewKeyframe);
-                serviceConnection->SendJpegPreviewImage(streamId, jpegData);
+                serviceConnection.SendJpegPreviewImage(streamId, jpegData);
             }
             catch (const PreviewGenerationFailedException& e)
             {
@@ -486,16 +398,11 @@ void FtlStream::startStreamMetadataReportingThread()
     }
 }
 
-void FtlStream::processKeyframePacket(std::shared_ptr<std::vector<unsigned char>> rtpPacket)
+void FtlStream::processKeyframePacket(const std::vector<std::byte>& rtpPacket)
 {
-    if (rtpPacket == nullptr)
-    {
-        return;
-    }
-
     std::lock_guard<std::mutex> lock(keyframeMutex);
 
-    janus_rtp_header* rtpHeader = reinterpret_cast<janus_rtp_header*>(rtpPacket->data());
+    const janus_rtp_header* rtpHeader = reinterpret_cast<const janus_rtp_header*>(rtpPacket.data());
 
     uint16_t sequence = ntohs(rtpHeader->seq_number);
     uint32_t timestamp = ntohl(rtpHeader->timestamp);
@@ -510,18 +417,21 @@ void FtlStream::processKeyframePacket(std::shared_ptr<std::vector<unsigned char>
         pendingKeyframe.rtpPackets.clear();
         keyframeSentToViewers.clear();
 
-        JANUS_LOG(
-            LOG_VERB,
-            "FTL: Channel %u keyframe complete ts %u w/ %lu packets\n",
+        spdlog::debug(
+            "Channel {} keyframe complete ts {} w/ {} packets",
             GetChannelId(),
             keyframe.rtpTimestamp,
             keyframe.rtpPackets.size());
     }
 
     // Determine if this packet is part of a keyframe
+    // TODO: Don't rely on an external janus function here.
     bool isKeyframePacket = false;
     int payloadLength = 0;
-    char* payload = janus_rtp_payload(reinterpret_cast<char*>(rtpPacket->data()), rtpPacket->size(), &payloadLength);
+    const char* payload = janus_rtp_payload(
+        const_cast<char*>(reinterpret_cast<const char*>(rtpPacket.data())),
+        rtpPacket.size(),
+        &payloadLength);
     if (payload != nullptr)
     {
         isKeyframePacket = janus_h264_is_keyframe(payload, payloadLength);
@@ -605,7 +515,6 @@ void FtlStream::markReceivedSequence(
 }
 
 void FtlStream::processLostPackets(
-    sockaddr_in remote,
     rtp_payload_type_t payloadType,
     rtp_sequence_num_t currentSequence,
     rtp_timestamp_t currentTimestamp)
@@ -660,22 +569,9 @@ void FtlStream::processLostPackets(
             rtcpNack->blp = 0;
             rtcpHeader->length = htons(3);
 
-            int res = sendto(
-                mediaSocketHandle,
-                nackBuf,
-                16,
-                0,
-                reinterpret_cast<sockaddr*>(&remote),
-                sizeof(remote));
-            if (res == -1)
-            {
-                JANUS_LOG(
-                    LOG_ERR,
-                    "FTL: Channel %u PL %u NACK failed: %d\n",
-                    GetChannelId(),
-                    payloadType,
-                    errno);
-            }
+            mediaTransport->Write(std::vector<std::byte>(
+                reinterpret_cast<std::byte*>(nackBuf),
+                reinterpret_cast<std::byte*>(nackBuf + 16)));
 
             // Sent! Take it out of the list for now.
             it = lostPayloadPackets.erase(it);
@@ -693,7 +589,7 @@ void FtlStream::processLostPackets(
     }
 }
 
-void FtlStream::handlePing(janus_rtp_header* rtpHeader, uint16_t length)
+void FtlStream::handlePing(const janus_rtp_header* rtpHeader, const uint16_t length)
 {
     // These pings are useless - FTL tries to determine 'ping' by having a timestamp
     // sent across and compared against the remote's clock. This assumes that there is
@@ -703,7 +599,7 @@ void FtlStream::handlePing(janus_rtp_header* rtpHeader, uint16_t length)
     // anyway.
 }
 
-void FtlStream::handleSenderReport(janus_rtp_header* rtpHeader, uint16_t length)
+void FtlStream::handleSenderReport(const janus_rtp_header* rtpHeader, const uint16_t length)
 {
     // We expect this packet to be 28 bytes big.
     if (length != 28)

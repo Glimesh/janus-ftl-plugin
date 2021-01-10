@@ -32,9 +32,11 @@ sources = files([
     'src/ServiceConnections/EdgeNodeServiceConnection.cpp',
     'src/ServiceConnections/GlimeshServiceConnection.cpp',
     # Connection Transports
-    'src/ConnectionTransports/TcpSocketConnectionTransport.cpp',
+    'src/ConnectionTransports/NetworkSocketConnectionTransport.cpp',
     # Connection Listeners
     'src/ConnectionListeners/TcpConnectionListener.cpp',
+    # Connection Creators
+    'src/ConnectionCreators/UdpConnectionCreator.cpp',
     # Library
     'src/Configuration.cpp',
     'src/FtlClient.cpp',

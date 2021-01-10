@@ -35,6 +35,7 @@ public:
     void Start();
     void Stop();
     void RelayPacket(RtpRelayPacket packet);
+
 private:
     /* Private members */
     const std::shared_ptr<FtlStreamStore> ftlStreamStore;

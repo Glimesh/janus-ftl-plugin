@@ -1,11 +1,11 @@
 /**
- * @file TcpSocketConnectionTransport.cpp
+ * @file NetworkSocketConnectionTransport.cpp
  * @author Hayden McAfee (hayden@outlook.com)
  * @date 2020-12-27
  * @copyright Copyright (c) 2020 Hayden McAfee
  */
 
-#include "TcpSocketConnectionTransport.h"
+#include "NetworkSocketConnectionTransport.h"
 
 #include "../Utilities/Util.h"
 
@@ -18,13 +18,29 @@
 #include <unistd.h>
 
 #pragma region Constructor/Destructor
-TcpSocketConnectionTransport::TcpSocketConnectionTransport(int socketHandle) : 
-    socketHandle(socketHandle)
+NetworkSocketConnectionTransport::NetworkSocketConnectionTransport(
+    NetworkSocketConnectionKind kind,
+    int socketHandle,
+    std::optional<sockaddr_in> targetAddr) : 
+    connectionKind(kind),
+    socketHandle(socketHandle),
+    targetAddr(targetAddr)
 { }
 #pragma endregion Constructor/Destructor
 
 #pragma region ConnectionTransport Implementation
-Result<void> TcpSocketConnectionTransport::StartAsync()
+std::optional<sockaddr_in> NetworkSocketConnectionTransport::GetAddr()
+{
+    return targetAddr;
+}
+
+std::optional<sockaddr_in6> NetworkSocketConnectionTransport::GetAddr6()
+{
+    // TODO
+    return std::nullopt;
+}
+
+Result<void> NetworkSocketConnectionTransport::StartAsync()
 {
     // First, set the socket to non-blocking IO mode
     int socketFlags = fcntl(socketHandle, F_GETFL, 0);
@@ -67,7 +83,7 @@ Result<void> TcpSocketConnectionTransport::StartAsync()
     std::promise<void> connectionThreadEndedPromise;
     connectionThreadEndedFuture = connectionThreadEndedPromise.get_future();
     connectionThread = std::thread(
-        &TcpSocketConnectionTransport::connectionThreadBody,
+        &NetworkSocketConnectionTransport::connectionThreadBody,
         this,
         std::move(connectionThreadEndedPromise));
     connectionThread.detach();
@@ -75,7 +91,7 @@ Result<void> TcpSocketConnectionTransport::StartAsync()
     return Result<void>::Success();
 }
 
-void TcpSocketConnectionTransport::Stop()
+void NetworkSocketConnectionTransport::Stop()
 {
     if (!isStopping && !isStopped)
     {
@@ -101,7 +117,7 @@ void TcpSocketConnectionTransport::Stop()
     }
 }
 
-void TcpSocketConnectionTransport::Write(const std::vector<std::byte>& bytes)
+void NetworkSocketConnectionTransport::Write(const std::vector<std::byte>& bytes)
 {
     if (!isStopping && !isStopped)
     {
@@ -118,13 +134,13 @@ void TcpSocketConnectionTransport::Write(const std::vector<std::byte>& bytes)
     }
 }
 
-void TcpSocketConnectionTransport::SetOnConnectionClosed(
+void NetworkSocketConnectionTransport::SetOnConnectionClosed(
     std::function<void(void)> onConnectionClosed)
 {
     this->onConnectionClosed = onConnectionClosed;
 }
 
-void TcpSocketConnectionTransport::SetOnBytesReceived(
+void NetworkSocketConnectionTransport::SetOnBytesReceived(
     std::function<void(const std::vector<std::byte>&)> onBytesReceived)
 {
     this->onBytesReceived = onBytesReceived;
@@ -132,7 +148,7 @@ void TcpSocketConnectionTransport::SetOnBytesReceived(
 #pragma endregion ConnectionTransport Implementation
 
 #pragma region Private methods
-void TcpSocketConnectionTransport::connectionThreadBody(
+void NetworkSocketConnectionTransport::connectionThreadBody(
     std::promise<void>&& connectionThreadEndedPromise)
 {
     // Indicate when this thread has exited.
@@ -172,7 +188,15 @@ void TcpSocketConnectionTransport::connectionThreadBody(
         // Data available for reading?
         if (pollFds[0].revents & POLLIN)
         {
-            int bytesRead = read(socketHandle, readBuf, sizeof(readBuf));
+            sockaddr_in recvFromAddr{};
+            socklen_t recvFromAddrLen = 0;
+            int bytesRead = recvfrom(
+                socketHandle,
+                readBuf,
+                sizeof(readBuf),
+                0,
+                reinterpret_cast<sockaddr*>(&recvFromAddr),
+                &recvFromAddrLen);
             if (bytesRead == -1)
             {
                 int error = errno;
@@ -190,6 +214,35 @@ void TcpSocketConnectionTransport::connectionThreadBody(
                         Util::ErrnoToString(error));
                     closeConnection();
                     break;
+                }
+            }
+            else if (bytesRead > 0)
+            {
+                bool bytesAreFromExpectedAddr = true;
+                if (targetAddr.has_value())
+                {
+                    // Make sure the incoming data is coming from the expected address
+                    if (recvFromAddr.sin_addr.s_addr != targetAddr.value().sin_addr.s_addr)
+                    {
+                        bytesAreFromExpectedAddr = false;
+                    }
+                }
+
+                if (bytesAreFromExpectedAddr)
+                {
+                    std::vector<std::byte> received(
+                        reinterpret_cast<std::byte*>(readBuf),
+                        (reinterpret_cast<std::byte*>(readBuf) + bytesRead));
+                    if (onBytesReceived)
+                    {
+                        onBytesReceived(received);
+                    }
+                }
+                else
+                {
+                    spdlog::warn(
+                        "Discarding {} bytes received from unexpected source address.",
+                        bytesRead);
                 }
             }
         }
@@ -220,10 +273,25 @@ void TcpSocketConnectionTransport::connectionThreadBody(
                 int bytesWritten = 0;
                 while (true)
                 {
-                    int writeResult = write(
+                    sockaddr_in sendToAddr{};
+                    sockaddr* sendToAddrPtr = nullptr;
+                    socklen_t sendToAddrLen = 0;
+
+                    if ((connectionKind == NetworkSocketConnectionKind::Udp) &&
+                        targetAddr.has_value())
+                    {
+                        sendToAddr = targetAddr.value();
+                        sendToAddrPtr = reinterpret_cast<sockaddr*>(&sendToAddr);
+                        sendToAddrLen = sizeof(sendToAddr);
+                    }
+
+                    int writeResult = sendto(
                         socketHandle,
                         (reinterpret_cast<char*>(writeBuffer) + bytesWritten),
-                        (readResult - bytesWritten));
+                        (readResult - bytesWritten),
+                        0,
+                        sendToAddrPtr,
+                        sendToAddrLen);
 
                     if (writeResult < 0)
                     {
@@ -281,7 +349,7 @@ void TcpSocketConnectionTransport::connectionThreadBody(
     }
 }
 
-void TcpSocketConnectionTransport::closeConnection()
+void NetworkSocketConnectionTransport::closeConnection()
 {
     if (!isStopping)
     {
