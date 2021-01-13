@@ -13,7 +13,6 @@
 #include "Configuration.h"
 #include "FtlStream.h"
 #include "FtlStreamStore.h"
-#include "IngestServer.h"
 #include "JanssonPtr.h"
 #include "JanusSession.h"
 #include "ServiceConnections/ServiceConnection.h"
@@ -27,10 +26,15 @@ extern "C"
 
 #include <FtlOrchestrationClient.h>
 
+#include <list>
 #include <memory>
 #include <map>
 #include <mutex>
-#include <list>
+#include <thread>
+
+// Forward declarations
+class ConnectionCreator;
+class ConnectionListener;
 
 /**
  * @brief This class handles interactions with the Janus plugin API and Janus core.
@@ -47,7 +51,10 @@ public:
     static const unsigned int FTL_PLUGIN_ERROR_UNKNOWN           = 470;
 
     /* Constructor/Destructor */
-    JanusFtl(janus_plugin* plugin);
+    JanusFtl(
+        janus_plugin* plugin,
+        std::unique_ptr<ConnectionListener> ingestControlListener,
+        std::unique_ptr<ConnectionCreator> mediaConnectionCreator);
 
     /* Init/Destroy */
     int Init(janus_callbacks* callback, const char* config_path);
@@ -70,15 +77,17 @@ public:
     json_t* QuerySession(janus_plugin_session* handle);
 
 private:
-    /* Members */
+    /* Private fields */
     janus_plugin* pluginHandle;
     janus_callbacks* janusCore;
+    std::unique_ptr<ConnectionListener> ingestControlListener;
+    std::unique_ptr<ConnectionCreator> mediaConnectionCreator;
+    std::unique_ptr<Configuration> configuration;
+    std::shared_ptr<FtlConnection> orchestrationClient;
     std::shared_ptr<ServiceConnection> serviceConnection;
     std::shared_ptr<FtlStreamStore> ftlStreamStore;
     std::shared_ptr<RelayThreadPool> relayThreadPool;
-    std::unique_ptr<IngestServer> ingestServer;
-    std::unique_ptr<Configuration> configuration;
-    std::shared_ptr<FtlConnection> orchestrationClient;
+    std::thread ingestListenThread;
     uint16_t minMediaPort = 9000; // TODO: Migrate to Configuration
     uint16_t maxMediaPort = 65535; // TODO: Migrate to Configuration
     std::mutex sessionsMutex;

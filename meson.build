@@ -43,7 +43,6 @@ sources = files([
     'src/FtlStream.cpp',
     'src/FtlStreamStore.cpp',
     'src/IngestConnection.cpp',
-    'src/IngestServer.cpp',
     'src/JanusSession.cpp',
     'src/JanusFtl.cpp',
     'src/RelayThreadPool.cpp',

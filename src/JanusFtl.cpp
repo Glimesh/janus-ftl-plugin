@@ -25,8 +25,13 @@ extern "C"
 }
 
 #pragma region Constructor/Destructor
-JanusFtl::JanusFtl(janus_plugin* plugin) : 
-    pluginHandle(plugin)
+JanusFtl::JanusFtl(
+    janus_plugin* plugin,
+    std::unique_ptr<ConnectionListener> ingestControlListener,
+    std::unique_ptr<ConnectionCreator> mediaConnectionCreator) : 
+    pluginHandle(plugin),
+    ingestControlListener(std::move(ingestControlListener)),
+    mediaConnectionCreator(std::move(mediaConnectionCreator))
 { }
 #pragma endregion
 

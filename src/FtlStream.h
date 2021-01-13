@@ -32,7 +32,9 @@ extern "C"
 class ConnectionTransport;
 class JanusSession;
 
-// Kind of a combo between janus_streaming_mountpoint and janus_streaming_rtp_source
+/**
+ * @brief Manages the FTL media stream, accepting incoming RTP packets.
+ */
 class FtlStream
 {
 public:
