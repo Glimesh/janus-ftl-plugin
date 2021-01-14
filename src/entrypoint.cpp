@@ -92,7 +92,9 @@ static janus_plugin janus_ftl_plugin =
 #pragma endregion
 
 #pragma region Plugin creator
-extern "C" janus_plugin *create(void) {
+extern "C" janus_plugin *create(void)
+{
+    auto ingestControlListener = std::make_unique<TcpConnectionListener>();
     janusFtl = std::make_unique<JanusFtl>(&janus_ftl_plugin);
     JANUS_LOG(LOG_VERB, "%s created!\n", FTL_PLUGIN_NAME);
     return &janus_ftl_plugin;

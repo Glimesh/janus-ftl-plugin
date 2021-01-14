@@ -26,6 +26,7 @@ extern "C"
 
 #include <FtlOrchestrationClient.h>
 
+#include <future>
 #include <list>
 #include <memory>
 #include <map>
@@ -98,6 +99,8 @@ private:
     void initOrchestratorConnection();
     void initServiceConnection();
     uint16_t newIngestFtlStream(std::shared_ptr<IngestConnection> connection);
+    void ingestListenThreadBody(std::promise<void>&& readyPromise);
+    void onIngestNewConnection(std::unique_ptr<ConnectionTransport> controlTransport);
     void ftlStreamClosed(std::weak_ptr<FtlStream> weakStream);
     // Packet handling
     void handlePsfbRtcpPacket(janus_plugin_session* handle, janus_rtcp_header* packet);

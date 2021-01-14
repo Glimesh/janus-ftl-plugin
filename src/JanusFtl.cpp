@@ -32,7 +32,12 @@ JanusFtl::JanusFtl(
     pluginHandle(plugin),
     ingestControlListener(std::move(ingestControlListener)),
     mediaConnectionCreator(std::move(mediaConnectionCreator))
-{ }
+{
+    this->ingestControlListener->SetOnNewConnection(std::bind(
+        &JanusFtl::onIngestNewConnection,
+        this,
+        std::placeholders::_1));
+}
 #pragma endregion
 
 #pragma region Init/Destroy
@@ -52,12 +57,13 @@ int JanusFtl::Init(janus_callbacks* callback, const char* config_path)
     relayThreadPool = std::make_shared<RelayThreadPool>(ftlStreamStore);
     relayThreadPool->Start();
 
-    ingestServer = std::make_unique<IngestServer>(serviceConnection);
-    ingestServer->SetOnRequestMediaConnection(std::bind(
-        &JanusFtl::newIngestFtlStream,
-        this,
-        std::placeholders::_1));
-    ingestServer->Start();
+    // Start listening for new ingest connections
+    std::promise<void> ingestThreadReadyPromise;
+    std::future<void> ingestThreadReadyFuture = ingestThreadReadyPromise.get_future();
+    ingestListenThread = 
+        std::thread(&JanusFtl::ingestListenThreadBody, this, std::move(ingestThreadReadyPromise));
+    ingestListenThread.detach();
+    ingestThreadReadyFuture.get();
 
     JANUS_LOG(LOG_INFO, "FTL: Plugin initialized!\n");
     return 0;
@@ -67,7 +73,7 @@ void JanusFtl::Destroy()
 {
     JANUS_LOG(LOG_INFO, "FTL: Tearing down FTL!\n");
     // TODO: Remove all mountpoints, kill threads, sessions, etc.
-    ingestServer->Stop();
+    ingestControlListener->StopListening();
     relayThreadPool->Stop();
 }
 #pragma endregion
@@ -407,6 +413,11 @@ void JanusFtl::initServiceConnection()
     }
 
     serviceConnection->Init();
+}
+
+void ingestListenThreadBody(std::promise<void>&& readyPromise)
+{
+
 }
 
 uint16_t JanusFtl::newIngestFtlStream(std::shared_ptr<IngestConnection> connection)
