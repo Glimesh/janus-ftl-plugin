@@ -22,10 +22,8 @@ extern "C"
 
 #pragma region Constructor/Destructor
 RelayThreadPool::RelayThreadPool(
-    std::shared_ptr<FtlStreamStore> ftlStreamStore,
-    unsigned int threadCount) : 
-    ftlStreamStore(ftlStreamStore),
-    threadCount(threadCount)
+    std::shared_ptr<FtlStreamStore> ftlStreamStore) : 
+    ftlStreamStore(ftlStreamStore)
 { }
 #pragma endregion
 
@@ -34,11 +32,12 @@ void RelayThreadPool::Start()
 {
     std::lock_guard<std::mutex> lock(threadVectorMutex);
 
-    for (unsigned int i = 0; i < threadCount; ++i)
-    {
-        auto thread = std::thread(&RelayThreadPool::relayThreadMethod, this, i);
-        relayThreads.push_back(std::move(thread));
-    }
+    // TODO: A thread pool with just one thread is not a pool, consider ripping
+    // this code out entirely or reworking it if we do need a relay pool to 
+    // send the relayed packets in the order they were queued.
+    // https://github.com/Glimesh/janus-ftl-plugin/issues/57
+    auto thread = std::thread(&RelayThreadPool::relayThreadMethod, this);
+    relayThreads.push_back(std::move(thread));
 }
 
 void RelayThreadPool::Stop()
@@ -73,9 +72,9 @@ void RelayThreadPool::RelayPacket(RtpRelayPacket packet)
 #pragma endregion
 
 #pragma region Private methods
-void RelayThreadPool::relayThreadMethod(unsigned int threadNumber)
+void RelayThreadPool::relayThreadMethod()
 {
-    JANUS_LOG(LOG_INFO, "FTL: Relay thread pool thread #%d started.\n", threadNumber);
+    JANUS_LOG(LOG_INFO, "FTL: Relay thread started.\n");
     std::unique_lock<std::mutex> lock(relayMutex);
 
     while (true)
@@ -132,6 +131,6 @@ void RelayThreadPool::relayThreadMethod(unsigned int threadNumber)
         lock.lock();
     }
 
-    JANUS_LOG(LOG_INFO, "FTL: Relay thread pool thread #%d terminated.\n", threadNumber);
+    JANUS_LOG(LOG_INFO, "FTL: Relay thread terminated.\n");
 }
 #pragma endregion

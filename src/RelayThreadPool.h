@@ -27,9 +27,7 @@ class RelayThreadPool
 {
 public:
     /* Constructor/Destructor */
-    RelayThreadPool(
-        std::shared_ptr<FtlStreamStore> ftlStreamStore,
-        unsigned int threadCount = std::thread::hardware_concurrency());
+    RelayThreadPool(std::shared_ptr<FtlStreamStore> ftlStreamStore);
 
     /* Public methods */
     void Start();
@@ -48,5 +46,5 @@ private:
     std::queue<RtpRelayPacket> packetRelayQueue;
 
     /* Private methods */
-    void relayThreadMethod(unsigned int threadNumber);
+    void relayThreadMethod();
 };
