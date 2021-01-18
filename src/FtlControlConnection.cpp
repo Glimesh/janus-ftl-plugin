@@ -1,11 +1,11 @@
 /**
- * @file FtlIngestControlConnection.cpp
+ * @file FtlControlConnection.cpp
  * @author Hayden McAfee (hayden@outlook.com)
  * @date 2021-01-15
  * @copyright Copyright (c) 2021 Hayden McAfee
  */
 
-#include "FtlIngestControlConnection.h"
+#include "FtlControlConnection.h"
 
 #include "ConnectionTransports/ConnectionTransport.h"
 #include "Utilities/Util.h"
@@ -16,11 +16,12 @@
 #include <spdlog/spdlog.h>
 
 #pragma region Constructor/Destructor
-FtlIngestControlConnection::FtlIngestControlConnection(
+FtlControlConnection::FtlControlConnection(
     std::unique_ptr<ConnectionTransport> transport,
     RequestKeyCallback onRequestKey,
     StartMediaPortCallback onStartMediaPort,
-    ConnectionClosedCallback onConnectionClosed) : 
+    ConnectionClosedCallback onConnectionClosed)
+:
     transport(std::move(transport)),
     onRequestKey(onRequestKey),
     onStartMediaPort(onStartMediaPort),
@@ -28,26 +29,39 @@ FtlIngestControlConnection::FtlIngestControlConnection(
 { 
     // Bind to transport events
     transport->SetOnBytesReceived(std::bind(
-        &FtlIngestControlConnection::onTransportBytesReceived, this, std::placeholders::_1));
+        &FtlControlConnection::onTransportBytesReceived, this, std::placeholders::_1));
     transport->SetOnConnectionClosed(std::bind(
-        &FtlIngestControlConnection::onTransportClosed, this));
+        &FtlControlConnection::onTransportClosed, this));
 }
 #pragma endregion Constructor/Destructor
 
+#pragma region Getters/setters
+ftl_channel_id_t FtlControlConnection::GetChannelId()
+{
+    return channelId;
+}
+
+void FtlControlConnection::SetOnConnectionClosed(ConnectionClosedCallback onConnectionClosed)
+{
+    this->onConnectionClosed = onConnectionClosed;
+}
+#pragma endregion Getters/setters
+
 #pragma region Public functions
-Result<void> FtlIngestControlConnection::StartAsync()
+Result<void> FtlControlConnection::StartAsync()
 {
     return transport->StartAsync();
 }
 
-void FtlIngestControlConnection::Stop()
+void FtlControlConnection::Stop()
 {
-    // TODO
+    // Stop the transport, but don't fire OnConnectionClosed
+    transport->Stop();
 }
 #pragma endregion Public functions
 
 #pragma region Private functions
-void FtlIngestControlConnection::onTransportBytesReceived(const std::vector<std::byte>& bytes)
+void FtlControlConnection::onTransportBytesReceived(const std::vector<std::byte>& bytes)
 {
     // Tack the new bytes onto the end of our running buffer
     commandBuffer.reserve(commandBuffer.size() + bytes.size());
@@ -84,12 +98,15 @@ void FtlIngestControlConnection::onTransportBytesReceived(const std::vector<std:
     }
 }
 
-void FtlIngestControlConnection::onTransportClosed()
+void FtlControlConnection::onTransportClosed()
 {
-    // TODO
+    if (onConnectionClosed)
+    {
+        onConnectionClosed();
+    }
 }
 
-void FtlIngestControlConnection::writeToTransport(const std::string& str)
+void FtlControlConnection::writeToTransport(const std::string& str)
 {
     std::vector<std::byte> writeBytes;
     writeBytes.reserve(str.size());
@@ -100,7 +117,20 @@ void FtlIngestControlConnection::writeToTransport(const std::string& str)
     transport->Write(writeBytes);
 }
 
-void FtlIngestControlConnection::processCommand(const std::string& command)
+void FtlControlConnection::stopConnection()
+{
+    // First, stop the transport
+    // (we will not receive an OnConnectionClosed if we call Stop ourselves)
+    transport->Stop();
+    
+    // Notify that we've stopped
+    if (onConnectionClosed)
+    {
+        onConnectionClosed();
+    }
+}
+
+void FtlControlConnection::processCommand(const std::string& command)
 {
     if (command.compare("HMAC") == 0)
     {
@@ -128,7 +158,7 @@ void FtlIngestControlConnection::processCommand(const std::string& command)
     }
 }
 
-void FtlIngestControlConnection::processHmacCommand()
+void FtlControlConnection::processHmacCommand()
 {
     // Calculate a new random HMAC payload, then send it.
     // We'll need to send it out as a string of hex bytes (00 - ff)
@@ -138,7 +168,7 @@ void FtlIngestControlConnection::processHmacCommand()
     writeToTransport(fmt::format("200 {}\n", hmacString));
 }
 
-void FtlIngestControlConnection::processConnectCommand(const std::string& command)
+void FtlControlConnection::processConnectCommand(const std::string& command)
 {
     std::smatch matches;
 
@@ -148,7 +178,18 @@ void FtlIngestControlConnection::processConnectCommand(const std::string& comman
         std::string channelIdStr = matches[1].str();
         std::string hmacHashStr = matches[2].str();
 
-        uint32_t requestedChannelId = static_cast<uint32_t>(std::stoul(channelIdStr));
+        ftl_channel_id_t requestedChannelId = 0;
+        try
+        {
+            requestedChannelId = static_cast<ftl_channel_id_t>(std::stoul(channelIdStr));
+        }
+        catch(const std::exception& /*e*/)
+        {
+            spdlog::warn("Client provided invalid channel ID value, disconnecting: {}",
+                channelIdStr);
+            stopConnection();
+            return;
+        }
         std::vector<std::byte> hmacHash = Util::HexStringToByteArray(hmacHashStr);
 
         // Try to fetch the key for this channel
@@ -203,14 +244,13 @@ void FtlIngestControlConnection::processConnectCommand(const std::string& comman
     }
     else
     {
-        // TODO: Handle error, disconnect client
         spdlog::info("Malformed CONNECT request, disconnecting: {}", command);
         stopConnection();
         return;
     }
 }
 
-void FtlIngestControlConnection::processAttributeCommand(const std::string& command)
+void FtlControlConnection::processAttributeCommand(const std::string& command)
 {
     if (!isAuthenticated)
     {
@@ -264,7 +304,7 @@ void FtlIngestControlConnection::processAttributeCommand(const std::string& comm
             {
                 mediaMetadata.VideoWidth = std::stoul(value);
             }
-            catch(const std::exception& e)
+            catch(const std::exception& /*e*/)
             {
                 spdlog::warn("Client provided invalid video width value: {}", value);
             }
@@ -275,7 +315,7 @@ void FtlIngestControlConnection::processAttributeCommand(const std::string& comm
             {
                 mediaMetadata.VideoHeight = std::stoul(value);
             }
-            catch(const std::exception& e)
+            catch(const std::exception& /*e*/)
             {
                 spdlog::warn("Client provided invalid video height value: {}", value);
             }
@@ -286,7 +326,7 @@ void FtlIngestControlConnection::processAttributeCommand(const std::string& comm
             {
                 mediaMetadata.VideoSsrc = std::stoul(value);
             }
-            catch(const std::exception& e)
+            catch(const std::exception& /*e*/)
             {
                 spdlog::warn("Client provided invalid video ssrc value: {}", value);
             }
@@ -297,7 +337,7 @@ void FtlIngestControlConnection::processAttributeCommand(const std::string& comm
             {
                 mediaMetadata.AudioSsrc = std::stoul(value);
             }
-            catch(const std::exception& e)
+            catch(const std::exception& /*e*/)
             {
                 spdlog::warn("Client provided invalid audio ssrc value: {}", value);
             }
@@ -308,7 +348,7 @@ void FtlIngestControlConnection::processAttributeCommand(const std::string& comm
             {
                 mediaMetadata.VideoPayloadType = std::stoul(value);
             }
-            catch(const std::exception& e)
+            catch(const std::exception& /*e*/)
             {
                 spdlog::warn("Client provided invalid video payload type value: {}", value);
             }
@@ -319,7 +359,7 @@ void FtlIngestControlConnection::processAttributeCommand(const std::string& comm
             {
                 mediaMetadata.AudioPayloadType = std::stoul(value);
             }
-            catch(const std::exception& e)
+            catch(const std::exception& /*e*/)
             {
                 spdlog::warn("Client provided invalid audio payload type value: {}", value);
             }
@@ -335,7 +375,7 @@ void FtlIngestControlConnection::processAttributeCommand(const std::string& comm
     }
 }
 
-void FtlIngestControlConnection::processDotCommand()
+void FtlControlConnection::processDotCommand()
 {
     // Validate our state before we fire up a stream
     if (!isAuthenticated)
@@ -384,7 +424,7 @@ void FtlIngestControlConnection::processDotCommand()
     writeToTransport(fmt::format("200 hi. Use UDP port {}\n", mediaPort));
 }
 
-void FtlIngestControlConnection::processPingCommand()
+void FtlControlConnection::processPingCommand()
 {
     // TODO: Rate limit this.
     writeToTransport("201\n");

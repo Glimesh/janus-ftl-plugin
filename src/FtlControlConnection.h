@@ -1,5 +1,5 @@
 /**
- * @file FtlIngestControlConnection.h
+ * @file FtlControlConnection.h
  * @author Hayden McAfee (hayden@outlook.com)
  * @date 2021-01-15
  * @copyright Copyright (c) 2021 Hayden McAfee
@@ -7,6 +7,8 @@
 
 #pragma once
 
+#include "FtlServer.h"
+#include "FtlStream.h"
 #include "Utilities/FtlTypes.h"
 #include "Utilities/Result.h"
 
@@ -21,37 +23,25 @@ class ConnectionTransport;
 /**
  * @brief Manages incoming FTL control connections
  */
-class FtlIngestControlConnection
+class FtlControlConnection
 {
 public:
-    /* Public structures */
-    struct MediaMetadata
-    {
-        std::string VendorName;
-        std::string VendorVersion;
-        bool HasVideo;
-        bool HasAudio;
-        VideoCodecKind VideoCodec;
-        AudioCodecKind AudioCodec;
-        uint16_t VideoWidth;
-        uint16_t VideoHeight;
-        rtp_ssrc_t VideoSsrc;
-        rtp_ssrc_t AudioSsrc;
-        rtp_payload_type_t VideoPayloadType;
-        rtp_payload_type_t AudioPayloadType;
-    };
-
-    /* Callback types */
-    using RequestKeyCallback = std::function<Result<std::vector<std::byte>>(ftl_channel_id_t)>;
-    using StartMediaPortCallback = std::function<Result<uint16_t>(MediaMetadata)>;
-    using ConnectionClosedCallback = std::function<void(void)>;
+    /* Public types */
+    using RequestKeyCallback = FtlServer::RequestKeyCallback;
+    using StartMediaPortCallback = std::function<Result<uint16_t>(
+        FtlControlConnection&, ftl_channel_id_t, FtlStream::MediaMetadata, sockaddr_in)>;
+    using ConnectionClosedCallback = std::function<void(FtlControlConnection&)>;
 
     /* Constructor/Destructor */
-    FtlIngestControlConnection(
+    FtlControlConnection(
         std::unique_ptr<ConnectionTransport> transport,
         RequestKeyCallback onRequestKey,
         StartMediaPortCallback onStartMediaPort,
         ConnectionClosedCallback onConnectionClosed);
+
+    /* Getters/Setters */
+    ftl_channel_id_t GetChannelId();
+    void SetOnConnectionClosed(ConnectionClosedCallback onConnectionClosed);
 
     /* Public functions */
     Result<void> StartAsync();
@@ -66,12 +56,12 @@ private:
     const std::unique_ptr<ConnectionTransport> transport;
     const RequestKeyCallback onRequestKey;
     const StartMediaPortCallback onStartMediaPort;
-    const ConnectionClosedCallback onConnectionClosed;
+    ConnectionClosedCallback onConnectionClosed;
     bool isAuthenticated = false;
     bool isStreaming = false;
     ftl_channel_id_t channelId = 0;
     std::vector<std::byte> hmacPayload;
-    MediaMetadata mediaMetadata {};
+    FtlStream::MediaMetadata mediaMetadata {};
     // Command processing
     std::string commandBuffer;
     const std::regex connectPattern = std::regex(R"~(CONNECT ([0-9]+) \$([0-9a-f]+))~");

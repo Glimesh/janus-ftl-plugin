@@ -30,7 +30,7 @@ extern "C"
 #include <thread>
 
 class ConnectionTransport;
-class JanusSession;
+class FtlControlConnection;
 
 /**
  * @brief Manages the FTL media stream, accepting incoming RTP packets.
@@ -38,41 +38,42 @@ class JanusSession;
 class FtlStream
 {
 public:
+    /* Public types */
+    struct MediaMetadata
+    {
+        std::string VendorName;
+        std::string VendorVersion;
+        bool HasVideo;
+        bool HasAudio;
+        VideoCodecKind VideoCodec;
+        AudioCodecKind AudioCodec;
+        uint16_t VideoWidth;
+        uint16_t VideoHeight;
+        rtp_ssrc_t VideoSsrc;
+        rtp_ssrc_t AudioSsrc;
+        rtp_payload_type_t VideoPayloadType;
+        rtp_payload_type_t AudioPayloadType;
+    };
+    using ClosedCallback = std::function<void(FtlStream&)>;
+    using RtpPacketCallback = FtlServer::RtpPacketCallback;
+
     /* Constructor/Destructor */
     FtlStream(
-        std::unique_ptr<IngestConnection> ingestConnection,
+        std::unique_ptr<FtlControlConnection> controlConnection,
         std::unique_ptr<ConnectionTransport> mediaTransport,
-        RelayThreadPool& relayThreadPool,
-        ServiceConnection& serviceConnection,
-        const uint16_t metadataReportIntervalMs,
-        const std::string myHostname,
-        const int mediaPort,
-        const bool nackLostPackets = true,
-        const bool generatePreviews = true);
+        const MediaMetadata mediaMetadata,
+        const ftl_stream_id_t streamId,
+        const ClosedCallback onClosed,
+        const RtpPacketCallback onRtpPacket,
+        const bool nackLostPackets = true);
 
     /* Public methods */
-    Result<void> Start();
+    Result<void> StartAsync();
     void Stop();
-    void AddViewer(std::shared_ptr<JanusSession> viewerSession);
-    void RemoveViewer(std::shared_ptr<JanusSession> viewerSession);
-    void SetOnClosed(std::function<void (void)> callback);
-    void SendKeyframeToViewer(std::shared_ptr<JanusSession> viewerSession);
-    
+
     /* Getters/Setters */
-    int GetMediaPort();
     ftl_channel_id_t GetChannelId();
     ftl_stream_id_t GetStreamId();
-    bool GetHasVideo();
-    bool GetHasAudio();
-    VideoCodecKind GetVideoCodec();
-    uint16_t GetVideoWidth();
-    uint16_t GetVideoHeight();
-    AudioCodecKind GetAudioCodec();
-    rtp_ssrc_t GetAudioSsrc();
-    rtp_ssrc_t GetVideoSsrc();
-    rtp_payload_type_t GetAudioPayloadType();
-    rtp_payload_type_t GetVideoPayloadType();
-    std::list<std::shared_ptr<JanusSession>> GetViewers();
 
 private:
     /* Constants */
@@ -82,48 +83,19 @@ private:
     static constexpr rtp_payload_type_t  FTL_PAYLOAD_TYPE_PING          = 250;
 
     /* Private members */
-    const std::unique_ptr<IngestConnection> ingestConnection;
+    const std::unique_ptr<FtlControlConnection> controlConnection;
     const std::unique_ptr<ConnectionTransport> mediaTransport;
-    RelayThreadPool& relayThreadPool;
-    ServiceConnection& serviceConnection;
-    const uint16_t metadataReportIntervalMs;
-    const std::string myHostname;
-    const int mediaPort;
+    const MediaMetadata mediaMetadata;
+    const ftl_stream_id_t streamId;
+    const ClosedCallback onClosed;
+    const RtpPacketCallback onRtpPacket;
     const bool nackLostPackets;
-    const bool generatePreviews;
-    ftl_stream_id_t streamId;
-    janus_rtp_switching_context rtpSwitchingContext;
-    int mediaSocketHandle;
-    std::mutex viewerSessionsMutex;
-    std::list<std::shared_ptr<JanusSession>> viewerSessions;
-    std::function<void (void)> onClosed;
     bool stopping = false;
-    std::map<rtp_payload_type_t, rtp_sequence_num_t> latestSequence;
-    std::map<rtp_payload_type_t, std::set<rtp_sequence_num_t>> lostPackets;
-    std::unique_ptr<PreviewGenerator> previewGenerator;
-    // Metadata/reporting
-    std::time_t streamStartTime;
-    std::atomic<uint32_t> currentSourceBitrateBps {0};
-    std::atomic<uint32_t> numPacketsReceived {0};
-    std::atomic<uint32_t> numPacketsNacked {0};
-    std::atomic<uint32_t> numPacketsLost {0};
-    std::atomic<uint16_t> streamerToIngestPingMs {0};
-    std::mutex streamMetadataMutex;
-    std::thread streamMetadataReportingThread;
-    std::mutex keyframeMutex;
-    Keyframe keyframe;
-    Keyframe pendingKeyframe;
-    std::set<std::shared_ptr<JanusSession>> keyframeSentToViewers;
-    uint32_t lastKeyframePreviewReported = 0;
 
     /* Private methods */
-    void ingestConnectionClosed();
+    void controlConnectionClosed(FtlControlConnection& connection);
     void mediaBytesReceived(const std::vector<std::byte>& bytes);
     void mediaConnectionClosed();
-    void startStreamMetadataReportingThread();
-    void processKeyframePacket(const std::vector<std::byte>& rtpPacket);
-    void markReceivedSequence(rtp_payload_type_t payloadType, rtp_sequence_num_t receivedSequence);
-    void processLostPackets(rtp_payload_type_t payloadType, rtp_sequence_num_t currentSequence, rtp_timestamp_t currentTimestamp);
-    void handlePing(const janus_rtp_header* rtpHeader, const uint16_t length);
-    void handleSenderReport(const janus_rtp_header* rtpHeader, const uint16_t length);
+    void handlePing(const std::vector<std::byte>& rtpPacket);
+    void handleSenderReport(const std::vector<std::byte>& rtpPacket);
 };

@@ -11,6 +11,7 @@
 #pragma once
 
 #include "../Utilities/FtlTypes.h"
+#include "../Utilities/Result.h"
 
 #include <string>
 #include <vector>
@@ -37,7 +38,7 @@ public:
      * @param channelId The channel ID to fetch the key for
      * @return The HMAC key
      */
-    virtual std::string GetHmacKey(ftl_channel_id_t channelId) = 0;
+    virtual Result<std::vector<std::byte>> GetHmacKey(ftl_channel_id_t channelId) = 0;
 
     /**
      * @brief Starts a stream for a given channel
@@ -45,7 +46,7 @@ public:
      * @param channelId ID of channel to start stream on
      * @return The ID of the new stream
      */
-    virtual ftl_stream_id_t StartStream(ftl_channel_id_t channelId) = 0;
+    virtual Result<ftl_stream_id_t> StartStream(ftl_channel_id_t channelId) = 0;
 
     /**
      * @brief Updates the service with additional metadata about a stream
@@ -53,19 +54,21 @@ public:
      * @param streamId ID of stream to update
      * @param metadata metadata of stream
      */
-    virtual void UpdateStreamMetadata(ftl_stream_id_t streamId, StreamMetadata metadata) = 0;
+    virtual Result<void> UpdateStreamMetadata(ftl_stream_id_t streamId,
+        StreamMetadata metadata) = 0;
 
     /**
      * @brief Marks the given stream ID as ended on the service
      * 
      * @param streamId ID of stream to end
      */
-    virtual void EndStream(ftl_stream_id_t streamId) = 0;
+    virtual Result<void> EndStream(ftl_stream_id_t streamId) = 0;
 
     /**
      * @brief Sends a JPEG preview image of a stream to the service.
      * 
      * @param thumbnailData buffer containing JPEG image data
      */
-    virtual void SendJpegPreviewImage(ftl_stream_id_t streamId, std::vector<uint8_t> jpegData) = 0;
+    virtual Result<void> SendJpegPreviewImage(ftl_stream_id_t streamId,
+        std::vector<uint8_t> jpegData) = 0;
 };

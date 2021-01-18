@@ -10,16 +10,20 @@
 
 #include "Configuration.h"
 #include "FtlClient.h"
+#include "FtlServer.h"
 #include "JanusFtl.h"
-#include "JanssonPtr.h"
 #include "ServiceConnections/DummyServiceConnection.h"
 #include "ServiceConnections/EdgeNodeServiceConnection.h"
 #include "ServiceConnections/GlimeshServiceConnection.h"
+#include "Utilities/JanssonPtr.h"
+
+#include <fmt/core.h>
+#include <spdlog/spdlog.h>
+#include <stdexcept>
 
 extern "C"
 {
     #include <apierror.h>
-    #include <debug.h>
     #include <jansson.h>
     #include <rtcp.h>
 }
@@ -29,14 +33,13 @@ JanusFtl::JanusFtl(
     janus_plugin* plugin,
     std::unique_ptr<ConnectionListener> ingestControlListener,
     std::unique_ptr<ConnectionCreator> mediaConnectionCreator) : 
-    pluginHandle(plugin),
-    ingestControlListener(std::move(ingestControlListener)),
-    mediaConnectionCreator(std::move(mediaConnectionCreator))
+    pluginHandle(plugin)
 {
-    this->ingestControlListener->SetOnNewConnection(std::bind(
-        &JanusFtl::onIngestNewConnection,
-        this,
-        std::placeholders::_1));
+    ftlServer = std::make_unique<FtlServer>(std::move(ingestControlListener),
+        std::move(mediaConnectionCreator), std::bind(&JanusFtl::ftlServerRequestKey, this),
+        std::bind(&JanusFtl::ftlServerStreamStarted, this),
+        std::bind(&JanusFtl::ftlServerStreamEnded, this),
+        std::bind(&JanusFtl::ftlServerRtpPacket, this));
 }
 #pragma endregion
 
@@ -57,15 +60,14 @@ int JanusFtl::Init(janus_callbacks* callback, const char* config_path)
     relayThreadPool = std::make_shared<RelayThreadPool>(ftlStreamStore);
     relayThreadPool->Start();
 
-    // Start listening for new ingest connections
-    std::promise<void> ingestThreadReadyPromise;
-    std::future<void> ingestThreadReadyFuture = ingestThreadReadyPromise.get_future();
-    ingestListenThread = 
-        std::thread(&JanusFtl::ingestListenThreadBody, this, std::move(ingestThreadReadyPromise));
-    ingestListenThread.detach();
-    ingestThreadReadyFuture.get();
+    Result<void> ftlStartResult = ftlServer->StartAsync();
+    if (ftlStartResult.IsError)
+    {
+        throw std::runtime_error(fmt::format(
+            "Could not start FTL Server: {}", ftlStartResult.ErrorMessage));
+    }
 
-    JANUS_LOG(LOG_INFO, "FTL: Plugin initialized!\n");
+    spdlog::info("FTL plugin initialized!");
     return 0;
 }
 
@@ -88,10 +90,10 @@ void JanusFtl::CreateSession(janus_plugin_session* handle, int* error)
 }
 
 struct janus_plugin_result* JanusFtl::HandleMessage(
-        janus_plugin_session* handle,
-        char* transaction,
-        json_t* message,
-        json_t* jsep)
+    janus_plugin_session* handle,
+    char* transaction,
+    json_t* message,
+    json_t* jsep)
 {
     JsonPtr messagePtr(message);
     JsonPtr jsepPtr(jsep);
@@ -343,6 +345,27 @@ json_t* JanusFtl::QuerySession(janus_plugin_session* handle)
 #pragma endregion
 
 #pragma region Private methods
+Result<std::vector<std::byte>> JanusFtl::ftlServerRequestKey(ftl_channel_id_t channelId)
+{
+    return serviceConnection->GetHmacKey(channelId);
+}
+
+Result<ftl_stream_id_t> JanusFtl::ftlServerStreamStarted(ftl_channel_id_t channelId)
+{
+    return serviceConnection->StartStream(channelId);
+}
+
+void JanusFtl::ftlServerStreamEnded(ftl_channel_id_t channelId, ftl_stream_id_t streamId)
+{
+    return serviceConnection->EndStream(streamId);
+}
+
+void JanusFtl::ftlServerRtpPacket(ftl_channel_id_t, ftl_stream_id_t,
+    const std::vector<std::byte>& packetData)
+{
+
+}
+
 void JanusFtl::initOrchestratorConnection()
 {
     if (configuration->GetNodeKind() != NodeKind::Standalone)
@@ -413,11 +436,6 @@ void JanusFtl::initServiceConnection()
     }
 
     serviceConnection->Init();
-}
-
-void ingestListenThreadBody(std::promise<void>&& readyPromise)
-{
-
 }
 
 uint16_t JanusFtl::newIngestFtlStream(std::shared_ptr<IngestConnection> connection)

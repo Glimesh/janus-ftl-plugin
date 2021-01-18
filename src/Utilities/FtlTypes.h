@@ -19,11 +19,6 @@
 #include <string>
 #include <vector>
 
-extern "C"
-{
-    #include <rtp.h>
-}
-
 #pragma region Typedefs for various number values
 /* FTL data types */
 typedef uint32_t ftl_channel_id_t;
@@ -139,6 +134,29 @@ struct StreamMetadata
     std::string audioCodec;
     uint16_t videoWidth;
     uint16_t videoHeight;
+};
+
+struct RtpHeader
+{
+#if __BYTE_ORDER == __BIG_ENDIAN
+    uint16_t version:2;
+    uint16_t padding:1;
+    uint16_t extension:1;
+    uint16_t csrccount:4;
+    uint16_t markerbit:1;
+    uint16_t type:7;
+#elif __BYTE_ORDER == __LITTLE_ENDIAN
+    uint16_t csrccount:4;
+    uint16_t extension:1;
+    uint16_t padding:1;
+    uint16_t version:2;
+    uint16_t type:7;
+    uint16_t markerbit:1;
+#endif
+    uint16_t seq_number;
+    uint32_t timestamp;
+    uint32_t ssrc;
+    uint32_t csrc[16];
 };
 
 enum class RtpRelayPacketKind

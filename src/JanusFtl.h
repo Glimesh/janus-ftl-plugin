@@ -17,6 +17,7 @@
 #include "JanusSession.h"
 #include "ServiceConnections/ServiceConnection.h"
 #include "Utilities/FtlTypes.h"
+#include "Utilities/Result.h"
 
 extern "C"
 {
@@ -36,6 +37,7 @@ extern "C"
 // Forward declarations
 class ConnectionCreator;
 class ConnectionListener;
+class FtlServer;
 
 /**
  * @brief This class handles interactions with the Janus plugin API and Janus core.
@@ -81,25 +83,30 @@ private:
     /* Private fields */
     janus_plugin* pluginHandle;
     janus_callbacks* janusCore;
-    std::unique_ptr<ConnectionListener> ingestControlListener;
-    std::unique_ptr<ConnectionCreator> mediaConnectionCreator;
+    std::unique_ptr<FtlServer> ftlServer;
     std::unique_ptr<Configuration> configuration;
     std::shared_ptr<FtlConnection> orchestrationClient;
     std::shared_ptr<ServiceConnection> serviceConnection;
     std::shared_ptr<FtlStreamStore> ftlStreamStore;
     std::shared_ptr<RelayThreadPool> relayThreadPool;
-    std::thread ingestListenThread;
     uint16_t minMediaPort = 9000; // TODO: Migrate to Configuration
-    uint16_t maxMediaPort = 65535; // TODO: Migrate to Configuration
+    uint16_t maxMediaPort = 10000; // TODO: Migrate to Configuration
     std::mutex sessionsMutex;
     std::map<janus_plugin_session*, std::shared_ptr<JanusSession>> sessions;
     std::mutex portAssignmentMutex;
 
     /* Private methods */
+    // FtlServer Callbacks
+    Result<std::vector<std::byte>> ftlServerRequestKey(ftl_channel_id_t channelId);
+    Result<ftl_stream_id_t> ftlServerStreamStarted(ftl_channel_id_t channelId);
+    void ftlServerStreamEnded(ftl_channel_id_t, ftl_stream_id_t);
+    void ftlServerRtpPacket(ftl_channel_id_t, ftl_stream_id_t,
+        const std::vector<std::byte>& packetData);
+    // Initialization
     void initOrchestratorConnection();
     void initServiceConnection();
+    // Stream processing
     uint16_t newIngestFtlStream(std::shared_ptr<IngestConnection> connection);
-    void ingestListenThreadBody(std::promise<void>&& readyPromise);
     void onIngestNewConnection(std::unique_ptr<ConnectionTransport> controlTransport);
     void ftlStreamClosed(std::weak_ptr<FtlStream> weakStream);
     // Packet handling

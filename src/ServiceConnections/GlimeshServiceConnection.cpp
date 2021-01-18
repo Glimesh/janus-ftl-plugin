@@ -13,10 +13,7 @@
 #include "../Utilities/FtlTypes.h"
 
 #include <jansson.h>
-extern "C"
-{
-    #include <debug.h>
-}
+#include <string.h>
 
 #pragma region Constructor/Destructor
 GlimeshServiceConnection::GlimeshServiceConnection(
@@ -44,7 +41,7 @@ void GlimeshServiceConnection::Init()
     ensureAuth();
 }
 
-std::string GlimeshServiceConnection::GetHmacKey(uint32_t channelId)
+Result<std::vector<std::byte>> GlimeshServiceConnection::GetHmacKey(uint32_t channelId)
 {
     std::stringstream query;
     query << "query { channel(id: \"" << channelId << "\") { streamKey } }";
@@ -59,15 +56,20 @@ std::string GlimeshServiceConnection::GetHmacKey(uint32_t channelId)
             json_t* jsonStreamKey = json_object_get(jsonChannel, "streamKey");
             if (jsonStreamKey != nullptr && json_is_string(jsonStreamKey))
             {
-                return std::string(json_string_value(jsonStreamKey));
+                const char* keyValue = json_string_value(jsonStreamKey);
+                return Result<std::vector<std::byte>>::Success(
+                    std::vector<std::byte>(
+                        reinterpret_cast<const std::byte*>(keyValue),
+                        (reinterpret_cast<const std::byte*>(keyValue) + strlen(keyValue))));
             }
         }
     }
 
-    return std::string(); // Empty string means we couldn't find one
+    return Result<std::vector<std::byte>>::Error(
+        "Could not find a stream key for the given channel.");
 }
 
-ftl_stream_id_t GlimeshServiceConnection::StartStream(ftl_channel_id_t channelId)
+Result<ftl_stream_id_t> GlimeshServiceConnection::StartStream(ftl_channel_id_t channelId)
 {
     std::stringstream query;
     query << "mutation { startStream(channelId: " << channelId << ") { id } }";
@@ -83,15 +85,16 @@ ftl_stream_id_t GlimeshServiceConnection::StartStream(ftl_channel_id_t channelId
             if (jsonStreamId != nullptr && json_is_string(jsonStreamId))
             {
                 ftl_stream_id_t streamId = std::stoi(json_string_value(jsonStreamId));
-                return streamId;
+                return Result<ftl_stream_id_t>::Success(streamId);
             }
         }
     }
 
-    return 0;
+    return Result<ftl_stream_id_t>::Error("Could not start stream.");
 }
 
-void GlimeshServiceConnection::UpdateStreamMetadata(ftl_stream_id_t streamId, StreamMetadata metadata)
+Result<void> GlimeshServiceConnection::UpdateStreamMetadata(ftl_stream_id_t streamId,
+    StreamMetadata metadata)
 {
     // TODO: channelId -> streamId
     std::stringstream query;
@@ -131,12 +134,15 @@ void GlimeshServiceConnection::UpdateStreamMetadata(ftl_stream_id_t streamId, St
             {
                 // uint32_t updatedStreamId = json_integer_value(jsonStreamId);
                 // TOTO: Handle error case
+                return Result<void>::Success();
             }
         }
     }
+
+    return Result<void>::Error("Error updating stream metadata.");
 }
 
-void GlimeshServiceConnection::EndStream(ftl_stream_id_t streamId)
+Result<void> GlimeshServiceConnection::EndStream(ftl_stream_id_t streamId)
 {
     std::stringstream query;
     query << "mutation { endStream(streamId: " << streamId << ") { id } }";
@@ -153,12 +159,14 @@ void GlimeshServiceConnection::EndStream(ftl_stream_id_t streamId)
             {
                 // uint32_t endedStreamId = json_integer_value(jsonStreamId);
                 // TODO: Handle error case
+                return Result<void>::Success();
             }
         }
     }
+    return Result<void>::Error("Error ending stream");
 }
 
-void GlimeshServiceConnection::SendJpegPreviewImage(
+Result<void> GlimeshServiceConnection::SendJpegPreviewImage(
     ftl_stream_id_t streamId,
     std::vector<uint8_t> jpegData)
 {
@@ -178,6 +186,8 @@ void GlimeshServiceConnection::SendJpegPreviewImage(
     };
 
     runGraphQlQuery(query.str(), nullptr, files);
+    // TODO: Handle errors
+    return Result<void>::Success();
 }
 #pragma endregion
 

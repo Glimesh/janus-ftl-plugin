@@ -40,9 +40,9 @@ sources = files([
     # Library
     'src/Configuration.cpp',
     'src/FtlClient.cpp',
+    'src/FtlControlConnection.cpp',
     'src/FtlStream.cpp',
     'src/FtlStreamStore.cpp',
-    'src/IngestConnection.cpp',
     'src/JanusSession.cpp',
     'src/JanusFtl.cpp',
     'src/RelayThreadPool.cpp',

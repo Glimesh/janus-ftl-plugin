@@ -10,6 +10,8 @@
 #include <functional>
 #include <future>
 #include <memory>
+#include <unordered_set>
+#include <unordered_map>
 #include <thread>
 
 #include "Utilities/FtlTypes.h"
@@ -18,6 +20,8 @@
 class ConnectionCreator;
 class ConnectionListener;
 class ConnectionTransport;
+class FtlControlConnection;
+class FtlStream;
 
 /**
  * @brief FtlServer manages ingest control and media connections, exposing the relevant stream
@@ -27,7 +31,9 @@ class FtlServer
 {
 public:
     /* Callback types */
-    using StreamStartedCallback = std::function<ftl_stream_id_t(ftl_channel_id_t channelId)>;
+    using RequestKeyCallback = std::function<Result<std::vector<std::byte>>(ftl_channel_id_t)>;
+    using StreamStartedCallback = 
+        std::function<Result<ftl_stream_id_t>(ftl_channel_id_t channelId)>;
     using StreamEndedCallback = std::function<void(ftl_channel_id_t, ftl_stream_id_t)>;
     using RtpPacketCallback = std::function<void(
         ftl_channel_id_t, ftl_stream_id_t, const std::vector<std::byte>& packetData)>;
@@ -35,7 +41,13 @@ public:
     /* Constructor/Destructor */
     FtlServer(
         std::unique_ptr<ConnectionListener> ingestControlListener,
-        std::unique_ptr<ConnectionCreator> mediaConnectionCreator);
+        std::unique_ptr<ConnectionCreator> mediaConnectionCreator,
+        RequestKeyCallback onRequestKey,
+        StreamStartedCallback onStreamStarted,
+        StreamEndedCallback onStreamEnded,
+        RtpPacketCallback onRtpPacket,
+        uint16_t minMediaPort = DEFAULT_MEDIA_MIN_PORT,
+        uint16_t maxMediaPort = DEFAULT_MEDIA_MAX_PORT);
 
     /* Public functions */
     /**
@@ -48,36 +60,38 @@ public:
      */
     void Stop();
 
-    /* Callback setters */
-    /**
-     * @brief Sets callback that is fired when a new stream has started for a given channel.
-     * The callback expects that the callee assigns a stream ID to the new stream via the
-     * return value.
-     */
-    void SetOnStreamStarted(StreamStartedCallback onStreamStarted);
-
-    /**
-     * @brief Sets callback that is fired when an existing stream has ended.
-     */
-    void SetOnStreamEnded(StreamEndedCallback onStreamEnded);
-
-    /**
-     * @brief Sets callback that is fired when a new RTP packet is received for a running stream.
-     */
-    void SetOnRtpPacket(RtpPacketCallback onRtpPacket);
-
 private:
+    /* Constants */
+    static constexpr uint16_t DEFAULT_MEDIA_MIN_PORT = 9000;
+    static constexpr uint16_t DEFAULT_MEDIA_MAX_PORT = 10000;
+
     /* Private fields */
+    // Connection managers
     const std::unique_ptr<ConnectionListener> ingestControlListener;
     const std::unique_ptr<ConnectionCreator> mediaConnectionCreator;
-    std::thread listenThread;
     // Callbacks
-    StreamStartedCallback onStreamStarted;
-    StreamEndedCallback onStreamEnded;
-    RtpPacketCallback onRtpPacket;
+    const RequestKeyCallback onRequestKey;
+    const StreamStartedCallback onStreamStarted;
+    const StreamEndedCallback onStreamEnded;
+    const RtpPacketCallback onRtpPacket;
+    // Media ports
+    const uint16_t minMediaPort;
+    const uint16_t maxMediaPort;
+    // Misc fields
+    std::thread listenThread;
+    std::unordered_map<FtlControlConnection*, std::unique_ptr<FtlControlConnection>>
+        pendingControlConnections;
+    std::unordered_map<FtlStream*, std::unique_ptr<FtlStream>> activeStreams;
+    std::unordered_set<uint16_t> usedMediaPorts;
 
     /* Private functions */
     void ingestThreadBody(std::promise<void>&& readyPromise);
+    Result<uint16_t> reserveMediaPort();
     // Callback handlers
     void onNewControlConnection(std::unique_ptr<ConnectionTransport> connection);
+    Result<uint16_t> onControlStartMediaPort(FtlControlConnection& controlConnection,
+        ftl_channel_id_t channelId, FtlStream::MediaMetadata mediaMetadata,
+        sockaddr_in targetAddr);
+    void onControlConnectionClosed(FtlControlConnection& controlConnection);
+    void onStreamClosed(FtlStream& stream);
 };
