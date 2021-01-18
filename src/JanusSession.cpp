@@ -29,26 +29,19 @@ JanusSession::JanusSession(janus_plugin_session* handle, janus_callbacks* janusC
 #pragma region Public methods
 void JanusSession::SendRtpPacket(RtpRelayPacket rtpPacket)
 {
-    if (!isStarted)
+    if (!isStarted || handle->gateway_handle == nullptr)
     {
         return;
     }
     
-    janus_rtp_header* rtpHeader = 
-        reinterpret_cast<janus_rtp_header*>(rtpPacket.rtpPacketPayload->data());
     bool isVideoPacket = (rtpPacket.type == RtpRelayPacketKind::Video);
-    janus_rtp_header_update(rtpHeader, &rtpSwitchingContext, isVideoPacket, 0);
     janus_plugin_rtp janusRtp = 
     {
         .video = isVideoPacket,
         .buffer = reinterpret_cast<char*>(rtpPacket.rtpPacketPayload->data()),
         .length = static_cast<uint16_t>(rtpPacket.rtpPacketPayload->size())
     };
-    janus_plugin_rtp_extensions_reset(&janusRtp.extensions);
-    if (handle->gateway_handle != nullptr)
-    {
-        janusCore->relay_rtp(handle, &janusRtp);
-    }
+    janusCore->relay_rtp(handle, &janusRtp);
 }
 
 void JanusSession::ResetRtpSwitchingContext()
