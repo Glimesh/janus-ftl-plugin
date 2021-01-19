@@ -28,9 +28,9 @@ FtlControlConnection::FtlControlConnection(
     onConnectionClosed(onConnectionClosed)
 { 
     // Bind to transport events
-    transport->SetOnBytesReceived(std::bind(
+    this->transport->SetOnBytesReceived(std::bind(
         &FtlControlConnection::onTransportBytesReceived, this, std::placeholders::_1));
-    transport->SetOnConnectionClosed(std::bind(
+    this->transport->SetOnConnectionClosed(std::bind(
         &FtlControlConnection::onTransportClosed, this));
 }
 #pragma endregion Constructor/Destructor
