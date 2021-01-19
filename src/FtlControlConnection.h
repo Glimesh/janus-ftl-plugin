@@ -7,13 +7,13 @@
 
 #pragma once
 
-#include "FtlServer.h"
 #include "FtlStream.h"
 #include "Utilities/FtlTypes.h"
 #include "Utilities/Result.h"
 
 #include <functional>
 #include <memory>
+#include <netinet/in.h>
 #include <regex>
 #include <sstream>
 
@@ -27,9 +27,9 @@ class FtlControlConnection
 {
 public:
     /* Public types */
-    using RequestKeyCallback = FtlServer::RequestKeyCallback;
+    using RequestKeyCallback = std::function<Result<std::vector<std::byte>>(ftl_channel_id_t)>;
     using StartMediaPortCallback = std::function<Result<uint16_t>(
-        FtlControlConnection&, ftl_channel_id_t, FtlStream::MediaMetadata, sockaddr_in)>;
+        FtlControlConnection&, ftl_channel_id_t, MediaMetadata, sockaddr_in)>;
     using ConnectionClosedCallback = std::function<void(FtlControlConnection&)>;
 
     /* Constructor/Destructor */
@@ -61,7 +61,7 @@ private:
     bool isStreaming = false;
     ftl_channel_id_t channelId = 0;
     std::vector<std::byte> hmacPayload;
-    FtlStream::MediaMetadata mediaMetadata {};
+    MediaMetadata mediaMetadata {};
     // Command processing
     std::string commandBuffer;
     const std::regex connectPattern = std::regex(R"~(CONNECT ([0-9]+) \$([0-9a-f]+))~");

@@ -7,21 +7,23 @@
 
 #pragma once
 
+#include "FtlControlConnection.h"
+#include "FtlStream.h"
+#include "Utilities/FtlTypes.h"
+#include "Utilities/Result.h"
+
 #include <functional>
 #include <future>
 #include <memory>
+#include <netinet/in.h>
 #include <unordered_set>
 #include <unordered_map>
 #include <thread>
-
-#include "Utilities/FtlTypes.h"
 
 // Forward declarations
 class ConnectionCreator;
 class ConnectionListener;
 class ConnectionTransport;
-class FtlControlConnection;
-class FtlStream;
 
 /**
  * @brief FtlServer manages ingest control and media connections, exposing the relevant stream
@@ -33,10 +35,9 @@ public:
     /* Callback types */
     using RequestKeyCallback = std::function<Result<std::vector<std::byte>>(ftl_channel_id_t)>;
     using StreamStartedCallback = 
-        std::function<Result<ftl_stream_id_t>(ftl_channel_id_t channelId)>;
+        std::function<Result<ftl_stream_id_t>(ftl_channel_id_t, MediaMetadata)>;
     using StreamEndedCallback = std::function<void(ftl_channel_id_t, ftl_stream_id_t)>;
-    using RtpPacketCallback = std::function<void(
-        ftl_channel_id_t, ftl_stream_id_t, const std::vector<std::byte>& packetData)>;
+    using RtpPacketCallback = FtlStream::RtpPacketCallback;
 
     /* Constructor/Destructor */
     FtlServer(
@@ -48,6 +49,7 @@ public:
         RtpPacketCallback onRtpPacket,
         uint16_t minMediaPort = DEFAULT_MEDIA_MIN_PORT,
         uint16_t maxMediaPort = DEFAULT_MEDIA_MAX_PORT);
+    ~FtlServer() = default;
 
     /* Public functions */
     /**
@@ -59,6 +61,12 @@ public:
      * @brief Stops listening for FTL connections.
      */
     void Stop();
+
+    /**
+     * @brief Stops the stream with the specified channel ID and stream ID.
+     * This will not fire the StreamEnded callback.
+     */
+    void StopStream(ftl_channel_id_t channelId, ftl_stream_id_t streamId);
 
 private:
     /* Constants */
@@ -90,7 +98,7 @@ private:
     // Callback handlers
     void onNewControlConnection(std::unique_ptr<ConnectionTransport> connection);
     Result<uint16_t> onControlStartMediaPort(FtlControlConnection& controlConnection,
-        ftl_channel_id_t channelId, FtlStream::MediaMetadata mediaMetadata,
+        ftl_channel_id_t channelId, MediaMetadata mediaMetadata,
         sockaddr_in targetAddr);
     void onControlConnectionClosed(FtlControlConnection& controlConnection);
     void onStreamClosed(FtlStream& stream);

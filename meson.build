@@ -42,10 +42,8 @@ sources = files([
     'src/FtlClient.cpp',
     'src/FtlControlConnection.cpp',
     'src/FtlStream.cpp',
-    'src/FtlStreamStore.cpp',
     'src/JanusSession.cpp',
     'src/JanusFtl.cpp',
-    'src/RelayThreadPool.cpp',
     # Library entrypoint
     'src/entrypoint.cpp',
 ])
@@ -63,10 +61,10 @@ deps = [
 ]
 
 incdir = include_directories(
-    './src',
     './cpp-httplib',
     './janus-ftl-orchestrator/inc',
     janusincludepath,
+    is_system: true,
 )
 
 shared_library(

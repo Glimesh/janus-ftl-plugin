@@ -106,11 +106,11 @@ void FtlClient::SetOnClosed(std::function<void()> onClosed)
     this->onClosed = onClosed;
 }
 
-void FtlClient::RelayPacket(RtpRelayPacket packet)
+void FtlClient::RelayPacket(const std::vector<std::byte>& packet)
 {
     if (mediaSocketHandle != 0)
     {
-        write(mediaSocketHandle, packet.rtpPacketPayload.data(), packet.rtpPacketPayload.size());
+        write(mediaSocketHandle, packet.data(), packet.size());
     }
 }
 #pragma endregion Public methods

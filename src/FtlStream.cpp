@@ -109,7 +109,6 @@ void FtlStream::mediaBytesReceived(const std::vector<std::byte>& bytes)
 
     // Parse out RTP packet
     const RtpHeader* rtpHeader = reinterpret_cast<const RtpHeader*>(bytes.data());
-    const rtp_sequence_num_t sequenceNumber = ntohs(rtpHeader->seq_number);
 
     // Process audio/video packets
     if ((rtpHeader->type == mediaMetadata.AudioPayloadType) || 

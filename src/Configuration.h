@@ -45,7 +45,7 @@ public:
     uint16_t GetServiceConnectionMetadataReportIntervalMs();
 
     // Dummy Service Connection Values
-    std::string GetDummyHmacKey();
+    std::vector<std::byte> GetDummyHmacKey();
     std::string GetDummyPreviewImagePath();
 
     // Glimesh Service Connection Values
@@ -67,7 +67,16 @@ private:
     uint16_t serviceConnectionMetadataReportIntervalMs = 4000;
 
     // Dummy Service Connection Backing Stores
-    std::string dummyHmacKey = "aBcDeFgHiJkLmNoPqRsTuVwXyZ123456";
+    // "aBcDeFgHiJkLmNoPqRsTuVwXyZ123456"
+    std::vector<std::byte> dummyHmacKey = {
+        std::byte('a'), std::byte('B'), std::byte('c'), std::byte('D'), std::byte('e'),
+        std::byte('F'), std::byte('g'), std::byte('H'), std::byte('i'), std::byte('J'),
+        std::byte('k'), std::byte('L'), std::byte('m'), std::byte('N'), std::byte('o'),
+        std::byte('P'), std::byte('q'), std::byte('R'), std::byte('s'), std::byte('T'),
+        std::byte('u'), std::byte('V'), std::byte('w'), std::byte('X'), std::byte('y'),
+        std::byte('Z'), std::byte('1'), std::byte('2'), std::byte('3'), std::byte('4'),
+        std::byte('5'), std::byte('6'),
+    };
     std::string dummyPreviewImagePath;
 
     // Glimesh Service Connection Backing Stores

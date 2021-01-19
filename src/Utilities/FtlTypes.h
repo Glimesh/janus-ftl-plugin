@@ -118,6 +118,22 @@ struct Keyframe
     std::list<std::vector<std::byte>> rtpPackets;
 };
 
+struct MediaMetadata
+{
+    std::string VendorName;
+    std::string VendorVersion;
+    bool HasVideo;
+    bool HasAudio;
+    VideoCodecKind VideoCodec;
+    AudioCodecKind AudioCodec;
+    uint16_t VideoWidth;
+    uint16_t VideoHeight;
+    rtp_ssrc_t VideoSsrc;
+    rtp_ssrc_t AudioSsrc;
+    rtp_payload_type_t VideoPayloadType;
+    rtp_payload_type_t AudioPayloadType;
+};
+
 struct StreamMetadata
 {
     std::string ingestServerHostname;

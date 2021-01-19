@@ -53,6 +53,21 @@ void FtlServer::Stop()
 {
 
 }
+
+void FtlServer::StopStream(ftl_channel_id_t channelId, ftl_stream_id_t streamId)
+{
+    // TODO: locking
+    for (const auto& pair : activeStreams)
+    {
+        if ((pair.second->GetChannelId() == channelId) && (pair.second->GetStreamId() == streamId))
+        {
+            pair.second->Stop();
+            activeStreams.erase(pair.first);
+            return;
+        }
+    }
+    throw std::runtime_error("StopStream called for non-existant channelId and streamId");
+}
 #pragma endregion Public functions
 
 #pragma region Private functions
@@ -90,7 +105,7 @@ void FtlServer::onNewControlConnection(std::unique_ptr<ConnectionTransport> conn
 }
 
 Result<uint16_t> FtlServer::onControlStartMediaPort(FtlControlConnection& controlConnection,
-    ftl_channel_id_t channelId, FtlStream::MediaMetadata mediaMetadata,
+    ftl_channel_id_t channelId, MediaMetadata mediaMetadata,
     sockaddr_in targetAddr)
 {
     // TODO: locking
@@ -112,7 +127,7 @@ Result<uint16_t> FtlServer::onControlStartMediaPort(FtlControlConnection& contro
     uint16_t mediaPort = portResult.Value;
 
     // Try to start the stream and get a stream ID
-    Result<ftl_stream_id_t> streamIdResult = onStreamStarted(channelId);
+    Result<ftl_stream_id_t> streamIdResult = onStreamStarted(channelId, mediaMetadata);
     if (streamIdResult.IsError)
     {
         return Result<uint16_t>::Error(streamIdResult.ErrorMessage);

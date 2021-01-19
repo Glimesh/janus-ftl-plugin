@@ -7,12 +7,11 @@
 
 #pragma once
 
+#include "../ConnectionTransports/ConnectionTransport.h"
+
 #include <memory>
 #include <netinet/in.h>
 #include <optional>
-
-// Forward declarations
-class ConnectionTransport;
 
 /**
  * @brief The ConnectionCreator is a factory-pattern style class used to create stateless

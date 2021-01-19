@@ -73,8 +73,8 @@ void FtlControlConnection::onTransportBytesReceived(const std::vector<std::byte>
     // the previous payloads)
     int startDelimiterSearchIndex = std::max(0,
         static_cast<int>(commandBuffer.size() - bytes.size() - delimiterSequence.size()));
-    int delimiterCharactersRead = 0;
-    for (int i = startDelimiterSearchIndex; i < commandBuffer.size(); ++i)
+    size_t delimiterCharactersRead = 0;
+    for (size_t i = startDelimiterSearchIndex; i < commandBuffer.size(); ++i)
     {
         if (commandBuffer.at(i) == delimiterSequence.at(delimiterCharactersRead))
         {
@@ -102,7 +102,7 @@ void FtlControlConnection::onTransportClosed()
 {
     if (onConnectionClosed)
     {
-        onConnectionClosed();
+        onConnectionClosed(*this);
     }
 }
 
@@ -126,7 +126,7 @@ void FtlControlConnection::stopConnection()
     // Notify that we've stopped
     if (onConnectionClosed)
     {
-        onConnectionClosed();
+        onConnectionClosed(*this);
     }
 }
 
@@ -412,7 +412,9 @@ void FtlControlConnection::processDotCommand()
         return;
     }
 
-    Result<uint16_t> mediaPortResult = onStartMediaPort(mediaMetadata);
+    // HACK: We assume GetAddr() returns a value here.
+    Result<uint16_t> mediaPortResult = onStartMediaPort(*this, channelId, mediaMetadata,
+        transport->GetAddr().value());
     if (mediaPortResult.IsError)
     {
         spdlog::error("Could not assign media port for FTL connection.");

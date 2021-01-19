@@ -14,6 +14,7 @@
 
 #include <jansson.h>
 #include <string.h>
+#include <spdlog/spdlog.h>
 
 #pragma region Constructor/Destructor
 GlimeshServiceConnection::GlimeshServiceConnection(
@@ -35,7 +36,7 @@ void GlimeshServiceConnection::Init()
 {
     std::stringstream baseUri;
     baseUri << (useHttps ? "https" : "http") << "://" << hostname << ":" << port;
-    JANUS_LOG(LOG_INFO, "FTL: Using Glimesh Service Connection @ %s\n", baseUri.str().c_str());
+    spdlog::info("Using Glimesh Service Connection @ {}", baseUri.str());
 
     // Try to auth
     ensureAuth();
@@ -264,13 +265,8 @@ void GlimeshServiceConnection::ensureAuth()
                 accessTokenExpirationTime = expirationTime;
 
                 std::time_t currentTime = std::time(nullptr);
-                JANUS_LOG(
-                    LOG_INFO,
-                    "FTL: Received new access token: %s, expires in %ld - %ld = %ld seconds\n",
-                    accessToken.c_str(),
-                    expirationTime,
-                    currentTime,
-                    (expirationTime - currentTime));
+                spdlog::info("Received new access token: {}, expires in {} - {} = {} seconds",
+                    accessToken, expirationTime, currentTime, (expirationTime - currentTime));
                 return;
             }
         }
@@ -338,12 +334,8 @@ JsonPtr GlimeshServiceConnection::runGraphQlQuery(
 
         if (numRetries < MAX_RETRIES)
         {
-            JANUS_LOG(
-                LOG_WARN,
-                "FTL: Attempt %d / %d: Glimesh file upload GraphQL query failed. Retrying in %d ms...\n",
-                (numRetries + 1),
-                MAX_RETRIES,
-                TIME_BETWEEN_RETRIES_MS);
+            spdlog::warn("Attempt {} / {}: Glimesh file upload GraphQL query failed. "
+                "Retrying in {} ms...", (numRetries + 1), MAX_RETRIES, TIME_BETWEEN_RETRIES_MS);
 
             std::this_thread::sleep_for(std::chrono::milliseconds(TIME_BETWEEN_RETRIES_MS));
             ++numRetries;
@@ -355,9 +347,7 @@ JsonPtr GlimeshServiceConnection::runGraphQlQuery(
     }
     
     // We've exceeded our retry limit
-    JANUS_LOG(
-        LOG_ERR,
-        "FTL: Aborting Glimesh file upload GraphQL query after %d failed attempts.\n",
+    spdlog::error("Aborting Glimesh file upload GraphQL query after {} failed attempts.",
         MAX_RETRIES);
 
     throw ServiceConnectionCommunicationFailedException("Glimesh GraphQL query failed.");
@@ -385,18 +375,14 @@ JsonPtr GlimeshServiceConnection::processGraphQlResponse(httplib::Result result)
         }
         else
         {
-            JANUS_LOG(
-                LOG_WARN,
-                "FTL: Glimesh service connection received status code %d when processing GraphQL query.\n",
-                result->status);
+            spdlog::warn("Glimesh service connection received status code {} when processing "
+                "GraphQL query.", result->status);
             return nullptr;
         }
     }
     else
     {
-        JANUS_LOG(
-            LOG_WARN,
-            "FTL: Glimesh service connection HTTP request failed.\n");
+        spdlog::warn("Glimesh service connection HTTP request failed.");
         return nullptr;
     }
 }

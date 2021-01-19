@@ -10,13 +10,14 @@
 
 #pragma once
 
-#include <string>
+#include "ServiceConnection.h"
+#include "../Utilities/JanssonPtr.h"
+
 #include <chrono>
 #include <ctime>
 #include <httplib.h>
 #include <mutex>
-#include "ServiceConnection.h"
-#include "JanssonPtr.h"
+#include <string>
 
 /**
  * @brief

@@ -11,12 +11,12 @@
 #pragma once
 
 #include "Configuration.h"
-#include "FtlStream.h"
-#include "FtlStreamStore.h"
-#include "JanssonPtr.h"
+#include "FtlClient.h"
+#include "FtlServer.h"
 #include "JanusSession.h"
 #include "ServiceConnections/ServiceConnection.h"
 #include "Utilities/FtlTypes.h"
+#include "Utilities/JanssonPtr.h"
 #include "Utilities/Result.h"
 
 extern "C"
@@ -26,18 +26,18 @@ extern "C"
 }
 
 #include <FtlOrchestrationClient.h>
-
 #include <future>
 #include <list>
 #include <memory>
-#include <map>
-#include <mutex>
+#include <optional>
+#include <unordered_map>
+#include <unordered_set>
+#include <shared_mutex>
 #include <thread>
 
 // Forward declarations
 class ConnectionCreator;
 class ConnectionListener;
-class FtlServer;
 
 /**
  * @brief This class handles interactions with the Janus plugin API and Janus core.
@@ -58,6 +58,7 @@ public:
         janus_plugin* plugin,
         std::unique_ptr<ConnectionListener> ingestControlListener,
         std::unique_ptr<ConnectionCreator> mediaConnectionCreator);
+    ~JanusFtl() = default;
 
     /* Init/Destroy */
     int Init(janus_callbacks* callback, const char* config_path);
@@ -80,6 +81,27 @@ public:
     json_t* QuerySession(janus_plugin_session* handle);
 
 private:
+    /* Private types */
+    struct ActiveStream
+    {
+        ftl_channel_id_t ChannelId;
+        ftl_stream_id_t StreamId;
+        MediaMetadata Metadata;
+        std::unordered_set<JanusSession*> ViewerSessions;
+        std::list<std::unique_ptr<FtlClient>> Relays;
+    };
+    struct ActiveSession
+    {
+        std::optional<ftl_channel_id_t> WatchingChannelId;
+        std::unique_ptr<JanusSession> Session;
+    };
+    struct ActiveRelay
+    {
+        ftl_channel_id_t ChannelId;
+        std::string TargetHostname;
+        std::unique_ptr<FtlClient> Client;
+    };
+
     /* Private fields */
     janus_plugin* pluginHandle;
     janus_callbacks* janusCore;
@@ -87,36 +109,36 @@ private:
     std::unique_ptr<Configuration> configuration;
     std::shared_ptr<FtlConnection> orchestrationClient;
     std::shared_ptr<ServiceConnection> serviceConnection;
-    std::shared_ptr<FtlStreamStore> ftlStreamStore;
-    std::shared_ptr<RelayThreadPool> relayThreadPool;
     uint16_t minMediaPort = 9000; // TODO: Migrate to Configuration
     uint16_t maxMediaPort = 10000; // TODO: Migrate to Configuration
-    std::mutex sessionsMutex;
-    std::map<janus_plugin_session*, std::shared_ptr<JanusSession>> sessions;
-    std::mutex portAssignmentMutex;
+    // Stream/Session/Relay data
+    std::shared_mutex streamDataMutex; // Covers shared access to streams and sessions
+    std::unordered_map<ftl_channel_id_t, ActiveStream> streams;
+    std::unordered_map<janus_plugin_session*, ActiveSession> sessions;
+    std::unordered_map<ftl_channel_id_t, std::unordered_set<JanusSession*>> pendingViewerSessions;
+    std::unordered_map<ftl_channel_id_t, std::list<ActiveRelay>> relayClients;
 
     /* Private methods */
     // FtlServer Callbacks
     Result<std::vector<std::byte>> ftlServerRequestKey(ftl_channel_id_t channelId);
-    Result<ftl_stream_id_t> ftlServerStreamStarted(ftl_channel_id_t channelId);
+    Result<ftl_stream_id_t> ftlServerStreamStarted(ftl_channel_id_t channelId,
+        MediaMetadata mediaMetadata);
     void ftlServerStreamEnded(ftl_channel_id_t, ftl_stream_id_t);
     void ftlServerRtpPacket(ftl_channel_id_t, ftl_stream_id_t,
         const std::vector<std::byte>& packetData);
     // Initialization
     void initOrchestratorConnection();
     void initServiceConnection();
-    // Stream processing
-    uint16_t newIngestFtlStream(std::shared_ptr<IngestConnection> connection);
-    void onIngestNewConnection(std::unique_ptr<ConnectionTransport> controlTransport);
-    void ftlStreamClosed(std::weak_ptr<FtlStream> weakStream);
     // Packet handling
     void handlePsfbRtcpPacket(janus_plugin_session* handle, janus_rtcp_header* packet);
     // Message handling
     janus_plugin_result* generateMessageErrorResponse(int errorCode, std::string errorMessage);
-    janus_plugin_result* handleWatchMessage(std::shared_ptr<JanusSession> session, JsonPtr message, char* transaction);
-    janus_plugin_result* handleStartMessage(std::shared_ptr<JanusSession> session, JsonPtr message, char* transaction);
-    int sendJsep(std::shared_ptr<JanusSession> session, std::shared_ptr<FtlStream> ftlStream, char* transaction);
-    std::string generateSdpOffer(std::shared_ptr<JanusSession> session, std::shared_ptr<FtlStream> ftlStream);
+    janus_plugin_result* handleWatchMessage(ActiveSession& session, JsonPtr message,
+        char* transaction);
+    janus_plugin_result* handleStartMessage(ActiveSession& session, JsonPtr message,
+        char* transaction);
+    int sendJsep(const ActiveSession& session, const ActiveStream& stream, char* transaction);
+    std::string generateSdpOffer(const ActiveSession& session, const ActiveStream& stream);
     // Orchestrator message handling
     void onOrchestratorConnectionClosed();
     ConnectionResult onOrchestratorIntro(ConnectionIntroPayload payload);

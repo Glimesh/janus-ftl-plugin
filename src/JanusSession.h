@@ -10,15 +10,15 @@
 
 #pragma once
 
+#include "FtlStream.h"
 #include "Utilities/FtlTypes.h"
+
+#include <vector>
 
 extern "C"
 {
     #include <plugins/plugin.h>
 }
-#include <memory>
-#include <queue>
-#include <condition_variable>
 
 class JanusSession
 {
@@ -27,22 +27,21 @@ public:
     JanusSession(janus_plugin_session* handle, janus_callbacks* janusCore);
 
     /* Public methods */
-    void SendRtpPacket(RtpRelayPacket rtpPacket);
+    void SendRtpPacket(const std::vector<std::byte>& packet, const MediaMetadata& mediaMetadata);
     void ResetRtpSwitchingContext();
     
     /* Getters/setters */
-    bool GetIsStarted();
+    bool GetIsStarted() const;
     void SetIsStarted(bool value);
-    janus_plugin_session* GetJanusPluginSessionHandle();
-    int64_t GetSdpSessionId();
-    int64_t GetSdpVersion();
+    janus_plugin_session* GetJanusPluginSessionHandle() const;
+    int64_t GetSdpSessionId() const;
+    int64_t GetSdpVersion() const;
 
 private:
     bool isStarted = false;
     bool isStopping = false;
     janus_plugin_session* handle;
     janus_callbacks* janusCore;
-    janus_rtp_switching_context rtpSwitchingContext;
     int64_t sdpSessionId;
     int64_t sdpVersion;
 };

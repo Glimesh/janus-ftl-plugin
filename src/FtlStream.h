@@ -9,25 +9,11 @@
  */
 #pragma once
 
-#include "IngestConnection.h"
-#include "PreviewGenerators/H264PreviewGenerator.h"
-#include "RelayThreadPool.h"
 #include "Utilities/FtlTypes.h"
 #include "Utilities/Result.h"
 
-extern "C"
-{
-    #include <rtp.h>
-}
-#include <atomic>
 #include <functional>
-#include <future>
-#include <list>
-#include <mutex>
-#include <set>
-#include <stdint.h>
-#include <string>
-#include <thread>
+#include <vector>
 
 class ConnectionTransport;
 class FtlControlConnection;
@@ -39,23 +25,9 @@ class FtlStream
 {
 public:
     /* Public types */
-    struct MediaMetadata
-    {
-        std::string VendorName;
-        std::string VendorVersion;
-        bool HasVideo;
-        bool HasAudio;
-        VideoCodecKind VideoCodec;
-        AudioCodecKind AudioCodec;
-        uint16_t VideoWidth;
-        uint16_t VideoHeight;
-        rtp_ssrc_t VideoSsrc;
-        rtp_ssrc_t AudioSsrc;
-        rtp_payload_type_t VideoPayloadType;
-        rtp_payload_type_t AudioPayloadType;
-    };
     using ClosedCallback = std::function<void(FtlStream&)>;
-    using RtpPacketCallback = FtlServer::RtpPacketCallback;
+    using RtpPacketCallback = std::function<void(
+        ftl_channel_id_t, ftl_stream_id_t, const std::vector<std::byte>&)>;
 
     /* Constructor/Destructor */
     FtlStream(

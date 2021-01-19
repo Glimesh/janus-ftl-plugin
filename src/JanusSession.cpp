@@ -12,6 +12,7 @@
 
 extern "C"
 {
+    #include <rtp.h>
     #include <utils.h>
 }
 
@@ -27,22 +28,26 @@ JanusSession::JanusSession(janus_plugin_session* handle, janus_callbacks* janusC
 #pragma endregion
 
 #pragma region Public methods
-void JanusSession::SendRtpPacket(RtpRelayPacket rtpPacket)
+void JanusSession::SendRtpPacket(const std::vector<std::byte>& packet,
+    const MediaMetadata& mediaMetadata)
 {
     if (!isStarted)
     {
         return;
     }
     
-    janus_rtp_header* rtpHeader = 
-        reinterpret_cast<janus_rtp_header*>(rtpPacket.rtpPacketPayload.data());
-    bool isVideoPacket = (rtpPacket.type == RtpRelayPacketKind::Video);
-    janus_rtp_header_update(rtpHeader, &rtpSwitchingContext, isVideoPacket, 0);
+    // Sadly, we can't avoid a copy here because the janus_plugin_rtp struct doesn't take a
+    // const buffer. So allocate some storage to copy.
+    std::byte packetBuffer[1024] { std::byte(0) };
+    std::copy(packet.begin(), packet.end(), packetBuffer);
+
+    const janus_rtp_header* rtpHeader = reinterpret_cast<janus_rtp_header*>(&packetBuffer[0]);
+    bool isVideoPacket = (rtpHeader->type == mediaMetadata.VideoPayloadType);
     janus_plugin_rtp janusRtp = 
     {
         .video = isVideoPacket,
-        .buffer = reinterpret_cast<char*>(rtpPacket.rtpPacketPayload.data()),
-        .length = static_cast<uint16_t>(rtpPacket.rtpPacketPayload.size())
+        .buffer = reinterpret_cast<char*>(&packetBuffer[0]),
+        .length = static_cast<uint16_t>(packet.size())
     };
     janus_plugin_rtp_extensions_reset(&janusRtp.extensions);
     if (handle->gateway_handle != nullptr)
@@ -50,15 +55,10 @@ void JanusSession::SendRtpPacket(RtpRelayPacket rtpPacket)
         janusCore->relay_rtp(handle, &janusRtp);
     }
 }
-
-void JanusSession::ResetRtpSwitchingContext()
-{
-    janus_rtp_switching_context_reset(&rtpSwitchingContext);
-}
 #pragma endregion
 
 #pragma region Getters/setters
-bool JanusSession::GetIsStarted()
+bool JanusSession::GetIsStarted() const
 {
     return isStarted;
 }
@@ -68,17 +68,17 @@ void JanusSession::SetIsStarted(bool value)
     isStarted = value;
 }
 
-janus_plugin_session* JanusSession::GetJanusPluginSessionHandle()
+janus_plugin_session* JanusSession::GetJanusPluginSessionHandle() const
 {
     return handle;
 }
 
-int64_t JanusSession::GetSdpSessionId()
+int64_t JanusSession::GetSdpSessionId() const
 {
     return sdpSessionId;
 }
 
-int64_t JanusSession::GetSdpVersion()
+int64_t JanusSession::GetSdpVersion() const
 {
     return sdpVersion;
 }
