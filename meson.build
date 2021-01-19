@@ -41,6 +41,7 @@ sources = files([
     'src/Configuration.cpp',
     'src/FtlClient.cpp',
     'src/FtlControlConnection.cpp',
+    'src/FtlServer.cpp',
     'src/FtlStream.cpp',
     'src/JanusSession.cpp',
     'src/JanusFtl.cpp',

@@ -102,4 +102,6 @@ private:
         sockaddr_in targetAddr);
     void onControlConnectionClosed(FtlControlConnection& controlConnection);
     void onStreamClosed(FtlStream& stream);
+    void onStreamRtpPacket(ftl_channel_id_t channelId, ftl_stream_id_t streamId,
+        const std::vector<std::byte>& packet);
 };

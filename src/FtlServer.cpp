@@ -12,6 +12,8 @@
 #include "FtlControlConnection.h"
 #include "FtlStream.h"
 
+#include <spdlog/spdlog.h>
+
 #pragma region Constructor/Destructor
 FtlServer::FtlServer(
     std::unique_ptr<ConnectionListener> ingestControlListener,
@@ -20,8 +22,8 @@ FtlServer::FtlServer(
     StreamStartedCallback onStreamStarted,
     StreamEndedCallback onStreamEnded,
     RtpPacketCallback onRtpPacket,
-    uint16_t minMediaPort = DEFAULT_MEDIA_MIN_PORT,
-    uint16_t maxMediaPort = DEFAULT_MEDIA_MAX_PORT)
+    uint16_t minMediaPort,
+    uint16_t maxMediaPort)
 :
     ingestControlListener(std::move(ingestControlListener)),
     mediaConnectionCreator(std::move(mediaConnectionCreator)),
@@ -51,7 +53,7 @@ void FtlServer::StartAsync()
 
 void FtlServer::Stop()
 {
-
+    spdlog::info("Stopping FtlServer...");
 }
 
 void FtlServer::StopStream(ftl_channel_id_t channelId, ftl_stream_id_t streamId)
@@ -96,8 +98,9 @@ void FtlServer::onNewControlConnection(std::unique_ptr<ConnectionTransport> conn
     auto ingestControlConnection = std::make_unique<FtlControlConnection>(
         std::move(connection),
         onRequestKey,
-        std::bind(&FtlServer::onControlStartMediaPort, this),
-        std::bind(&FtlServer::onControlConnectionClosed, this));
+        std::bind(&FtlServer::onControlStartMediaPort, this, std::placeholders::_1,
+            std::placeholders::_2, std::placeholders::_3, std::placeholders::_4),
+        std::bind(&FtlServer::onControlConnectionClosed, this, std::placeholders::_1));
     auto ingestControlConnectionPtr = ingestControlConnection.get();
     pendingControlConnections.insert_or_assign(ingestControlConnection.get(),
         std::move(ingestControlConnection));
@@ -141,7 +144,9 @@ Result<uint16_t> FtlServer::onControlStartMediaPort(FtlControlConnection& contro
     // Fire up a new FtlStream and hand over our control connection
     auto stream = std::make_unique<FtlStream>(
         std::move(control), std::move(mediaTransport), mediaMetadata, streamId,
-        std::bind(&FtlServer::onStreamClosed, this));
+        std::bind(&FtlServer::onStreamClosed, this, std::placeholders::_1),
+        std::bind(&FtlServer::onStreamRtpPacket, this, std::placeholders::_1, std::placeholders::_2,
+            std::placeholders::_3));
     Result<void> streamStartResult = stream->StartAsync();
     if (streamStartResult.IsError)
     {
@@ -177,5 +182,11 @@ void FtlServer::onStreamClosed(FtlStream& stream)
     activeStreams.erase(&stream);
 
     onStreamEnded(ftlStream->GetChannelId(), ftlStream->GetStreamId());
+}
+
+void FtlServer::onStreamRtpPacket(ftl_channel_id_t channelId, ftl_stream_id_t streamId,
+    const std::vector<std::byte>& packet)
+{
+    onRtpPacket(channelId, streamId, packet);
 }
 #pragma endregion Private functions
