@@ -63,11 +63,16 @@ Result<void> FtlStream::StartAsync()
         controlConnection->Stop();
         return mediaStartResult;
     }
+    spdlog::info("FTL media stream started for channel {} / stream {}",
+        controlConnection->GetChannelId(), streamId);
     return Result<void>::Success();
 }
 
 void FtlStream::Stop()
 {
+    spdlog::info("Stopping FTL channel {} / stream {}...", controlConnection->GetChannelId(),
+        streamId);
+
     // Stop our media connection
     mediaTransport->Stop();
 

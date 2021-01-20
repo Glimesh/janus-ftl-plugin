@@ -91,7 +91,7 @@ void JanusFtl::CreateSession(janus_plugin_session* handle, int* error)
 struct janus_plugin_result* JanusFtl::HandleMessage(janus_plugin_session* handle, char* transaction,
     json_t* message, json_t* jsep)
 {
-    std::shared_lock lock(streamDataMutex);
+    std::unique_lock lock(streamDataMutex);
 
     JsonPtr messagePtr(message);
     JsonPtr jsepPtr(jsep);
@@ -373,6 +373,8 @@ Result<ftl_stream_id_t> JanusFtl::ftlServerStreamStarted(ftl_channel_id_t channe
             });
     }
 
+    spdlog::info("New stream started. Channel {} / Stream {}.", channelId, streamId);
+
     return Result<ftl_stream_id_t>::Success(streamId);
 }
 
@@ -423,6 +425,9 @@ void JanusFtl::ftlServerStreamEnded(ftl_channel_id_t channelId, ftl_stream_id_t 
             activeStream.StreamId);
         relay->Stop();
     }
+
+    spdlog::info("Stream ended. Channel {} / stream {}", activeStream.ChannelId,
+        activeStream.StreamId);
 
     serviceConnection->EndStream(streamId);
     streams.erase(channelId);
@@ -548,6 +553,8 @@ janus_plugin_result* JanusFtl::generateMessageErrorResponse(int errorCode, std::
 janus_plugin_result* JanusFtl::handleWatchMessage(ActiveSession& session, JsonPtr message,
     char* transaction)
 {
+    // We are already holding a unique lock on streamDataMutex
+    
     json_t* channelIdJs = json_object_get(message.get(), "channelId");
     if ((channelIdJs == nullptr) || !json_is_integer(channelIdJs))
     {
@@ -556,8 +563,6 @@ janus_plugin_result* JanusFtl::handleWatchMessage(ActiveSession& session, JsonPt
             "Expected 'channelId' property with integer value.");
     }
     uint32_t channelId = json_integer_value(channelIdJs);
-
-    std::unique_lock lock(streamDataMutex);
 
     // Look up the stream associated with given channel ID
     spdlog::info("Request to watch channel {}", channelId);

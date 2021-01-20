@@ -49,6 +49,7 @@ void FtlServer::StartAsync()
         std::thread(&FtlServer::ingestThreadBody, this, std::move(listenThreadReadyPromise));
     listenThread.detach();
     listenThreadReadyFuture.get();
+    spdlog::info("FtlServer ready for new connections.");
 }
 
 void FtlServer::Stop()
@@ -105,6 +106,8 @@ void FtlServer::onNewControlConnection(std::unique_ptr<ConnectionTransport> conn
     pendingControlConnections.insert_or_assign(ingestControlConnection.get(),
         std::move(ingestControlConnection));
     ingestControlConnectionPtr->StartAsync();
+
+    spdlog::info("New FTL control connection is pending.");
 }
 
 Result<uint16_t> FtlServer::onControlStartMediaPort(FtlControlConnection& controlConnection,
@@ -160,6 +163,7 @@ Result<uint16_t> FtlServer::onControlStartMediaPort(FtlControlConnection& contro
 
 void FtlServer::onControlConnectionClosed(FtlControlConnection& controlConnection)
 {
+    spdlog::info("Pending FTL control connection has closed.");
     // TODO: locking
     // We should only receive this event if the stream is still pending.
     if (pendingControlConnections.count(&controlConnection) <= 0)
@@ -180,6 +184,8 @@ void FtlServer::onStreamClosed(FtlStream& stream)
     }
     std::unique_ptr<FtlStream> ftlStream = std::move(activeStreams[&stream]);
     activeStreams.erase(&stream);
+
+    // TODO: Free up media port
 
     onStreamEnded(ftlStream->GetChannelId(), ftlStream->GetStreamId());
 }

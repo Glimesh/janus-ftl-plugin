@@ -74,7 +74,7 @@ void FtlControlConnection::onTransportBytesReceived(const std::vector<std::byte>
     int startDelimiterSearchIndex = std::max(0,
         static_cast<int>(commandBuffer.size() - bytes.size() - delimiterSequence.size()));
     size_t delimiterCharactersRead = 0;
-    for (size_t i = startDelimiterSearchIndex; i < commandBuffer.size(); ++i)
+    for (size_t i = startDelimiterSearchIndex; i < commandBuffer.size();)
     {
         if (commandBuffer.at(i) == delimiterSequence.at(delimiterCharactersRead))
         {
@@ -87,13 +87,19 @@ void FtlControlConnection::onTransportBytesReceived(const std::vector<std::byte>
 
                 // Delete the processed portion of the buffer (including the delimiter seq)
                 commandBuffer.erase(commandBuffer.begin(), (commandBuffer.begin() + i + 1));
+                i = 0;
                 delimiterCharactersRead = 0;
                 processCommand(command);
+            }
+            else
+            {
+                ++i;
             }
         }
         else
         {
             delimiterCharactersRead = 0;
+            ++i;
         }
     }
 }
@@ -233,6 +239,7 @@ void FtlControlConnection::processConnectCommand(const std::string& command)
             isAuthenticated = true;
             channelId = requestedChannelId;
             writeToTransport("200\n");
+            spdlog::info("Channel {} authenticated successfully.", requestedChannelId);
         }
         else
         {
@@ -422,6 +429,7 @@ void FtlControlConnection::processDotCommand()
         return;
     }
     uint16_t mediaPort = mediaPortResult.Value;
+    spdlog::info("Starting stream for Channel {} on UDP port {}...", channelId, mediaPort);
     isStreaming = true;
     writeToTransport(fmt::format("200 hi. Use UDP port {}\n", mediaPort));
 }

@@ -189,7 +189,7 @@ void NetworkSocketConnectionTransport::connectionThreadBody(
         if (pollFds[0].revents & POLLIN)
         {
             sockaddr_in recvFromAddr{};
-            socklen_t recvFromAddrLen = 0;
+            socklen_t recvFromAddrLen = sizeof(recvFromAddr);
             int bytesRead = recvfrom(
                 socketHandle,
                 readBuf,
@@ -205,6 +205,10 @@ void NetworkSocketConnectionTransport::connectionThreadBody(
                     // This means we've closed the socket
                     break;
                 }
+                else if ((error == EAGAIN) || (error == EWOULDBLOCK))
+                {
+                    // No data was read. Keep trying.
+                }
                 else
                 {
                     // Unexpected error! Close.
@@ -216,12 +220,19 @@ void NetworkSocketConnectionTransport::connectionThreadBody(
                     break;
                 }
             }
+            else if (bytesRead == 0)
+            {
+                // Our peer has closed the connection.
+                closeConnection();
+                return;
+            }
             else if (bytesRead > 0)
             {
                 bool bytesAreFromExpectedAddr = true;
-                if (targetAddr.has_value())
+                if ((connectionKind == NetworkSocketConnectionKind::Udp) && targetAddr.has_value())
                 {
-                    // Make sure the incoming data is coming from the expected address
+                    // If we're processing UDP packets, make sure the incoming data is coming
+                    // from the expected address
                     if (recvFromAddr.sin_addr.s_addr != targetAddr.value().sin_addr.s_addr)
                     {
                         bytesAreFromExpectedAddr = false;

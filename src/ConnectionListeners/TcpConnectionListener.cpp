@@ -12,6 +12,7 @@
 
 #include <fmt/core.h>
 #include <netinet/in.h>
+#include <spdlog/spdlog.h>
 #include <stdexcept>
 
 #pragma region Constructor/Destructor
@@ -110,11 +111,11 @@ void TcpConnectionListener::Listen(std::promise<void>&& readyPromise)
             sockaddr_in acceptAddress = { 0 };
             socklen_t acceptLen = sizeof(acceptAddress);
             getpeername(connectionHandle, reinterpret_cast<sockaddr*>(&acceptAddress), &acceptLen);
-            // JANUS_LOG(LOG_INFO, "FTL: Ingest server accepted connection...\n");
             // Create a ConnectionTransport for this new connection
             auto transport = std::make_unique<NetworkSocketConnectionTransport>(
                 NetworkSocketConnectionKind::Tcp,
-                connectionHandle);
+                connectionHandle,
+                acceptAddress);
             if (onNewConnection)
             {
                 onNewConnection(std::move(transport));
