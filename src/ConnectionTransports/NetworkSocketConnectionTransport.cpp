@@ -155,7 +155,7 @@ void NetworkSocketConnectionTransport::connectionThreadBody(
     connectionThreadEndedPromise.set_value_at_thread_exit();
 
     // We're connected. Now wait for input/output.
-    char readBuf[BUFFER_SIZE];
+    char readBuf[BUFFER_SIZE] = { 0 };
     while (true)
     {
         pollfd pollFds[]

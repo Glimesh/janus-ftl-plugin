@@ -47,7 +47,7 @@ public:
 
 private:
     /* Static members */
-    static constexpr int BUFFER_SIZE = 512;
+    static constexpr int BUFFER_SIZE = 2048;
 
     /* Private fields */
     const NetworkSocketConnectionKind connectionKind;

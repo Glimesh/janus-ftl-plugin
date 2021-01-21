@@ -38,7 +38,7 @@ void JanusSession::SendRtpPacket(const std::vector<std::byte>& packet,
     
     // Sadly, we can't avoid a copy here because the janus_plugin_rtp struct doesn't take a
     // const buffer. So allocate some storage to copy.
-    std::byte packetBuffer[1024] { std::byte(0) };
+    std::byte packetBuffer[2048] { std::byte(0) };
     std::copy(packet.begin(), packet.end(), packetBuffer);
 
     const janus_rtp_header* rtpHeader = reinterpret_cast<janus_rtp_header*>(&packetBuffer[0]);
