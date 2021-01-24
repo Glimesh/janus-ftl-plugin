@@ -135,8 +135,7 @@ Result<uint16_t> FtlServer::onControlStartMediaPort(FtlControlConnection& contro
     {
         throw std::runtime_error("Unknown control connection requested a media port assignment");
     }
-    std::unique_ptr<FtlControlConnection> control = 
-        std::move(pendingControlConnections[&controlConnection]);
+    std::unique_ptr<FtlControlConnection> control = std::move(pendingControlConnections[&controlConnection]);
     pendingControlConnections.erase(&controlConnection);
 
     // Attempt to find a free media port to use
@@ -148,9 +147,12 @@ Result<uint16_t> FtlServer::onControlStartMediaPort(FtlControlConnection& contro
     uint16_t mediaPort = portResult.Value;
 
     // Try to start the stream and get a stream ID
+    lock.unlock(); // Release lock temporarily to prevent deadlocks during callback
     Result<ftl_stream_id_t> streamIdResult = onStreamStarted(channelId, mediaMetadata);
+    lock.lock();
     if (streamIdResult.IsError)
     {
+        usedMediaPorts.erase(mediaPort);
         return Result<uint16_t>::Error(streamIdResult.ErrorMessage);
     }
     ftl_stream_id_t streamId = streamIdResult.Value;
@@ -168,6 +170,11 @@ Result<uint16_t> FtlServer::onControlStartMediaPort(FtlControlConnection& contro
     Result<void> streamStartResult = stream->StartAsync();
     if (streamStartResult.IsError)
     {
+        // Whoops - indicate that the stream we just indicated has started has abruptly ended
+        lock.unlock(); // Release lock temporarily to prevent deadlocks during callback
+        onStreamEnded(channelId, streamId);
+        lock.lock();
+        usedMediaPorts.erase(mediaPort);
         return Result<uint16_t>::Error(streamStartResult.ErrorMessage);
     }
     activeStreams.try_emplace(stream.get(), std::move(stream), mediaPort);
