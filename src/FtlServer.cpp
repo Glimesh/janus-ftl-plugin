@@ -59,17 +59,18 @@ void FtlServer::Stop()
 
 void FtlServer::StopStream(ftl_channel_id_t channelId, ftl_stream_id_t streamId)
 {
-    // TODO: locking
+    std::unique_lock lock(streamDataMutex);
     for (const auto& pair : activeStreams)
     {
-        if ((pair.second->GetChannelId() == channelId) && (pair.second->GetStreamId() == streamId))
+        const std::unique_ptr<FtlStream>& stream = pair.second.Stream;
+        if ((stream->GetChannelId() == channelId) && (stream->GetStreamId() == streamId))
         {
-            pair.second->Stop();
-            activeStreams.erase(pair.first);
+            stream->Stop();
+            removeStreamRecord(pair.first, lock);
             return;
         }
     }
-    throw std::runtime_error("StopStream called for non-existant channelId and streamId");
+    throw std::invalid_argument("StopStream called for non-existant channelId and streamId");
 }
 #pragma endregion Public functions
 
@@ -79,9 +80,8 @@ void FtlServer::ingestThreadBody(std::promise<void>&& readyPromise)
     ingestControlListener->Listen(std::move(readyPromise));
 }
 
-Result<uint16_t> FtlServer::reserveMediaPort()
+Result<uint16_t> FtlServer::reserveMediaPort(const std::unique_lock<std::shared_mutex>& dataLock)
 {
-    // TODO: Locking
     for (uint16_t i = minMediaPort; i <= maxMediaPort; ++i)
     {
         if (usedMediaPorts.count(i) <= 0)
@@ -93,9 +93,24 @@ Result<uint16_t> FtlServer::reserveMediaPort()
     return Result<uint16_t>::Error("Could not find an available port.");
 }
 
+void FtlServer::removeStreamRecord(FtlStream* stream,
+    const std::unique_lock<std::shared_mutex>& dataLock)
+{
+    // This function removes a stream record, but does not stop the FtlStream.
+    if (activeStreams.count(stream) <= 0)
+    {
+        throw std::invalid_argument("Couldn't remove non-existant stream reference.");
+    }
+    FtlStreamRecord& record = activeStreams.at(stream);
+    // Remove media port reservation
+    usedMediaPorts.erase(record.MediaPort);
+    // Remove stream record
+    activeStreams.erase(stream);
+}
+
 void FtlServer::onNewControlConnection(std::unique_ptr<ConnectionTransport> connection)
 {
-    // TODO: locking
+    std::unique_lock lock(streamDataMutex);
     auto ingestControlConnection = std::make_unique<FtlControlConnection>(
         std::move(connection),
         onRequestKey,
@@ -114,7 +129,7 @@ Result<uint16_t> FtlServer::onControlStartMediaPort(FtlControlConnection& contro
     ftl_channel_id_t channelId, MediaMetadata mediaMetadata,
     sockaddr_in targetAddr)
 {
-    // TODO: locking
+    std::unique_lock lock(streamDataMutex);
     // Locate the control connection in our pending store and pull it out
     if (pendingControlConnections.count(&controlConnection) <= 0)
     {
@@ -125,7 +140,7 @@ Result<uint16_t> FtlServer::onControlStartMediaPort(FtlControlConnection& contro
     pendingControlConnections.erase(&controlConnection);
 
     // Attempt to find a free media port to use
-    Result<uint16_t> portResult = reserveMediaPort();
+    Result<uint16_t> portResult = reserveMediaPort(lock);
     if (portResult.IsError)
     {
         return portResult;
@@ -155,7 +170,7 @@ Result<uint16_t> FtlServer::onControlStartMediaPort(FtlControlConnection& contro
     {
         return Result<uint16_t>::Error(streamStartResult.ErrorMessage);
     }
-    activeStreams.insert_or_assign(stream.get(), std::move(stream));
+    activeStreams.try_emplace(stream.get(), std::move(stream), mediaPort);
 
     // Pass the media port back to the control connection
     return Result<uint16_t>::Success(mediaPort);
@@ -163,8 +178,8 @@ Result<uint16_t> FtlServer::onControlStartMediaPort(FtlControlConnection& contro
 
 void FtlServer::onControlConnectionClosed(FtlControlConnection& controlConnection)
 {
+    std::unique_lock lock(streamDataMutex);
     spdlog::info("Pending FTL control connection has closed.");
-    // TODO: locking
     // We should only receive this event if the stream is still pending.
     if (pendingControlConnections.count(&controlConnection) <= 0)
     {
@@ -177,17 +192,20 @@ void FtlServer::onControlConnectionClosed(FtlControlConnection& controlConnectio
 
 void FtlServer::onStreamClosed(FtlStream& stream)
 {
-    // TODO: locking
-    if (activeStreams.count(&stream) <= 0)
+    ftl_channel_id_t channelId = 0;
+    ftl_stream_id_t streamId = 0;
     {
-        throw std::runtime_error("Unknown FTL stream closed.");
+        std::unique_lock lock(streamDataMutex);
+        if (activeStreams.count(&stream) <= 0)
+        {
+            throw std::runtime_error("Unknown FTL stream closed.");
+        }
+        channelId = activeStreams.at(&stream).Stream->GetChannelId();
+        streamId = activeStreams.at(&stream).Stream->GetStreamId();
+        removeStreamRecord(&stream, lock);
     }
-    std::unique_ptr<FtlStream> ftlStream = std::move(activeStreams[&stream]);
-    activeStreams.erase(&stream);
 
-    // TODO: Free up media port
-
-    onStreamEnded(ftlStream->GetChannelId(), ftlStream->GetStreamId());
+    onStreamEnded(channelId, streamId);
 }
 
 void FtlServer::onStreamRtpPacket(ftl_channel_id_t channelId, ftl_stream_id_t streamId,

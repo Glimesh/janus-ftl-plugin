@@ -16,6 +16,7 @@
 #include <future>
 #include <memory>
 #include <netinet/in.h>
+#include <shared_mutex>
 #include <unordered_set>
 #include <unordered_map>
 #include <thread>
@@ -69,6 +70,17 @@ public:
     void StopStream(ftl_channel_id_t channelId, ftl_stream_id_t streamId);
 
 private:
+    /* Private types */
+    struct FtlStreamRecord
+    {
+        FtlStreamRecord(std::unique_ptr<FtlStream> stream, uint16_t mediaPort) : 
+            Stream(std::move(stream)), MediaPort(mediaPort)
+        { }
+
+        std::unique_ptr<FtlStream> Stream;
+        uint16_t MediaPort;
+    };
+
     /* Constants */
     static constexpr uint16_t DEFAULT_MEDIA_MIN_PORT = 9000;
     static constexpr uint16_t DEFAULT_MEDIA_MAX_PORT = 10000;
@@ -87,14 +99,16 @@ private:
     const uint16_t maxMediaPort;
     // Misc fields
     std::thread listenThread;
+    std::shared_mutex streamDataMutex;
     std::unordered_map<FtlControlConnection*, std::unique_ptr<FtlControlConnection>>
         pendingControlConnections;
-    std::unordered_map<FtlStream*, std::unique_ptr<FtlStream>> activeStreams;
+    std::unordered_map<FtlStream*, FtlStreamRecord> activeStreams;
     std::unordered_set<uint16_t> usedMediaPorts;
 
     /* Private functions */
     void ingestThreadBody(std::promise<void>&& readyPromise);
-    Result<uint16_t> reserveMediaPort();
+    Result<uint16_t> reserveMediaPort(const std::unique_lock<std::shared_mutex>& dataLock);
+    void removeStreamRecord(FtlStream* stream, const std::unique_lock<std::shared_mutex>& dataLock);
     // Callback handlers
     void onNewControlConnection(std::unique_ptr<ConnectionTransport> connection);
     Result<uint16_t> onControlStartMediaPort(FtlControlConnection& controlConnection,
