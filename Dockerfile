@@ -1,6 +1,6 @@
 FROM ubuntu:20.04
 
-RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get -y install curl libmicrohttpd-dev libjansson-dev libssl-dev libsofia-sip-ua-dev libglib2.0-dev libopus-dev libogg-dev libcurl4-openssl-dev liblua5.3-dev libconfig-dev pkg-config gengetopt libtool automake python3 python3-pip python3-setuptools python3-dev python3-wheel ninja-build libavcodec-dev
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get -y install curl git libmicrohttpd-dev libjansson-dev libssl-dev libsofia-sip-ua-dev libglib2.0-dev libopus-dev libogg-dev libcurl4-openssl-dev liblua5.3-dev libconfig-dev pkg-config gengetopt libtool automake python3 python3-pip python3-setuptools python3-dev python3-wheel ninja-build libavcodec-dev
 
 RUN pip3 install meson
 
@@ -36,7 +36,13 @@ RUN \
     cd ${DIR} && \
     curl -sLf https://github.com/meetecho/janus-gateway/archive/${JANUSGATEWAY_VERSION}.tar.gz | tar -zx --strip-components=1 && \
     sh autogen.sh && \ 
-    ./configure --prefix=/opt/janus && \
+    ./configure --prefix=/opt/janus \
+                --disable-rabbitmq \
+                --disable-mqtt \
+                --disable-unix-sockets \
+                --disable-websockets \
+                --disable-all-handlers \
+                --disable-all-plugins && \
     make && \
     make configs && \
     make install && \
