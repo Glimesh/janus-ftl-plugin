@@ -56,6 +56,7 @@ int JanusFtl::Init(janus_callbacks* callback, const char* config_path)
 
     configuration = std::make_unique<Configuration>();
     configuration->Load();
+    metadataReportIntervalMs = configuration->GetServiceConnectionMetadataReportIntervalMs();
 
     initOrchestratorConnection();
 
@@ -525,6 +526,39 @@ void JanusFtl::initServiceConnection()
     }
 
     serviceConnection->Init();
+}
+
+void JanusFtl::serviceReportThreadBody(std::promise<void>&& threadEndedPromise)
+{
+    threadEndedPromise.set_value_at_thread_exit();
+    std::unique_lock lock(threadShutdownMutex);
+    while (true)
+    {
+        threadShutdownConditionVariable.wait_for(lock,
+            std::chrono::milliseconds(metadataReportIntervalMs));
+        if (isStopping)
+        {
+            break;
+        }
+
+        // Quickly gather data from active streams while under lock (defer reporting to avoid holding
+        // up other threads)
+        // TODO
+        // std::shared_lock lock(streamDataMutex);
+        // std::unordered_map<ftl_channel_id_t, StreamMetadata> metadataMap;
+        // for (const auto& streamPair : streams)
+        // {
+        //     const ActiveStream& stream = streamPair.second;
+        //     StreamMetadata data
+        //     {
+        //         .ingestServerHostname = configuration->GetMyHostname(),
+        //         .streamTimeSeconds = (std::time(nullptr) - stream.streamStartTime),
+        //         .numActiveViewers = static_cast<uint32_t>(stream.ViewerSessions.count()),
+        //         .currentSourceBitrateBps = 0, // TODO
+        //         .numPacketsReceived
+        //     };
+        // }
+    }
 }
 
 void JanusFtl::handlePsfbRtcpPacket(janus_plugin_session* handle, janus_rtcp_header* packet)

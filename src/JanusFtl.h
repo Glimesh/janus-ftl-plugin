@@ -25,6 +25,8 @@ extern "C"
     #include <rtcp.h>
 }
 
+#include <atomic>
+#include <condition_variable>
 #include <FtlOrchestrationClient.h>
 #include <future>
 #include <list>
@@ -89,6 +91,7 @@ private:
         MediaMetadata Metadata;
         std::unordered_set<JanusSession*> ViewerSessions;
         std::list<std::unique_ptr<FtlClient>> Relays;
+        std::time_t streamStartTime;
     };
     struct ActiveSession
     {
@@ -109,8 +112,14 @@ private:
     std::unique_ptr<Configuration> configuration;
     std::shared_ptr<FtlConnection> orchestrationClient;
     std::shared_ptr<ServiceConnection> serviceConnection;
+    uint32_t metadataReportIntervalMs = 0;
     uint16_t minMediaPort = 9000; // TODO: Migrate to Configuration
     uint16_t maxMediaPort = 10000; // TODO: Migrate to Configuration
+    std::atomic<bool> isStopping = false;
+    std::thread serviceReportThread;
+    std::future<void> serviceReportThreadEndedFuture;
+    std::mutex threadShutdownMutex;
+    std::condition_variable threadShutdownConditionVariable;
     // Stream/Session/Relay data
     std::shared_mutex streamDataMutex; // Covers shared access to streams and sessions
     std::unordered_map<ftl_channel_id_t, ActiveStream> streams;
@@ -123,12 +132,14 @@ private:
     Result<std::vector<std::byte>> ftlServerRequestKey(ftl_channel_id_t channelId);
     Result<ftl_stream_id_t> ftlServerStreamStarted(ftl_channel_id_t channelId,
         MediaMetadata mediaMetadata);
-    void ftlServerStreamEnded(ftl_channel_id_t, ftl_stream_id_t);
-    void ftlServerRtpPacket(ftl_channel_id_t, ftl_stream_id_t,
+    void ftlServerStreamEnded(ftl_channel_id_t channelId, ftl_stream_id_t streamId);
+    void ftlServerRtpPacket(ftl_channel_id_t channelId, ftl_stream_id_t streamId,
         const std::vector<std::byte>& packetData);
     // Initialization
     void initOrchestratorConnection();
     void initServiceConnection();
+    // Service report thread body
+    void serviceReportThreadBody(std::promise<void>&& threadEndedPromise);
     // Packet handling
     void handlePsfbRtcpPacket(janus_plugin_session* handle, janus_rtcp_header* packet);
     // Message handling

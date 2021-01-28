@@ -13,6 +13,10 @@
 #include "Utilities/Result.h"
 
 #include <functional>
+#include <list>
+#include <shared_mutex>
+#include <unordered_map>
+#include <set>
 #include <vector>
 
 class ConnectionTransport;
@@ -53,6 +57,8 @@ private:
     static constexpr float               MICROSECONDS_PER_MILLISECOND   = 1000.0f;
     static constexpr rtp_payload_type_t  FTL_PAYLOAD_TYPE_SENDER_REPORT = 200;
     static constexpr rtp_payload_type_t  FTL_PAYLOAD_TYPE_PING          = 250;
+    static constexpr size_t              PACKET_BUFFER_SIZE             = 64;
+    static constexpr size_t              MAX_PACKETS_BEFORE_NACK        = 4;
 
     /* Private members */
     const std::unique_ptr<FtlControlConnection> controlConnection;
@@ -63,11 +69,24 @@ private:
     const RtpPacketCallback onRtpPacket;
     const bool nackLostPackets;
     bool stopping = false;
+    // Stream data
+    std::shared_mutex dataMutex;
+    std::unordered_map<rtp_ssrc_t, std::set<rtp_sequence_num_t>> missedSequenceNumbers;
+    std::unordered_map<rtp_ssrc_t, size_t> packetsSinceLastMissedSequence;
+    std::unordered_map<rtp_ssrc_t, std::list<std::vector<std::byte>>> circularPacketBuffer;
 
     /* Private methods */
     void controlConnectionClosed(FtlControlConnection& connection);
     void mediaBytesReceived(const std::vector<std::byte>& bytes);
     void mediaConnectionClosed();
+    // Packet processing
+    void processRtpPacket(const std::vector<std::byte>& rtpPacket);
+    void processRtpPacketSequencing(const std::vector<std::byte>& rtpPacket,
+        const std::unique_lock<std::shared_mutex>& dataLock);
+    bool isSequenceNewer(rtp_sequence_num_t newSeq, rtp_sequence_num_t oldSeq, size_t bufferSize);
+    void sendNacks(const rtp_ssrc_t ssrc, const std::unique_lock<std::shared_mutex>& dataLock);
+    void processAudioVideoRtpPacket(const std::vector<std::byte>& rtpPacket,
+        std::unique_lock<std::shared_mutex>& dataLock);
     void handlePing(const std::vector<std::byte>& rtpPacket);
     void handleSenderReport(const std::vector<std::byte>& rtpPacket);
 };

@@ -175,6 +175,46 @@ struct RtpHeader
     uint32_t csrc[16];
 };
 
+enum RtcpType {
+    FIR = 192,
+    SR = 200,
+    RR = 201,
+    SDES = 202,
+    BYE = 203,
+    APP = 204,
+    RTPFB = 205,
+    PSFB = 206,
+    XR = 207,
+};
+
+enum RtcpFeedbackMessageType {
+    NACK = 1,
+};
+
+struct RtcpHeader
+{
+#if __BYTE_ORDER == __BIG_ENDIAN
+    uint16_t version:2;
+    uint16_t padding:1;
+    uint16_t rc:5;
+    uint16_t type:8;
+#elif __BYTE_ORDER == __LITTLE_ENDIAN
+    uint16_t rc:5;
+    uint16_t padding:1;
+    uint16_t version:2;
+    uint16_t type:8;
+#endif
+    uint16_t length:16;
+};
+
+struct RtcpFeedbackPacket
+{
+    RtcpHeader header;
+    uint32_t ssrc;
+    uint32_t media;
+    char fci[1];
+};
+
 enum class RtpRelayPacketKind
 {
     Audio,
