@@ -19,6 +19,11 @@ add_project_arguments('-DCPPHTTPLIB_OPENSSL_SUPPORT', language: 'cpp')
 # Tell spdlog that we're including our own copy of fmt
 add_project_arguments('-DSPDLOG_FMT_EXTERNAL', language: 'cpp')
 
+# Set the DEBUG define if we're a debug build
+if get_option('buildtype').startswith('debug')
+    add_project_arguments('-DDEBUG', language : 'cpp')
+endif
+
 # Set Janus paths from env vars, or sane defaults
 januspath = get_variable('JANUS_PATH', '/opt/janus')
 janusincludepath = get_variable('JANUS_INC_PATH', (januspath + '/include/janus'))

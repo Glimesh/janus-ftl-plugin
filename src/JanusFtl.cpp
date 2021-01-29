@@ -54,6 +54,10 @@ int JanusFtl::Init(janus_callbacks* callback, const char* config_path)
 {
     this->janusCore = callback;
 
+#ifdef DEBUG
+    spdlog::set_level(spdlog::level::trace);
+#endif
+
     configuration = std::make_unique<Configuration>();
     configuration->Load();
     metadataReportIntervalMs = configuration->GetServiceConnectionMetadataReportIntervalMs();

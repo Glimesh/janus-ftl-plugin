@@ -65,6 +65,7 @@ FtlStream::FtlStream(
 #pragma region Public methods
 Result<void> FtlStream::StartAsync()
 {
+    spdlog::debug("HELLO DEBUG");
     // Fire up our media connection
     Result<void> mediaStartResult = mediaTransport->StartAsync();
     if (mediaStartResult.IsError)
@@ -214,10 +215,21 @@ void FtlStream::processRtpPacketSequencing(const std::vector<std::byte>& rtpPack
                 }
                 else
                 {
-                    for (uint16_t missingSeqNum = (cachedSeqNum + 1);
-                        (missingSeqNum < seqNum); missingSeqNum++)
+                    if (abs(seqNum - cachedSeqNum) > (MAX_PACKETS_BEFORE_NACK * 2))
                     {
-                        ssrcMissedSequenceNumbers.insert(missingSeqNum);
+                        spdlog::warn("At least {} packets lost between current sequence {} and "
+                            "last sequence {} - ignoring and waiting for stream to stabilize...",
+                            abs(seqNum - cachedSeqNum), seqNum, cachedSeqNum);
+                    }
+                    else
+                    {
+                        spdlog::debug("Received sequence {}, but last sequence was {} - "
+                            "marking missed packets", seqNum, cachedSeqNum);
+                        for (uint16_t missingSeqNum = (cachedSeqNum + 1);
+                            (missingSeqNum < seqNum); missingSeqNum++)
+                        {
+                            ssrcMissedSequenceNumbers.insert(missingSeqNum);
+                        }
                     }
                     ssrcPacketsSinceLastMissedSequence = 0;
                 }
@@ -264,16 +276,48 @@ bool FtlStream::isSequenceNewer(rtp_sequence_num_t newSeq, rtp_sequence_num_t ol
 void FtlStream::sendNacks(const rtp_ssrc_t ssrc,
     const std::unique_lock<std::shared_mutex>& dataLock)
 {
-    std::list<std::vector<std::byte>>& packetBuffer = circularPacketBuffer.at(ssrc);
-    while (packetBuffer.size() > 0)
+    std::set<rtp_sequence_num_t>& ssrcMissedSeqNums = missedSequenceNumbers.at(ssrc);
+    spdlog::debug(fmt::format("Sending NACKs for sequences {}", fmt::join(ssrcMissedSeqNums, ", ")));
+    while (ssrcMissedSeqNums.size() > 0)
     {
-        packetBuffer.clear();
-        // TODO
-        // char nackBuffer[120];
-        // RtcpFeedbackPacket* rtcpPacket = reinterpret_cast<RtcpFeedbackPacket*>(nackBuffer);
-        // rtcpPacket->header->version = 2;
-        // rtcpPacket->header->type = RtcpType::RTPFB;
-        // rtcpPacket->header->rc = RtcpFeedbackMessageType::NACK;
+        auto it = ssrcMissedSeqNums.begin();
+        rtp_sequence_num_t firstSeq = *it;
+        uint16_t extraPacketBitmast = 0;
+        it++;
+        while (true)
+        {
+            if (it == ssrcMissedSeqNums.end())
+            {
+                break;
+            }
+
+            rtp_sequence_num_t nextSeq = *it;
+            if ((nextSeq - firstSeq) > 15)
+            {
+                break;
+            }
+            extraPacketBitmast |= (0x1 << ((nextSeq - firstSeq) - 1));
+            it = ssrcMissedSeqNums.erase(it);
+        }
+        ssrcMissedSeqNums.erase(firstSeq);
+
+        // See https://tools.ietf.org/html/rfc4585 Section 6.1
+        // for information on how the nack packet is formed
+        char nackBuffer[16];
+        auto rtcpPacket = reinterpret_cast<RtcpFeedbackPacket*>(nackBuffer);
+        rtcpPacket->header.version = 2;
+        rtcpPacket->header.padding = 0;
+        rtcpPacket->header.rc = RtcpFeedbackMessageType::NACK;
+        rtcpPacket->header.type = RtcpType::RTPFB;
+        rtcpPacket->header.length = htons(3);
+        rtcpPacket->ssrc = htonl(ssrc);
+        rtcpPacket->media = htonl(ssrc);
+        auto rtcpNack = reinterpret_cast<RtcpFeedbackPacketNackControlInfo*>(rtcpPacket->fci);
+        rtcpNack->pid = htons(firstSeq);
+        rtcpNack->blp = htons(extraPacketBitmast);
+        std::vector<std::byte> nackBytes(reinterpret_cast<std::byte*>(nackBuffer),
+            reinterpret_cast<std::byte*>(nackBuffer) + sizeof(nackBuffer));
+        mediaTransport->Write(nackBytes);
     }
 }
 

@@ -215,6 +215,12 @@ struct RtcpFeedbackPacket
     char fci[1];
 };
 
+struct RtcpFeedbackPacketNackControlInfo
+{
+    uint16_t pid;
+    uint16_t blp;
+};
+
 enum class RtpRelayPacketKind
 {
     Audio,

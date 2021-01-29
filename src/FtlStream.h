@@ -58,7 +58,7 @@ private:
     static constexpr rtp_payload_type_t  FTL_PAYLOAD_TYPE_SENDER_REPORT = 200;
     static constexpr rtp_payload_type_t  FTL_PAYLOAD_TYPE_PING          = 250;
     static constexpr size_t              PACKET_BUFFER_SIZE             = 64;
-    static constexpr size_t              MAX_PACKETS_BEFORE_NACK        = 4;
+    static constexpr size_t              MAX_PACKETS_BEFORE_NACK        = 32;
 
     /* Private members */
     const std::unique_ptr<FtlControlConnection> controlConnection;
