@@ -13,6 +13,7 @@
 #include "ConnectionTransports/ConnectionTransport.h"
 #include "FtlControlConnection.h"
 #include "JanusSession.h"
+#include "Utilities/Rtp.h"
 
 #include <algorithm>
 #include <fstream>
@@ -136,11 +137,68 @@ void FtlStream::mediaConnectionClosed()
     onClosed(*this);
 }
 
+std::set<rtp_sequence_num_t> FtlStream::insertPacketInSequenceOrder(
+    std::list<std::vector<std::byte>>& packetList, const std::vector<std::byte>& packet)
+{
+    std::set<rtp_sequence_num_t> missingSequences;
+    const Rtp::RtpHeader* rtpHeader = Rtp::GetRtpHeader(packet);
+    const rtp_sequence_num_t seqNum = ntohs(rtpHeader->SequenceNumber);
+    // If the list is empty, just add it and we're done.
+    if (packetList.size() == 0)
+    {
+        packetList.push_back(packet);
+        return missingSequences;
+    }
+    // Insert the packet into list according to sequence number
+    bool wasInserted = false;
+    for (auto it = packetList.rbegin(); it != packetList.rend(); it++)
+    {
+        const std::vector<std::byte>& cachedPacket = *it;
+        const Rtp::RtpHeader* cachedRtpHeader = Rtp::GetRtpHeader(cachedPacket);
+        const rtp_sequence_num_t cachedSeqNum = ntohs(cachedRtpHeader->SequenceNumber);
+
+        if (isSequenceNewer(seqNum, cachedSeqNum))
+        {
+            // If there are any gaps between the sequence numbers, mark them as missing.
+            // cast to uint16_t to account for overflow (sequence numbers wrap from 65535 -> 0)
+            if (cachedSeqNum != static_cast<uint16_t>(seqNum - 1))
+            {
+                for (uint16_t missingSeqNum = (cachedSeqNum + 1);
+                    (missingSeqNum < seqNum); missingSeqNum++)
+                {
+                    missingSequences.insert(missingSeqNum);
+                }
+            }
+            packetList.insert(it.base(), packet);
+            wasInserted = true;
+            break;
+        }
+    }
+
+    if (!wasInserted)
+    {
+        // The packet's sequence number was older than the whole list - insert at the very front.
+        const std::vector<std::byte>& firstPacket = packetList.front();
+        const Rtp::RtpHeader* firstRtpHeader = Rtp::GetRtpHeader(firstPacket);
+        const rtp_sequence_num_t firstSeqNum = ntohs(firstRtpHeader->SequenceNumber);
+
+        // Mark in-between packets missing.
+        for (uint16_t missingSeqNum = (seqNum + 1);
+            (missingSeqNum < firstSeqNum); missingSeqNum++)
+        {
+            missingSequences.insert(missingSeqNum);
+        }
+        packetList.push_front(packet);
+    }
+
+    return missingSequences;
+}
+
 void FtlStream::processRtpPacket(const std::vector<std::byte>& rtpPacket)
 {
     std::unique_lock lock(dataMutex);
-    const RtpHeader* rtpHeader = reinterpret_cast<const RtpHeader*>(rtpPacket.data());
-    rtp_ssrc_t ssrc = ntohl(rtpHeader->ssrc);
+    const Rtp::RtpHeader* rtpHeader = Rtp::GetRtpHeader(rtpPacket);
+    rtp_ssrc_t ssrc = ntohl(rtpHeader->Ssrc);
 
     // Process audio/video packets
     if ((ssrc == mediaMetadata.AudioSsrc) || 
@@ -154,8 +212,8 @@ void FtlStream::processRtpPacket(const std::vector<std::byte>& rtpPacket)
         // FTL implementation uses the marker bit space for payload types above 127
         // when the payload type is not audio or video. So we need to reconstruct it.
         uint8_t payloadType = 
-            ((static_cast<uint8_t>(rtpHeader->markerbit) << 7) | 
-            static_cast<uint8_t>(rtpHeader->type));
+            ((static_cast<uint8_t>(rtpHeader->MarkerBit) << 7) | 
+            static_cast<uint8_t>(rtpHeader->Type));
         
         if (payloadType == FTL_PAYLOAD_TYPE_PING)
         {
@@ -168,7 +226,7 @@ void FtlStream::processRtpPacket(const std::vector<std::byte>& rtpPacket)
         else
         {
             spdlog::warn("FTL: Unknown RTP payload type %d (orig %d)\n", payloadType, 
-                rtpHeader->type);
+                rtpHeader->Type);
         }
     }
 }
@@ -176,72 +234,55 @@ void FtlStream::processRtpPacket(const std::vector<std::byte>& rtpPacket)
 void FtlStream::processRtpPacketSequencing(const std::vector<std::byte>& rtpPacket,
     const std::unique_lock<std::shared_mutex>& dataLock)
 {
-    const RtpHeader* rtpHeader = reinterpret_cast<const RtpHeader*>(rtpPacket.data());
-    const rtp_ssrc_t ssrc = ntohl(rtpHeader->ssrc);
-    const rtp_sequence_num_t seqNum = ntohs(rtpHeader->seq_number);
+    const Rtp::RtpHeader* rtpHeader = Rtp::GetRtpHeader(rtpPacket);
+    const rtp_ssrc_t ssrc = ntohl(rtpHeader->Ssrc);
+    const rtp_sequence_num_t seqNum = ntohs(rtpHeader->SequenceNumber);
 
     if ((circularPacketBuffer.count(ssrc) <= 0) ||
         (missedSequenceNumbers.count(ssrc) <= 0) ||
         (packetsSinceLastMissedSequence.count(ssrc) <= 0))
     {
-        const rtp_payload_type_t payloadType = rtpHeader->type;
+        const rtp_payload_type_t payloadType = rtpHeader->Type;
         spdlog::warn("Received RTP payload type {} with unexpected ssrc {}", payloadType, ssrc);
+        return;
+    }
+
+    // The FTL client will sometimes send a bunch of audio packets first as a 'speed test'.
+    // We should ignore these until we see our first video packet show up.
+    if ((ssrc == mediaMetadata.AudioSsrc) &&
+        (circularPacketBuffer.count(mediaMetadata.VideoSsrc) > 0) &&
+        (circularPacketBuffer.at(mediaMetadata.VideoSsrc).size() <= 0))
+    {
         return;
     }
 
     std::set<rtp_sequence_num_t>& ssrcMissedSequenceNumbers = missedSequenceNumbers.at(ssrc);
     size_t& ssrcPacketsSinceLastMissedSequence = packetsSinceLastMissedSequence.at(ssrc);
     std::list<std::vector<std::byte>>& ssrcPacketBuffer = circularPacketBuffer.at(ssrc);
-    if (ssrcPacketBuffer.size() != 0)
+
+    // If this sequence is marked as missing, un-mark it.
+    ssrcMissedSequenceNumbers.erase(rtpHeader->SequenceNumber);
+
+    // Insert the packet into the buffer in sequence number order
+    std::set<rtp_sequence_num_t> missingSequences =
+        insertPacketInSequenceOrder(ssrcPacketBuffer, rtpPacket);
+
+    if (missingSequences.size() == 0)
     {
-        // If this sequence is marked as missing, un-mark it.
-        ssrcMissedSequenceNumbers.erase(rtpHeader->seq_number);
-
-        // Insert the packet into cache according to sequence number
-        for (auto it = ssrcPacketBuffer.rbegin(); it != ssrcPacketBuffer.rend(); it++)
-        {
-            const std::vector<std::byte>& cachedPacket = *it;
-            const RtpHeader* cachedRtpHeader = 
-                reinterpret_cast<const RtpHeader*>(cachedPacket.data());
-            const rtp_sequence_num_t cachedSeqNum = ntohs(cachedRtpHeader->seq_number);
-
-            if (isSequenceNewer(seqNum, cachedSeqNum, PACKET_BUFFER_SIZE))
-            {
-                // If there are any gaps between the sequence numbers, mark them as missing.
-                // cast to uint16_t to account for overflow (sequence numbers wrap from 65535 -> 0)
-                if (cachedSeqNum == static_cast<uint16_t>(seqNum - 1))
-                {
-                    ssrcPacketsSinceLastMissedSequence++;
-                }
-                else
-                {
-                    if (abs(seqNum - cachedSeqNum) > (MAX_PACKETS_BEFORE_NACK * 2))
-                    {
-                        spdlog::warn("At least {} packets lost between current sequence {} and "
-                            "last sequence {} - ignoring and waiting for stream to stabilize...",
-                            abs(seqNum - cachedSeqNum), seqNum, cachedSeqNum);
-                    }
-                    else
-                    {
-                        spdlog::debug("Received sequence {}, but last sequence was {} - "
-                            "marking missed packets", seqNum, cachedSeqNum);
-                        for (uint16_t missingSeqNum = (cachedSeqNum + 1);
-                            (missingSeqNum < seqNum); missingSeqNum++)
-                        {
-                            ssrcMissedSequenceNumbers.insert(missingSeqNum);
-                        }
-                    }
-                    ssrcPacketsSinceLastMissedSequence = 0;
-                }
-                ssrcPacketBuffer.insert(it.base(), rtpPacket);
-                break;
-            }
-        }
+        ssrcPacketsSinceLastMissedSequence++;
+    }
+    else if (missingSequences.size() > (MAX_PACKETS_BEFORE_NACK * 2))
+    {
+        spdlog::warn("At least {} packets were lost before current sequence {} - ignoring and "
+            "waiting for stream to stabilize...",
+            missingSequences.size(), seqNum);
+        ssrcPacketsSinceLastMissedSequence = 0;
     }
     else
     {
-        // We can't check for missing sequences, because this is our first packet!
-        ssrcPacketBuffer.push_back(rtpPacket);
+        spdlog::debug("Marking {} packets lost since sequence {}", missingSequences.size(), seqNum);
+        ssrcMissedSequenceNumbers.insert(missingSequences.begin(), missingSequences.end());
+        ssrcPacketsSinceLastMissedSequence = 0;
     }
 
     // Trim circular packet buffer to stay within buffer size limit
@@ -255,6 +296,103 @@ void FtlStream::processRtpPacketSequencing(const std::vector<std::byte>& rtpPack
             (ssrcPacketsSinceLastMissedSequence >= MAX_PACKETS_BEFORE_NACK)))
     {
         sendNacks(ssrc, dataLock);
+    }
+}
+
+void FtlStream::processRtpPacketKeyframe(const std::vector<std::byte>& rtpPacket,
+    const std::unique_lock<std::shared_mutex>& dataLock)
+{
+    const Rtp::RtpHeader* rtpHeader = Rtp::GetRtpHeader(rtpPacket);
+    // Is this a video packet?
+    if (ntohl(rtpHeader->Ssrc) == mediaMetadata.VideoSsrc)
+    {
+        switch (mediaMetadata.VideoCodec)
+        {
+        case VideoCodecKind::H264:
+            processRtpH264PacketKeyframe(rtpPacket, dataLock);
+            break;
+        case VideoCodecKind::Unsupported:
+        default:
+            // We don't know how to process keyframes for this video codec.
+            break;
+        }
+    }
+}
+
+void FtlStream::processRtpH264PacketKeyframe(const std::vector<std::byte>& rtpPacket,
+    const std::unique_lock<std::shared_mutex>& dataLock)
+{
+    const Rtp::RtpHeader* rtpHeader = Rtp::GetRtpHeader(rtpPacket);
+    const rtp_ssrc_t ssrc = ntohl(rtpHeader->Ssrc);
+    // Is this packet part of a keyframe?
+    std::span<const std::byte> packetPayload = Rtp::GetRtpPayload(rtpPacket);
+    if (packetPayload.size() < 2)
+    {
+        return;
+    }
+    bool isKeyframePart = false;
+    bool isLastPacketOfKeyframe = false;
+    uint8_t nalType = (static_cast<uint8_t>(packetPayload[0]) & 0b00011111);
+    if (nalType == 7) // Sequence Parameter Set
+    {
+        // SPS often precedes an IDR (Instantaneous Decoder Refresh) aka Keyframe
+        // and provides information on how to decode it. We should keep this around.
+        spdlog::debug("Keyframe NAL 7 detected");
+        isKeyframePart = true;
+    }
+    else if (nalType == 5) // IDR
+    {
+        // Managed to fit an entire IDR into one packet!
+        spdlog::debug("Keyframe NAL 5 detected");
+        isKeyframePart = true;
+        isLastPacketOfKeyframe = true;
+    }
+    // See https://tools.ietf.org/html/rfc3984#section-5.8
+    else if (nalType == 28) // Fragmentation unit (FU-A)
+    {
+        uint8_t fragmentType = (static_cast<uint8_t>(packetPayload[1]) & 0b00011111);
+        if ((fragmentType == 7) || // Fragment of SPS
+            (fragmentType == 5))   // Fragment of IDR
+        {
+            spdlog::debug("Keyframe NAL 28 fragment {} detected", fragmentType);
+            isKeyframePart = true;
+            bool isEndFragment = ((static_cast<uint8_t>(packetPayload[1]) & 0b01000000) > 0);
+            if (isEndFragment)
+            {
+                spdlog::debug("\tfragment {} END", fragmentType);
+                isLastPacketOfKeyframe = true;
+            }
+        }
+    }
+
+    if (!isKeyframePart)
+    {
+        return;
+    }
+
+    if (pendingKeyframePackets.count(ssrc) <= 0)
+    {
+        pendingKeyframePackets.try_emplace(ssrc);
+    }
+    std::list<std::vector<std::byte>>& packets = pendingKeyframePackets.at(ssrc);
+    if (packets.size() > 0)
+    {
+        std::vector<std::byte>& firstPacket = packets.front();
+        const Rtp::RtpHeader* firstHeader = Rtp::GetRtpHeader(firstPacket);
+        if (firstHeader->Timestamp != rtpHeader->Timestamp)
+        {
+            spdlog::debug("Dropping incomplete keyframe, timestamp {}",
+                ntohl(firstHeader->Timestamp));
+            packets.clear();
+        }
+    }
+    insertPacketInSequenceOrder(packets, rtpPacket);
+    if (isLastPacketOfKeyframe)
+    {
+        spdlog::debug("{} keyframe packets recorded @ timestamp {}", packets.size(),
+            ntohl(rtpHeader->Timestamp));
+        lastKeyframePackets.insert_or_assign(ssrc, std::move(packets));
+        packets.clear();
     }
 }
 
@@ -304,17 +442,17 @@ void FtlStream::sendNacks(const rtp_ssrc_t ssrc,
         // See https://tools.ietf.org/html/rfc4585 Section 6.1
         // for information on how the nack packet is formed
         char nackBuffer[16];
-        auto rtcpPacket = reinterpret_cast<RtcpFeedbackPacket*>(nackBuffer);
-        rtcpPacket->header.version = 2;
-        rtcpPacket->header.padding = 0;
-        rtcpPacket->header.rc = RtcpFeedbackMessageType::NACK;
-        rtcpPacket->header.type = RtcpType::RTPFB;
-        rtcpPacket->header.length = htons(3);
-        rtcpPacket->ssrc = htonl(ssrc);
-        rtcpPacket->media = htonl(ssrc);
-        auto rtcpNack = reinterpret_cast<RtcpFeedbackPacketNackControlInfo*>(rtcpPacket->fci);
-        rtcpNack->pid = htons(firstSeq);
-        rtcpNack->blp = htons(extraPacketBitmast);
+        auto rtcpPacket = reinterpret_cast<Rtp::RtcpFeedbackPacket*>(nackBuffer);
+        rtcpPacket->Header.Version = 2;
+        rtcpPacket->Header.Padding = 0;
+        rtcpPacket->Header.Rc = Rtp::RtcpFeedbackMessageType::NACK;
+        rtcpPacket->Header.Type = Rtp::RtcpType::RTPFB;
+        rtcpPacket->Header.Length = htons(3);
+        rtcpPacket->Ssrc = htonl(ssrc);
+        rtcpPacket->Media = htonl(ssrc);
+        auto rtcpNack = reinterpret_cast<Rtp::RtcpFeedbackPacketNackControlInfo*>(rtcpPacket->Fci);
+        rtcpNack->Pid = htons(firstSeq);
+        rtcpNack->Blp = htons(extraPacketBitmast);
         std::vector<std::byte> nackBytes(reinterpret_cast<std::byte*>(nackBuffer),
             reinterpret_cast<std::byte*>(nackBuffer) + sizeof(nackBuffer));
         mediaTransport->Write(nackBytes);
@@ -324,6 +462,8 @@ void FtlStream::sendNacks(const rtp_ssrc_t ssrc,
 void FtlStream::processAudioVideoRtpPacket(const std::vector<std::byte>& rtpPacket,
     std::unique_lock<std::shared_mutex>& dataLock)
 {
+    processRtpPacketKeyframe(rtpPacket, dataLock);
+
     if (onRtpPacket)
     {
         dataLock.unlock(); // Unlock while we call out

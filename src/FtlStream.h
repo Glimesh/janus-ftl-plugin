@@ -14,6 +14,7 @@
 
 #include <functional>
 #include <list>
+#include <set>
 #include <shared_mutex>
 #include <unordered_map>
 #include <set>
@@ -74,16 +75,25 @@ private:
     std::unordered_map<rtp_ssrc_t, std::set<rtp_sequence_num_t>> missedSequenceNumbers;
     std::unordered_map<rtp_ssrc_t, size_t> packetsSinceLastMissedSequence;
     std::unordered_map<rtp_ssrc_t, std::list<std::vector<std::byte>>> circularPacketBuffer;
+    std::unordered_map<rtp_ssrc_t, std::list<std::vector<std::byte>>> lastKeyframePackets;
+    std::unordered_map<rtp_ssrc_t, std::list<std::vector<std::byte>>> pendingKeyframePackets;
 
     /* Private methods */
     void controlConnectionClosed(FtlControlConnection& connection);
     void mediaBytesReceived(const std::vector<std::byte>& bytes);
     void mediaConnectionClosed();
     // Packet processing
+    std::set<rtp_sequence_num_t> insertPacketInSequenceOrder(
+        std::list<std::vector<std::byte>>& packetList, const std::vector<std::byte>& packet);
     void processRtpPacket(const std::vector<std::byte>& rtpPacket);
     void processRtpPacketSequencing(const std::vector<std::byte>& rtpPacket,
         const std::unique_lock<std::shared_mutex>& dataLock);
-    bool isSequenceNewer(rtp_sequence_num_t newSeq, rtp_sequence_num_t oldSeq, size_t bufferSize);
+    void processRtpPacketKeyframe(const std::vector<std::byte>& rtpPacket,
+        const std::unique_lock<std::shared_mutex>& dataLock);
+    void processRtpH264PacketKeyframe(const std::vector<std::byte>& rtpPacket,
+        const std::unique_lock<std::shared_mutex>& dataLock);
+    bool isSequenceNewer(rtp_sequence_num_t newSeq, rtp_sequence_num_t oldSeq,
+        size_t margin = PACKET_BUFFER_SIZE);
     void sendNacks(const rtp_ssrc_t ssrc, const std::unique_lock<std::shared_mutex>& dataLock);
     void processAudioVideoRtpPacket(const std::vector<std::byte>& rtpPacket,
         std::unique_lock<std::shared_mutex>& dataLock);

@@ -30,6 +30,8 @@ janusincludepath = get_variable('JANUS_INC_PATH', (januspath + '/include/janus')
 installdir = get_variable('INSTALL_PATH', (januspath + '/lib/janus/plugins'))
 
 sources = files([
+    # Utilities
+    'src/Utilities/Rtp.cpp',
     # Preview Generators
     'src/PreviewGenerators/H264PreviewGenerator.cpp',
     # Service Connections
