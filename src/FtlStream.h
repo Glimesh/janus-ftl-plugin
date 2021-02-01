@@ -12,6 +12,7 @@
 #include "Utilities/FtlTypes.h"
 #include "Utilities/Result.h"
 
+#include <chrono>
 #include <functional>
 #include <list>
 #include <set>
@@ -53,6 +54,20 @@ public:
     ftl_stream_id_t GetStreamId();
 
 private:
+    /* Private types */
+    struct SsrcData
+    {
+        uint32_t PacketsReceived = 0;
+        uint32_t PacketsNacked = 0;
+        uint32_t PacketsLost = 0;
+        size_t PacketsSinceLastMissedSequence = 0;
+        std::list<std::vector<std::byte>> CircularPacketBuffer;
+        std::set<rtp_sequence_num_t> NackQueue;
+        std::set<rtp_sequence_num_t> NackedSequences;
+        std::list<std::vector<std::byte>> CurrentKeyframePackets;
+        std::list<std::vector<std::byte>> PendingKeyframePackets;
+    };
+
     /* Constants */
     static constexpr uint64_t            MICROSECONDS_PER_SECOND        = 1000000;
     static constexpr float               MICROSECONDS_PER_MILLISECOND   = 1000.0f;
@@ -60,6 +75,7 @@ private:
     static constexpr rtp_payload_type_t  FTL_PAYLOAD_TYPE_PING          = 250;
     static constexpr size_t              PACKET_BUFFER_SIZE             = 64;
     static constexpr size_t              MAX_PACKETS_BEFORE_NACK        = 32;
+    static constexpr size_t              NACK_TIMEOUT_SEQUENCE_DELTA    = 256;
 
     /* Private members */
     const std::unique_ptr<FtlControlConnection> controlConnection;
@@ -72,11 +88,7 @@ private:
     bool stopping = false;
     // Stream data
     std::shared_mutex dataMutex;
-    std::unordered_map<rtp_ssrc_t, std::set<rtp_sequence_num_t>> missedSequenceNumbers;
-    std::unordered_map<rtp_ssrc_t, size_t> packetsSinceLastMissedSequence;
-    std::unordered_map<rtp_ssrc_t, std::list<std::vector<std::byte>>> circularPacketBuffer;
-    std::unordered_map<rtp_ssrc_t, std::list<std::vector<std::byte>>> lastKeyframePackets;
-    std::unordered_map<rtp_ssrc_t, std::list<std::vector<std::byte>>> pendingKeyframePackets;
+    std::unordered_map<rtp_ssrc_t, SsrcData> ssrcData;
 
     /* Private methods */
     void controlConnectionClosed(FtlControlConnection& connection);
@@ -94,7 +106,8 @@ private:
         const std::unique_lock<std::shared_mutex>& dataLock);
     bool isSequenceNewer(rtp_sequence_num_t newSeq, rtp_sequence_num_t oldSeq,
         size_t margin = PACKET_BUFFER_SIZE);
-    void sendNacks(const rtp_ssrc_t ssrc, const std::unique_lock<std::shared_mutex>& dataLock);
+    void processNacks(const rtp_ssrc_t ssrc, const rtp_sequence_num_t latestSequence,
+        const std::unique_lock<std::shared_mutex>& dataLock);
     void processAudioVideoRtpPacket(const std::vector<std::byte>& rtpPacket,
         std::unique_lock<std::shared_mutex>& dataLock);
     void handlePing(const std::vector<std::byte>& rtpPacket);

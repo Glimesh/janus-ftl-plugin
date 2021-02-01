@@ -42,12 +42,8 @@ FtlStream::FtlStream(
     nackLostPackets(nackLostPackets)
 {
     // Prepare stream data stores to accept packets from SSRCs specified by control handshake
-    missedSequenceNumbers.try_emplace(mediaMetadata.AudioSsrc);
-    missedSequenceNumbers.try_emplace(mediaMetadata.VideoSsrc);
-    packetsSinceLastMissedSequence.try_emplace(mediaMetadata.AudioSsrc, 0);
-    packetsSinceLastMissedSequence.try_emplace(mediaMetadata.VideoSsrc, 0);
-    circularPacketBuffer.try_emplace(mediaMetadata.AudioSsrc);
-    circularPacketBuffer.try_emplace(mediaMetadata.VideoSsrc);
+    ssrcData.try_emplace(mediaMetadata.AudioSsrc);
+    ssrcData.try_emplace(mediaMetadata.VideoSsrc);
 
     // Bind to control callbacks
     this->controlConnection->SetOnConnectionClosed(
@@ -66,7 +62,6 @@ FtlStream::FtlStream(
 #pragma region Public methods
 Result<void> FtlStream::StartAsync()
 {
-    spdlog::debug("HELLO DEBUG");
     // Fire up our media connection
     Result<void> mediaStartResult = mediaTransport->StartAsync();
     if (mediaStartResult.IsError)
@@ -238,65 +233,59 @@ void FtlStream::processRtpPacketSequencing(const std::vector<std::byte>& rtpPack
     const rtp_ssrc_t ssrc = ntohl(rtpHeader->Ssrc);
     const rtp_sequence_num_t seqNum = ntohs(rtpHeader->SequenceNumber);
 
-    if ((circularPacketBuffer.count(ssrc) <= 0) ||
-        (missedSequenceNumbers.count(ssrc) <= 0) ||
-        (packetsSinceLastMissedSequence.count(ssrc) <= 0))
+    if (ssrcData.count(ssrc) <= 0)
     {
-        const rtp_payload_type_t payloadType = rtpHeader->Type;
+        const rtp_payload_type_t payloadType = ntohs(rtpHeader->Type);
         spdlog::warn("Received RTP payload type {} with unexpected ssrc {}", payloadType, ssrc);
         return;
     }
 
+    SsrcData& data = ssrcData.at(ssrc);
+
     // The FTL client will sometimes send a bunch of audio packets first as a 'speed test'.
     // We should ignore these until we see our first video packet show up.
     if ((ssrc == mediaMetadata.AudioSsrc) &&
-        (circularPacketBuffer.count(mediaMetadata.VideoSsrc) > 0) &&
-        (circularPacketBuffer.at(mediaMetadata.VideoSsrc).size() <= 0))
+        (ssrcData.count(mediaMetadata.VideoSsrc) > 0) &&
+        (ssrcData.at(mediaMetadata.VideoSsrc).CircularPacketBuffer.size() <= 0))
     {
         return;
     }
 
-    std::set<rtp_sequence_num_t>& ssrcMissedSequenceNumbers = missedSequenceNumbers.at(ssrc);
-    size_t& ssrcPacketsSinceLastMissedSequence = packetsSinceLastMissedSequence.at(ssrc);
-    std::list<std::vector<std::byte>>& ssrcPacketBuffer = circularPacketBuffer.at(ssrc);
-
-    // If this sequence is marked as missing, un-mark it.
-    ssrcMissedSequenceNumbers.erase(rtpHeader->SequenceNumber);
+    // If this sequence is marked as missing anywhere, un-mark it.
+    data.NackQueue.erase(seqNum);
+    data.NackedSequences.erase(seqNum);
 
     // Insert the packet into the buffer in sequence number order
     std::set<rtp_sequence_num_t> missingSequences =
-        insertPacketInSequenceOrder(ssrcPacketBuffer, rtpPacket);
+        insertPacketInSequenceOrder(data.CircularPacketBuffer, rtpPacket);
 
     if (missingSequences.size() == 0)
     {
-        ssrcPacketsSinceLastMissedSequence++;
+        data.PacketsSinceLastMissedSequence++;
     }
     else if (missingSequences.size() > (MAX_PACKETS_BEFORE_NACK * 2))
     {
         spdlog::warn("At least {} packets were lost before current sequence {} - ignoring and "
             "waiting for stream to stabilize...",
             missingSequences.size(), seqNum);
-        ssrcPacketsSinceLastMissedSequence = 0;
+        data.PacketsSinceLastMissedSequence = 0;
+        data.PacketsLost += missingSequences.size();
     }
     else
     {
-        spdlog::debug("Marking {} packets lost since sequence {}", missingSequences.size(), seqNum);
-        ssrcMissedSequenceNumbers.insert(missingSequences.begin(), missingSequences.end());
-        ssrcPacketsSinceLastMissedSequence = 0;
+        spdlog::debug("Marking {} packets missing since sequence {}", missingSequences.size(),
+            seqNum);
+        data.NackQueue.insert(missingSequences.begin(), missingSequences.end());
+        data.PacketsSinceLastMissedSequence = 0;
     }
 
     // Trim circular packet buffer to stay within buffer size limit
-    if (ssrcPacketBuffer.size() > PACKET_BUFFER_SIZE)
+    while (data.CircularPacketBuffer.size() > PACKET_BUFFER_SIZE)
     {
-        ssrcPacketBuffer.pop_front();
+        data.CircularPacketBuffer.pop_front();
     }
 
-    if ((ssrcMissedSequenceNumbers.size() >= MAX_PACKETS_BEFORE_NACK) ||
-        ((ssrcMissedSequenceNumbers.size() > 0) &&
-            (ssrcPacketsSinceLastMissedSequence >= MAX_PACKETS_BEFORE_NACK)))
-    {
-        sendNacks(ssrc, dataLock);
-    }
+    processNacks(ssrc, seqNum, dataLock);
 }
 
 void FtlStream::processRtpPacketKeyframe(const std::vector<std::byte>& rtpPacket,
@@ -324,6 +313,13 @@ void FtlStream::processRtpH264PacketKeyframe(const std::vector<std::byte>& rtpPa
 {
     const Rtp::RtpHeader* rtpHeader = Rtp::GetRtpHeader(rtpPacket);
     const rtp_ssrc_t ssrc = ntohl(rtpHeader->Ssrc);
+    if (ssrcData.count(ssrc) <= 0)
+    {
+        spdlog::warn("Couldn't process H264 keyframes for unknown ssrc {}", ssrc);
+        return;
+    }
+    SsrcData& data = ssrcData.at(ssrc);
+
     // Is this packet part of a keyframe?
     std::span<const std::byte> packetPayload = Rtp::GetRtpPayload(rtpPacket);
     if (packetPayload.size() < 2)
@@ -331,7 +327,6 @@ void FtlStream::processRtpH264PacketKeyframe(const std::vector<std::byte>& rtpPa
         return;
     }
     bool isKeyframePart = false;
-    bool isLastPacketOfKeyframe = false;
     uint8_t nalType = (static_cast<uint8_t>(packetPayload[0]) & 0b00011111);
     if (nalType == 7) // Sequence Parameter Set
     {
@@ -345,7 +340,6 @@ void FtlStream::processRtpH264PacketKeyframe(const std::vector<std::byte>& rtpPa
         // Managed to fit an entire IDR into one packet!
         spdlog::debug("Keyframe NAL 5 detected");
         isKeyframePart = true;
-        isLastPacketOfKeyframe = true;
     }
     // See https://tools.ietf.org/html/rfc3984#section-5.8
     else if (nalType == 28) // Fragmentation unit (FU-A)
@@ -356,12 +350,6 @@ void FtlStream::processRtpH264PacketKeyframe(const std::vector<std::byte>& rtpPa
         {
             spdlog::debug("Keyframe NAL 28 fragment {} detected", fragmentType);
             isKeyframePart = true;
-            bool isEndFragment = ((static_cast<uint8_t>(packetPayload[1]) & 0b01000000) > 0);
-            if (isEndFragment)
-            {
-                spdlog::debug("\tfragment {} END", fragmentType);
-                isLastPacketOfKeyframe = true;
-            }
         }
     }
 
@@ -370,29 +358,27 @@ void FtlStream::processRtpH264PacketKeyframe(const std::vector<std::byte>& rtpPa
         return;
     }
 
-    if (pendingKeyframePackets.count(ssrc) <= 0)
+    if (data.PendingKeyframePackets.size() <= 0)
     {
-        pendingKeyframePackets.try_emplace(ssrc);
+        insertPacketInSequenceOrder(data.PendingKeyframePackets, rtpPacket);
     }
-    std::list<std::vector<std::byte>>& packets = pendingKeyframePackets.at(ssrc);
-    if (packets.size() > 0)
+    else
     {
-        std::vector<std::byte>& firstPacket = packets.front();
+        std::vector<std::byte>& firstPacket = data.PendingKeyframePackets.front();
         const Rtp::RtpHeader* firstHeader = Rtp::GetRtpHeader(firstPacket);
-        if (firstHeader->Timestamp != rtpHeader->Timestamp)
+        rtp_timestamp_t lastTimestamp = ntohl(firstHeader->Timestamp);
+        rtp_timestamp_t currentTimestamp = ntohl(rtpHeader->Timestamp);
+        if (lastTimestamp == currentTimestamp)
         {
-            spdlog::debug("Dropping incomplete keyframe, timestamp {}",
-                ntohl(firstHeader->Timestamp));
-            packets.clear();
+            insertPacketInSequenceOrder(data.PendingKeyframePackets, rtpPacket);
         }
-    }
-    insertPacketInSequenceOrder(packets, rtpPacket);
-    if (isLastPacketOfKeyframe)
-    {
-        spdlog::debug("{} keyframe packets recorded @ timestamp {}", packets.size(),
-            ntohl(rtpHeader->Timestamp));
-        lastKeyframePackets.insert_or_assign(ssrc, std::move(packets));
-        packets.clear();
+        else
+        {
+            spdlog::debug("{} keyframe packets recorded @ timestamp {}",
+                data.PendingKeyframePackets.size(), currentTimestamp);
+            data.CurrentKeyframePackets = std::move(data.PendingKeyframePackets);
+            data.PendingKeyframePackets.clear();
+        }
     }
 }
 
@@ -411,51 +397,86 @@ bool FtlStream::isSequenceNewer(rtp_sequence_num_t newSeq, rtp_sequence_num_t ol
     }
 }
 
-void FtlStream::sendNacks(const rtp_ssrc_t ssrc,
+void FtlStream::processNacks(const rtp_ssrc_t ssrc, const rtp_sequence_num_t lastestSequence,
     const std::unique_lock<std::shared_mutex>& dataLock)
 {
-    std::set<rtp_sequence_num_t>& ssrcMissedSeqNums = missedSequenceNumbers.at(ssrc);
-    spdlog::debug(fmt::format("Sending NACKs for sequences {}", fmt::join(ssrcMissedSeqNums, ", ")));
-    while (ssrcMissedSeqNums.size() > 0)
+    if (ssrcData.count(ssrc) <= 0)
     {
-        auto it = ssrcMissedSeqNums.begin();
-        rtp_sequence_num_t firstSeq = *it;
-        uint16_t extraPacketBitmast = 0;
-        it++;
-        while (true)
+        spdlog::warn("Couldn't process NACKs for unknown ssrc {}", ssrc);
+        return;
+    }
+    SsrcData& data = ssrcData.at(ssrc);
+    
+    // First, toss any old NACK'd packets that we haven't received and mark them lost.
+    for (auto it = data.NackedSequences.begin(); it != data.NackedSequences.end();)
+    {
+        const rtp_sequence_num_t& nackedSeq = *it;
+        if (std::abs(lastestSequence - nackedSeq) > NACK_TIMEOUT_SEQUENCE_DELTA)
         {
-            if (it == ssrcMissedSeqNums.end())
-            {
-                break;
-            }
-
-            rtp_sequence_num_t nextSeq = *it;
-            if ((nextSeq - firstSeq) > 15)
-            {
-                break;
-            }
-            extraPacketBitmast |= (0x1 << ((nextSeq - firstSeq) - 1));
-            it = ssrcMissedSeqNums.erase(it);
+            data.PacketsLost++;
+            it = data.NackedSequences.erase(it);
         }
-        ssrcMissedSeqNums.erase(firstSeq);
+        else
+        {
+            break;
+        }
+    }
 
-        // See https://tools.ietf.org/html/rfc4585 Section 6.1
-        // for information on how the nack packet is formed
-        char nackBuffer[16];
-        auto rtcpPacket = reinterpret_cast<Rtp::RtcpFeedbackPacket*>(nackBuffer);
-        rtcpPacket->Header.Version = 2;
-        rtcpPacket->Header.Padding = 0;
-        rtcpPacket->Header.Rc = Rtp::RtcpFeedbackMessageType::NACK;
-        rtcpPacket->Header.Type = Rtp::RtcpType::RTPFB;
-        rtcpPacket->Header.Length = htons(3);
-        rtcpPacket->Ssrc = htonl(ssrc);
-        rtcpPacket->Media = htonl(ssrc);
-        auto rtcpNack = reinterpret_cast<Rtp::RtcpFeedbackPacketNackControlInfo*>(rtcpPacket->Fci);
-        rtcpNack->Pid = htons(firstSeq);
-        rtcpNack->Blp = htons(extraPacketBitmast);
-        std::vector<std::byte> nackBytes(reinterpret_cast<std::byte*>(nackBuffer),
-            reinterpret_cast<std::byte*>(nackBuffer) + sizeof(nackBuffer));
-        mediaTransport->Write(nackBytes);
+    // If enough packets have been marked as missing, or enough time has passed, send NACKs
+    if ((data.NackQueue.size() >= MAX_PACKETS_BEFORE_NACK) ||
+        ((data.NackQueue.size() > 0) &&
+            (data.PacketsSinceLastMissedSequence >= MAX_PACKETS_BEFORE_NACK)))
+    {
+        spdlog::debug(fmt::format("Sending NACKs for sequences {}",
+            fmt::join(data.NackQueue, ", ")));
+
+        // Mark packets as NACK'd
+        data.NackedSequences.insert(data.NackQueue.begin(), data.NackQueue.end());
+        data.PacketsNacked += data.NackQueue.size();
+
+        // Send the NACK request packets
+        while (data.NackQueue.size() > 0)
+        {
+            auto it = data.NackQueue.begin();
+            rtp_sequence_num_t firstSeq = *it;
+            uint16_t extraPacketBitmast = 0;
+            it++;
+            while (true)
+            {
+                if (it == data.NackQueue.end())
+                {
+                    break;
+                }
+
+                rtp_sequence_num_t nextSeq = *it;
+                if ((nextSeq - firstSeq) > 15)
+                {
+                    break;
+                }
+                extraPacketBitmast |= (0x1 << ((nextSeq - firstSeq) - 1));
+                it = data.NackQueue.erase(it);
+            }
+            data.NackQueue.erase(firstSeq);
+
+            // See https://tools.ietf.org/html/rfc4585 Section 6.1
+            // for information on how the nack packet is formed
+            char nackBuffer[16];
+            auto rtcpPacket = reinterpret_cast<Rtp::RtcpFeedbackPacket*>(nackBuffer);
+            rtcpPacket->Header.Version = 2;
+            rtcpPacket->Header.Padding = 0;
+            rtcpPacket->Header.Rc = Rtp::RtcpFeedbackMessageType::NACK;
+            rtcpPacket->Header.Type = Rtp::RtcpType::RTPFB;
+            rtcpPacket->Header.Length = htons(3);
+            rtcpPacket->Ssrc = htonl(ssrc);
+            rtcpPacket->Media = htonl(ssrc);
+            auto rtcpNack = 
+                reinterpret_cast<Rtp::RtcpFeedbackPacketNackControlInfo*>(rtcpPacket->Fci);
+            rtcpNack->Pid = htons(firstSeq);
+            rtcpNack->Blp = htons(extraPacketBitmast);
+            std::vector<std::byte> nackBytes(reinterpret_cast<std::byte*>(nackBuffer),
+                reinterpret_cast<std::byte*>(nackBuffer) + sizeof(nackBuffer));
+            mediaTransport->Write(nackBytes);
+        }
     }
 }
 
