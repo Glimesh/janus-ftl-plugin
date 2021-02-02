@@ -16,7 +16,5 @@ class UdpConnectionCreator : public ConnectionCreator
 {
 public:
     // ConnectionCreator implementation
-    std::unique_ptr<ConnectionTransport> CreateConnection(
-        int port,
-        sockaddr_in targetAddr) override;
+    std::unique_ptr<ConnectionTransport> CreateConnection(int port, in_addr targetAddr) override;
 };

@@ -25,7 +25,5 @@ public:
     /**
      * @brief Create a ConnectionTransport targeting the provided port and IPv4/v6 addresses.
      */
-    virtual std::unique_ptr<ConnectionTransport> CreateConnection(
-        int port,
-        sockaddr_in targetAddr) = 0;
+    virtual std::unique_ptr<ConnectionTransport> CreateConnection(int port, in_addr targetAddr) = 0;
 };

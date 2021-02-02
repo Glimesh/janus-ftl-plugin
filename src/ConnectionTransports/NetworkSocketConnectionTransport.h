@@ -52,7 +52,7 @@ private:
     /* Private fields */
     const NetworkSocketConnectionKind connectionKind;
     const int socketHandle = 0;
-    const std::optional<sockaddr_in> targetAddr = std::nullopt;
+    std::optional<sockaddr_in> targetAddr = std::nullopt;
     std::atomic<bool> isStopping { false }; // Indicates that the socket has been requested to close
     std::atomic<bool> isStopped { false };  // Indicates that the socket has finished closing
     std::thread connectionThread;

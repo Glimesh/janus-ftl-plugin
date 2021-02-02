@@ -126,8 +126,7 @@ void FtlServer::onNewControlConnection(std::unique_ptr<ConnectionTransport> conn
 }
 
 Result<uint16_t> FtlServer::onControlStartMediaPort(FtlControlConnection& controlConnection,
-    ftl_channel_id_t channelId, MediaMetadata mediaMetadata,
-    sockaddr_in targetAddr)
+    ftl_channel_id_t channelId, MediaMetadata mediaMetadata, in_addr targetAddr)
 {
     std::unique_lock lock(streamDataMutex);
     // Locate the control connection in our pending store and pull it out

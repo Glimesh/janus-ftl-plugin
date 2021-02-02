@@ -19,7 +19,7 @@
 #pragma region ConnectionCreator implementation
 std::unique_ptr<ConnectionTransport> UdpConnectionCreator::CreateConnection(
     int port,
-    sockaddr_in targetAddr)
+    in_addr targetAddr)
 {
     // TODO: Allow targeting specific source network interfaces
     // TODO: IPV6 support
@@ -48,9 +48,15 @@ std::unique_ptr<ConnectionTransport> UdpConnectionCreator::CreateConnection(
             "Couldn't bind UDP socket. Error {}: {}", error, Util::ErrnoToString(error)));
     }
 
+    sockaddr_in target
+    {
+        .sin_family = AF_INET,
+        .sin_port = htons(port),
+        .sin_addr = targetAddr,
+    };
     return std::make_unique<NetworkSocketConnectionTransport>(
         NetworkSocketConnectionKind::Udp,
         socketHandle,
-        targetAddr);
+        target);
 }
 #pragma endregion ConnectionCreator implementation

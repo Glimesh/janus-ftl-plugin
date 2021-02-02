@@ -6,6 +6,7 @@
  */
 #pragma once
 
+#include <arpa/inet.h>
 #include <iomanip>
 #include <random>
 #include <sstream>
@@ -72,6 +73,13 @@ public:
         char errnoStrBuf[256];
         char* errMsg = strerror_r(error, errnoStrBuf, sizeof(errnoStrBuf));
         return std::string(errMsg);
+    }
+
+    static std::string AddrToString(in_addr addr)
+    {
+        char str[INET_ADDRSTRLEN];
+        inet_ntop(AF_INET, &(addr), str, INET_ADDRSTRLEN);
+        return std::string(str);
     }
 
 private:

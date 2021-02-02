@@ -421,7 +421,7 @@ void FtlControlConnection::processDotCommand()
 
     // HACK: We assume GetAddr() returns a value here.
     Result<uint16_t> mediaPortResult = onStartMediaPort(*this, channelId, mediaMetadata,
-        transport->GetAddr().value());
+        transport->GetAddr().value().sin_addr);
     if (mediaPortResult.IsError)
     {
         spdlog::error("Could not assign media port for FTL connection.");

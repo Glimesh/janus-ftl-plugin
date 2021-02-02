@@ -29,7 +29,7 @@ public:
     /* Public types */
     using RequestKeyCallback = std::function<Result<std::vector<std::byte>>(ftl_channel_id_t)>;
     using StartMediaPortCallback = std::function<Result<uint16_t>(
-        FtlControlConnection&, ftl_channel_id_t, MediaMetadata, sockaddr_in)>;
+        FtlControlConnection&, ftl_channel_id_t, MediaMetadata, in_addr)>;
     using ConnectionClosedCallback = std::function<void(FtlControlConnection&)>;
 
     /* Constructor/Destructor */

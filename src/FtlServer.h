@@ -112,8 +112,7 @@ private:
     // Callback handlers
     void onNewControlConnection(std::unique_ptr<ConnectionTransport> connection);
     Result<uint16_t> onControlStartMediaPort(FtlControlConnection& controlConnection,
-        ftl_channel_id_t channelId, MediaMetadata mediaMetadata,
-        sockaddr_in targetAddr);
+        ftl_channel_id_t channelId, MediaMetadata mediaMetadata, in_addr targetAddr);
     void onControlConnectionClosed(FtlControlConnection& controlConnection);
     void onStreamClosed(FtlStream& stream);
     void onStreamRtpPacket(ftl_channel_id_t channelId, ftl_stream_id_t streamId,

@@ -233,7 +233,14 @@ void NetworkSocketConnectionTransport::connectionThreadBody(
                 {
                     // If we're processing UDP packets, make sure the incoming data is coming
                     // from the expected address
-                    if (recvFromAddr.sin_addr.s_addr != targetAddr.value().sin_addr.s_addr)
+                    if (recvFromAddr.sin_addr.s_addr == targetAddr.value().sin_addr.s_addr)
+                    {
+                        // Update our outgoing port to match the source
+                        // TODO: Synchronize this to make sure we don't write before we know the
+                        // correct port.
+                        targetAddr.value().sin_port = recvFromAddr.sin_port;
+                    }
+                    else
                     {
                         bytesAreFromExpectedAddr = false;
                     }
@@ -252,8 +259,10 @@ void NetworkSocketConnectionTransport::connectionThreadBody(
                 else
                 {
                     spdlog::warn(
-                        "Discarding {} bytes received from unexpected source address.",
-                        bytesRead);
+                        "Discarding {} bytes received from unexpected address {}, "
+                        "expected {}",
+                        bytesRead, Util::AddrToString(recvFromAddr.sin_addr),
+                        Util::AddrToString(targetAddr.value().sin_addr));
                 }
             }
         }
