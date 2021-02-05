@@ -23,6 +23,8 @@
 #include <poll.h>
 #include <spdlog/spdlog.h>
 
+#include <spdlog/fmt/bin_to_hex.h>
+
 #pragma region Constructor/Destructor
 FtlStream::FtlStream(
     std::unique_ptr<FtlControlConnection> controlConnection,
@@ -259,6 +261,23 @@ void FtlStream::processRtpPacketSequencing(const std::vector<std::byte>& rtpPack
     std::set<rtp_sequence_num_t> missingSequences =
         insertPacketInSequenceOrder(data.CircularPacketBuffer, rtpPacket);
 
+    // Trim circular packet buffer to stay within buffer size limit
+    while (data.CircularPacketBuffer.size() > PACKET_BUFFER_SIZE)
+    {
+        data.CircularPacketBuffer.pop_front();
+    }
+
+    // Grab the latest sequence # received for reference
+    rtp_sequence_num_t latestSequence = Rtp::GetRtpSequence(data.CircularPacketBuffer.back());
+
+    // std::stringstream sequenceList;
+    // for (const auto& packet : data.CircularPacketBuffer)
+    // {
+    //     sequenceList << Rtp::GetRtpSequence(packet) << " ";
+    // }
+    // spdlog::debug("{} BUFFER: {}", ssrc, sequenceList.str());
+
+    // Calculate which packets are missing and should be NACK'd
     if (missingSequences.size() == 0)
     {
         data.PacketsSinceLastMissedSequence++;
@@ -273,19 +292,23 @@ void FtlStream::processRtpPacketSequencing(const std::vector<std::byte>& rtpPack
     }
     else
     {
-        spdlog::debug("Marking {} packets missing since sequence {}", missingSequences.size(),
+        // Only nack packets if they're reasonably new, and haven't already been nack'd
+        int missingPacketCount = 0;
+        for (const auto& missingSeq : missingSequences)
+        {
+            if ((data.NackedSequences.count(missingSeq) <= 0) &&
+                (static_cast<uint16_t>(latestSequence - missingSeq) < NACK_TIMEOUT_SEQUENCE_DELTA))
+            {
+                data.NackQueue.insert(missingSeq);
+                ++missingPacketCount;
+            }
+        }
+        spdlog::debug("Marking {} packets missing since sequence {}", missingPacketCount,
             seqNum);
-        data.NackQueue.insert(missingSequences.begin(), missingSequences.end());
         data.PacketsSinceLastMissedSequence = 0;
     }
 
-    // Trim circular packet buffer to stay within buffer size limit
-    while (data.CircularPacketBuffer.size() > PACKET_BUFFER_SIZE)
-    {
-        data.CircularPacketBuffer.pop_front();
-    }
-
-    processNacks(ssrc, seqNum, dataLock);
+    processNacks(ssrc, dataLock);
 }
 
 void FtlStream::processRtpPacketKeyframe(const std::vector<std::byte>& rtpPacket,
@@ -397,7 +420,7 @@ bool FtlStream::isSequenceNewer(rtp_sequence_num_t newSeq, rtp_sequence_num_t ol
     }
 }
 
-void FtlStream::processNacks(const rtp_ssrc_t ssrc, const rtp_sequence_num_t lastestSequence,
+void FtlStream::processNacks(const rtp_ssrc_t ssrc,
     const std::unique_lock<std::shared_mutex>& dataLock)
 {
     if (ssrcData.count(ssrc) <= 0)
@@ -406,12 +429,13 @@ void FtlStream::processNacks(const rtp_ssrc_t ssrc, const rtp_sequence_num_t las
         return;
     }
     SsrcData& data = ssrcData.at(ssrc);
+    rtp_sequence_num_t latestSequence = Rtp::GetRtpSequence(data.CircularPacketBuffer.back());
     
     // First, toss any old NACK'd packets that we haven't received and mark them lost.
     for (auto it = data.NackedSequences.begin(); it != data.NackedSequences.end();)
     {
         const rtp_sequence_num_t& nackedSeq = *it;
-        if (std::abs(lastestSequence - nackedSeq) > NACK_TIMEOUT_SEQUENCE_DELTA)
+        if (static_cast<uint16_t>(latestSequence - nackedSeq) > NACK_TIMEOUT_SEQUENCE_DELTA)
         {
             data.PacketsLost++;
             it = data.NackedSequences.erase(it);
@@ -440,6 +464,7 @@ void FtlStream::processNacks(const rtp_ssrc_t ssrc, const rtp_sequence_num_t las
             auto it = data.NackQueue.begin();
             rtp_sequence_num_t firstSeq = *it;
             uint16_t extraPacketBitmast = 0;
+            spdlog::debug("FIRST SEQ {}", firstSeq);
             it++;
             while (true)
             {
@@ -453,6 +478,7 @@ void FtlStream::processNacks(const rtp_ssrc_t ssrc, const rtp_sequence_num_t las
                 {
                     break;
                 }
+                spdlog::debug("SUB SEQ {}", nextSeq);
                 extraPacketBitmast |= (0x1 << ((nextSeq - firstSeq) - 1));
                 it = data.NackQueue.erase(it);
             }
@@ -460,7 +486,7 @@ void FtlStream::processNacks(const rtp_ssrc_t ssrc, const rtp_sequence_num_t las
 
             // See https://tools.ietf.org/html/rfc4585 Section 6.1
             // for information on how the nack packet is formed
-            char nackBuffer[16];
+            char nackBuffer[16] { 0 };
             auto rtcpPacket = reinterpret_cast<Rtp::RtcpFeedbackPacket*>(nackBuffer);
             rtcpPacket->Header.Version = 2;
             rtcpPacket->Header.Padding = 0;
@@ -476,6 +502,10 @@ void FtlStream::processNacks(const rtp_ssrc_t ssrc, const rtp_sequence_num_t las
             std::vector<std::byte> nackBytes(reinterpret_cast<std::byte*>(nackBuffer),
                 reinterpret_cast<std::byte*>(nackBuffer) + sizeof(nackBuffer));
             mediaTransport->Write(nackBytes);
+
+            spdlog::debug(
+                "SENT {}",
+                spdlog::to_hex(nackBytes.begin(), nackBytes.end()));
         }
     }
 }

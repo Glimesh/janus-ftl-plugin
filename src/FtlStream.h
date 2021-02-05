@@ -73,9 +73,9 @@ private:
     static constexpr float               MICROSECONDS_PER_MILLISECOND   = 1000.0f;
     static constexpr rtp_payload_type_t  FTL_PAYLOAD_TYPE_SENDER_REPORT = 200;
     static constexpr rtp_payload_type_t  FTL_PAYLOAD_TYPE_PING          = 250;
-    static constexpr size_t              PACKET_BUFFER_SIZE             = 64;
-    static constexpr size_t              MAX_PACKETS_BEFORE_NACK        = 32;
-    static constexpr size_t              NACK_TIMEOUT_SEQUENCE_DELTA    = 256;
+    static constexpr size_t              PACKET_BUFFER_SIZE             = 128;
+    static constexpr size_t              MAX_PACKETS_BEFORE_NACK        = 16;
+    static constexpr size_t              NACK_TIMEOUT_SEQUENCE_DELTA    = 128;
 
     /* Private members */
     const std::unique_ptr<FtlControlConnection> controlConnection;
@@ -106,8 +106,7 @@ private:
         const std::unique_lock<std::shared_mutex>& dataLock);
     bool isSequenceNewer(rtp_sequence_num_t newSeq, rtp_sequence_num_t oldSeq,
         size_t margin = PACKET_BUFFER_SIZE);
-    void processNacks(const rtp_ssrc_t ssrc, const rtp_sequence_num_t latestSequence,
-        const std::unique_lock<std::shared_mutex>& dataLock);
+    void processNacks(const rtp_ssrc_t ssrc, const std::unique_lock<std::shared_mutex>& dataLock);
     void processAudioVideoRtpPacket(const std::vector<std::byte>& rtpPacket,
         std::unique_lock<std::shared_mutex>& dataLock);
     void handlePing(const std::vector<std::byte>& rtpPacket);

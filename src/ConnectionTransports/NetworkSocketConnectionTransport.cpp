@@ -17,6 +17,8 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <spdlog/fmt/bin_to_hex.h>
+
 #pragma region Constructor/Destructor
 NetworkSocketConnectionTransport::NetworkSocketConnectionTransport(
     NetworkSocketConnectionKind kind,
@@ -347,9 +349,14 @@ void NetworkSocketConnectionTransport::connectionThreadBody(
                     else
                     {
                         // We've written all the bytes!
+                        bytesWritten = writeResult;
                         break;
                     }
                 }
+                spdlog::debug(
+                    "READ {}, WROTE {}: {}",
+                    readResult, bytesWritten,
+                    spdlog::to_hex(&writeBuffer[0], &writeBuffer[0] + bytesWritten));
                 if (writeError > 0)
                 {
                     spdlog::error(

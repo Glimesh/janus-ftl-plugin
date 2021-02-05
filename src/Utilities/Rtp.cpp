@@ -15,6 +15,11 @@ const Rtp::RtpHeader* Rtp::GetRtpHeader(const std::vector<std::byte>& rtpPacket)
     return reinterpret_cast<const RtpHeader*>(rtpPacket.data());
 }
 
+const rtp_sequence_num_t Rtp::GetRtpSequence(const std::vector<std::byte>& rtpPacket)
+{
+    return ntohs(Rtp::GetRtpHeader(rtpPacket)->SequenceNumber);
+}
+
 const std::span<const std::byte> Rtp::GetRtpPayload(const std::vector<std::byte>& rtpPacket)
 {
     if (rtpPacket.size() < 12)

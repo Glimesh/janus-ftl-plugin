@@ -7,6 +7,8 @@
 
 #pragma once
 
+#include "FtlTypes.h"
+
 #include <cstdint>
 #include <span>
 #include <vector>
@@ -97,5 +99,6 @@ public:
 
     /* Utility methods */
     static const RtpHeader* GetRtpHeader(const std::vector<std::byte>& rtpPacket);
+    static const rtp_sequence_num_t GetRtpSequence(const std::vector<std::byte>& rtpPacket);
     static const std::span<const std::byte> GetRtpPayload(const std::vector<std::byte>& rtpPacket);
 };
