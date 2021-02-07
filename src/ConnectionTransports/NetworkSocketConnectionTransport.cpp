@@ -124,8 +124,24 @@ void NetworkSocketConnectionTransport::Write(const std::vector<std::byte>& bytes
     if (!isStopping && !isStopped)
     {
         std::lock_guard<std::mutex> lock(writeMutex);
-        int writeResult = write(writePipeFds[1], bytes.data(), bytes.size());
-        if (static_cast<size_t>(writeResult) != bytes.size())
+        size_t writeResult = -1;
+        size_t expectedBytesWritten = 0;
+        if (connectionKind == NetworkSocketConnectionKind::Udp)
+        {
+            // UDP is datagram-based, so each write is a distinct datagram
+            datagramsPendingWrite.push_back(bytes);
+            // write a single byte to indicate that we've got pending data
+            const char buf[] = { 0 };
+            writeResult = write(writePipeFds[1], &buf[0], 1);
+            expectedBytesWritten = 1;
+        }
+        else
+        {
+            writeResult = write(writePipeFds[1], bytes.data(), bytes.size());
+            expectedBytesWritten = bytes.size();
+        }
+        
+        if (writeResult != expectedBytesWritten)
         {
             spdlog::error(
                 "Write returned {} result, expected {} bytes.",
@@ -273,10 +289,19 @@ void NetworkSocketConnectionTransport::connectionThreadBody(
         if (pollFds[1].revents & POLLIN)
         {
             int readResult;
-            std::byte writeBuffer[BUFFER_SIZE];
+            std::list<std::vector<std::byte>> datagrams;
             {
                 std::lock_guard<std::mutex> lock(writeMutex);
+                datagrams = datagramsPendingWrite; // copy pending datagrams then unlock mutex
+                datagramsPendingWrite.clear();
+                std::byte writeBuffer[BUFFER_SIZE];
                 readResult = read(writePipeFds[0], writeBuffer, sizeof(writeBuffer));
+
+                // If there are no datagrams, then what we've read is our datagram!
+                if ((datagrams.size() == 0) && (readResult > 0))
+                {
+                    datagrams.emplace_back(&writeBuffer[0], (&writeBuffer[0] + readResult));
+                }
             }
             if (readResult < 0)
             {
@@ -288,81 +313,23 @@ void NetworkSocketConnectionTransport::connectionThreadBody(
                 closeConnection();
                 break;
             }
-            else if (readResult > 0)
+            else
             {
-                // we have new data to write out to the socket!
-                int writeError = 0;
-                int bytesWritten = 0;
-                while (true)
+                // we may have new data to write out to the socket!
+                bool sendError = false;
+                for (const std::vector<std::byte>& datagram : datagrams)
                 {
-                    sockaddr_in sendToAddr{};
-                    sockaddr* sendToAddrPtr = nullptr;
-                    socklen_t sendToAddrLen = 0;
-
-                    if ((connectionKind == NetworkSocketConnectionKind::Udp) &&
-                        targetAddr.has_value())
+                    Result<void> sendResult = sendData(datagram);
+                    if (sendResult.IsError)
                     {
-                        sendToAddr = targetAddr.value();
-                        sendToAddrPtr = reinterpret_cast<sockaddr*>(&sendToAddr);
-                        sendToAddrLen = sizeof(sendToAddr);
-                    }
-
-                    int writeResult = sendto(
-                        socketHandle,
-                        (reinterpret_cast<char*>(writeBuffer) + bytesWritten),
-                        (readResult - bytesWritten),
-                        0,
-                        sendToAddrPtr,
-                        sendToAddrLen);
-
-                    if (writeResult < 0)
-                    {
-                        int error = errno;
-                        if ((error == EAGAIN) || (error == EWOULDBLOCK))
-                        {
-                            // Wait for the socket to be ready for writing, then try again.
-                            pollfd writePollFds[]
-                            {
-                                // Socket write
-                                {
-                                    .fd = socketHandle,
-                                    .events = POLLOUT,
-                                    .revents = 0,
-                                }
-                            };
-                            poll(writePollFds, 1, 200 /*ms*/);
-                            continue;
-                        }
-                        else
-                        {
-                            // Unrecoverable error.
-                            writeError = error;
-                            break;
-                        }
-                    }
-                    else if (writeResult < readResult)
-                    {
-                        // We've written some bytes... but not all. So keep writing.
-                        bytesWritten += writeResult;
-                        continue;
-                    }
-                    else
-                    {
-                        // We've written all the bytes!
-                        bytesWritten = writeResult;
+                        sendError = true;
+                        spdlog::error("Could not write bytes to socket. Error {}",
+                            sendResult.ErrorMessage);
                         break;
                     }
                 }
-                spdlog::debug(
-                    "READ {}, WROTE {}: {}",
-                    readResult, bytesWritten,
-                    spdlog::to_hex(&writeBuffer[0], &writeBuffer[0] + bytesWritten));
-                if (writeError > 0)
+                if (sendError)
                 {
-                    spdlog::error(
-                        "Could not write bytes to socket. Error {}: {}",
-                        writeError,
-                        Util::ErrnoToString(writeError));
                     closeConnection();
                     break;
                 }
@@ -374,6 +341,72 @@ void NetworkSocketConnectionTransport::connectionThreadBody(
     {
         onConnectionClosed();
     }
+}
+
+Result<void> NetworkSocketConnectionTransport::sendData(const std::vector<std::byte>& data)
+{
+    sockaddr_in sendToAddr{};
+    sockaddr* sendToAddrPtr = nullptr;
+    socklen_t sendToAddrLen = 0;
+
+    if ((connectionKind == NetworkSocketConnectionKind::Udp) &&
+        targetAddr.has_value())
+    {
+        sendToAddr = targetAddr.value();
+        sendToAddrPtr = reinterpret_cast<sockaddr*>(&sendToAddr);
+        sendToAddrLen = sizeof(sendToAddr);
+    }
+
+    size_t bytesWritten = 0;
+    while (true)
+    {
+        size_t writeResult = sendto(
+            socketHandle,
+            (reinterpret_cast<const char*>(data.data()) + bytesWritten),
+            (data.size() - bytesWritten),
+            0,
+            sendToAddrPtr,
+            sendToAddrLen);
+
+        if (writeResult < 0)
+        {
+            int error = errno;
+            if ((error == EAGAIN) || (error == EWOULDBLOCK))
+            {
+                // Wait for the socket to be ready for writing, then try again.
+                pollfd writePollFds[]
+                {
+                    // Socket write
+                    {
+                        .fd = socketHandle,
+                        .events = POLLOUT,
+                        .revents = 0,
+                    }
+                };
+                poll(writePollFds, 1, 200 /*ms*/);
+                continue;
+            }
+            else
+            {
+                // Unrecoverable error.
+                return Result<void>::Error(Util::ErrnoToString(error));
+            }
+        }
+        else if (writeResult < data.size())
+        {
+            // We've written some bytes... but not all. So keep writing.
+            bytesWritten += writeResult;
+            continue;
+        }
+        else
+        {
+            // We've written all the bytes!
+            bytesWritten = writeResult;
+            break;
+        }
+    }
+
+    return Result<void>::Success();
 }
 
 void NetworkSocketConnectionTransport::closeConnection()

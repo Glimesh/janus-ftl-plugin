@@ -9,9 +9,12 @@
 
 #include "ConnectionTransport.h"
 
+#include "../Utilities/Result.h"
+
 #include <atomic>
 #include <functional>
 #include <future>
+#include <list>
 #include <mutex>
 #include <optional>
 #include <thread>
@@ -59,11 +62,13 @@ private:
     std::future<void> connectionThreadEndedFuture;
     std::mutex writeMutex;
     int writePipeFds[2]; // We use pipes to write to the socket via poll
+    std::list<std::vector<std::byte>> datagramsPendingWrite;
     // Callbacks
     std::function<void(void)> onConnectionClosed;
     std::function<void(const std::vector<std::byte>&)> onBytesReceived;
 
     /* Private methods */
     void connectionThreadBody(std::promise<void>&& connectionThreadEndedPromise);
+    Result<void> sendData(const std::vector<std::byte>& data);
     void closeConnection();
 };
