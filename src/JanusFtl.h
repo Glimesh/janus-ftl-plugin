@@ -141,6 +141,7 @@ private:
     void initPreviewGenerators();
     void initOrchestratorConnection();
     void initServiceConnection();
+    void initServiceReportThread();
     // Service report thread body
     void serviceReportThreadBody(std::promise<void>&& threadEndedPromise);
     // Packet handling

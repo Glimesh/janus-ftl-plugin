@@ -71,6 +71,8 @@ int JanusFtl::Init(janus_callbacks* callback, const char* config_path)
 
     ftlServer->StartAsync();
 
+    initServiceReportThread();
+
     spdlog::info("FTL plugin initialized!");
     return 0;
 }
@@ -78,8 +80,15 @@ int JanusFtl::Init(janus_callbacks* callback, const char* config_path)
 void JanusFtl::Destroy()
 {
     JANUS_LOG(LOG_INFO, "FTL: Tearing down FTL!\n");
+    {
+        std::lock_guard lock(threadShutdownMutex);
+        isStopping = true;
+    }
+    threadShutdownConditionVariable.notify_all();
+    serviceReportThreadEndedFuture.wait();
     // TODO: Remove all mountpoints, kill threads, sessions, etc.
     ftlServer->Stop();
+    
 }
 #pragma endregion
 
@@ -541,6 +550,17 @@ void JanusFtl::initServiceConnection()
     serviceConnection->Init();
 }
 
+void JanusFtl::initServiceReportThread()
+{
+    std::promise<void> serviceReportThreadEndedPromise;
+    serviceReportThreadEndedFuture = serviceReportThreadEndedPromise.get_future();
+    serviceReportThread = std::thread(
+        &JanusFtl::serviceReportThreadBody,
+        this,
+        std::move(serviceReportThreadEndedPromise));
+    serviceReportThread.detach();
+}
+
 void JanusFtl::serviceReportThreadBody(std::promise<void>&& threadEndedPromise)
 {
     threadEndedPromise.set_value_at_thread_exit();
@@ -607,11 +627,19 @@ void JanusFtl::serviceReportThreadBody(std::promise<void>&& threadEndedPromise)
             serviceConnection->UpdateStreamMetadata(streamId, metadata);
 
             // Do we have a previewgenerator available for this stream's codec?
-            if (previewGenerators.count(keyframe.Codec) > 0)
+            if ((keyframe.Packets.size() > 0) && (previewGenerators.count(keyframe.Codec) > 0))
             {
-                std::vector<uint8_t> jpegBytes = 
-                    previewGenerators.at(keyframe.Codec)->GenerateJpegImage(keyframe.Packets);
-                serviceConnection->SendJpegPreviewImage(streamId, jpegBytes);
+                try
+                {
+                    std::vector<uint8_t> jpegBytes = 
+                        previewGenerators.at(keyframe.Codec)->GenerateJpegImage(keyframe.Packets);
+                    serviceConnection->SendJpegPreviewImage(streamId, jpegBytes);
+                }
+                catch (const PreviewGenerationFailedException& e)
+                {
+                    spdlog::warn("Couldn't generate preview for channel {} / stream {}: {}",
+                        channelId, streamId, e.what());
+                }
             }
         }
     }

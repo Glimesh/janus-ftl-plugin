@@ -15,9 +15,10 @@
 #include <fstream>
 #include <iostream>
 #include <linux/limits.h>
-#include <sys/stat.h>
+#include <spdlog/spdlog.h>
 #include <sstream>
 #include <stdexcept>
+#include <sys/stat.h>
 
 #pragma region Constructor/Destructor
 DummyServiceConnection::DummyServiceConnection(std::vector<std::byte> hmacKey,
@@ -53,6 +54,34 @@ Result<ftl_stream_id_t> DummyServiceConnection::StartStream(ftl_channel_id_t cha
 Result<void> DummyServiceConnection::UpdateStreamMetadata(ftl_stream_id_t streamId,
     StreamMetadata metadata)
 {
+    spdlog::debug("Stats received for stream {}:"
+        "\n\tStreamTimeSeconds: {}"
+        "\n\tNumActiveViewers: {}"
+        "\n\tCurrentSourceBitrateBps: {}"
+        "\n\tNumPacketsReceived: {}"
+        "\n\tNumPacketsNacked: {}"
+        "\n\tNumPacketsLost: {}"
+        "\n\tStreamToIngestPingMs: {}"
+        "\n\tStreamerClientVendorName: {}"
+        "\n\tStreamerClientVendorVersion: {}"
+        "\n\tVideoCodec: {}"
+        "\n\tAudioCodec: {}"
+        "\n\tVideoWidth: {}"
+        "\n\tVideoHeight: {}",
+        streamId,
+        metadata.streamTimeSeconds,
+        metadata.numActiveViewers,
+        metadata.currentSourceBitrateBps,
+        metadata.numPacketsReceived,
+        metadata.numPacketsNacked,
+        metadata.numPacketsLost,
+        metadata.streamerToIngestPingMs,
+        metadata.streamerClientVendorName,
+        metadata.streamerClientVendorVersion,
+        metadata.videoCodec,
+        metadata.audioCodec,
+        metadata.videoWidth,
+        metadata.videoHeight);
     return Result<void>::Success();
 }
 

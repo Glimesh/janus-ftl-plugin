@@ -102,7 +102,7 @@ ftl_stream_id_t FtlStream::GetStreamId() const
     return streamId;
 }
 
-FtlStream::FtlStreamStats FtlStream::GetStats() const
+FtlStream::FtlStreamStats FtlStream::GetStats()
 {
     std::shared_lock lock(dataMutex);
     FtlStreamStats stats { 0 };
@@ -126,7 +126,7 @@ FtlStream::FtlStreamStats FtlStream::GetStats() const
     return stats;
 }
 
-FtlStream::FtlKeyframe FtlStream::GetKeyframe() const
+FtlStream::FtlKeyframe FtlStream::GetKeyframe()
 {
     std::shared_lock lock(dataMutex);
     FtlKeyframe keyframe { mediaMetadata.VideoCodec };
@@ -300,6 +300,7 @@ void FtlStream::processRtpPacketSequencing(const std::vector<std::byte>& rtpPack
     data.NackedSequences.erase(seqNum);
 
     // Tally up the size of the packet
+    data.PacketsReceived++;
     std::chrono::time_point<std::chrono::steady_clock> steadyNow = std::chrono::steady_clock::now();
     if (data.RollingBytesReceivedByTime.count(steadyNow) > 0)
     {
@@ -413,28 +414,40 @@ void FtlStream::processRtpH264PacketKeyframe(const std::vector<std::byte>& rtpPa
     }
     bool isKeyframePart = false;
     uint8_t nalType = (static_cast<uint8_t>(packetPayload[0]) & 0b00011111);
-    if (nalType == 7) // Sequence Parameter Set
+    if ((nalType == 7) || (nalType == 8)) // Sequence Parameter Set / Picture Parameter Set
     {
         // SPS often precedes an IDR (Instantaneous Decoder Refresh) aka Keyframe
         // and provides information on how to decode it. We should keep this around.
-        spdlog::debug("Keyframe NAL 7 detected");
+        spdlog::debug("PPS/SPS NAL {} detected", nalType);
         isKeyframePart = true;
     }
     else if (nalType == 5) // IDR
     {
         // Managed to fit an entire IDR into one packet!
-        spdlog::debug("Keyframe NAL 5 detected");
+        spdlog::debug("IDR NAL 5 detected");
         isKeyframePart = true;
     }
     // See https://tools.ietf.org/html/rfc3984#section-5.8
-    else if (nalType == 28) // Fragmentation unit (FU-A)
+    else if (nalType == 28 || nalType == 29) // Fragmentation unit (FU-A)
     {
         uint8_t fragmentType = (static_cast<uint8_t>(packetPayload[1]) & 0b00011111);
         if ((fragmentType == 7) || // Fragment of SPS
             (fragmentType == 5))   // Fragment of IDR
         {
-            spdlog::debug("Keyframe NAL 28 fragment {} detected", fragmentType);
+            spdlog::debug("NAL {} fragment {} detected", nalType, fragmentType);
             isKeyframePart = true;
+        }
+    }
+
+    if (data.PendingKeyframePackets.size() > 0)
+    {
+        std::vector<std::byte>& firstPacket = data.PendingKeyframePackets.front();
+        const Rtp::RtpHeader* firstHeader = Rtp::GetRtpHeader(firstPacket);
+        rtp_timestamp_t lastTimestamp = ntohl(firstHeader->Timestamp);
+        rtp_timestamp_t currentTimestamp = ntohl(rtpHeader->Timestamp);
+        if (lastTimestamp == currentTimestamp && !isKeyframePart)
+        {
+            spdlog::warn("Whoops! We missed NAL {}", nalType);
         }
     }
 
@@ -461,8 +474,9 @@ void FtlStream::processRtpH264PacketKeyframe(const std::vector<std::byte>& rtpPa
         {
             spdlog::debug("{} keyframe packets recorded @ timestamp {}",
                 data.PendingKeyframePackets.size(), currentTimestamp);
-            data.CurrentKeyframePackets = std::move(data.PendingKeyframePackets);
+            data.CurrentKeyframePackets = std::move(data.PendingKeyframePackets); // swap?
             data.PendingKeyframePackets.clear();
+            data.PendingKeyframePackets.push_back(rtpPacket);
         }
     }
 }

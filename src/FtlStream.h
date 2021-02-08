@@ -15,6 +15,7 @@
 #include <chrono>
 #include <functional>
 #include <list>
+#include <map>
 #include <set>
 #include <shared_mutex>
 #include <unordered_map>
@@ -66,8 +67,8 @@ public:
     /* Getters/Setters */
     ftl_channel_id_t GetChannelId() const;
     ftl_stream_id_t GetStreamId() const;
-    FtlStreamStats GetStats() const;
-    FtlKeyframe GetKeyframe() const;
+    FtlStreamStats GetStats();
+    FtlKeyframe GetKeyframe();
 
 private:
     /* Private types */

@@ -53,7 +53,7 @@ std::vector<uint8_t> H264PreviewGenerator::GenerateJpegImage(
             }
 
             // Write the rest of the payload
-            for (int i = 2; i < payload.size(); ++i)
+            for (size_t i = 2; i < payload.size(); ++i)
             {
                 keyframeDataBuffer.push_back(static_cast<char>(payload[i]));
             }
@@ -66,7 +66,7 @@ std::vector<uint8_t> H264PreviewGenerator::GenerateJpegImage(
             keyframeDataBuffer.push_back(0x01);
 
             // Write the rest of the payload
-            for (int i = 0; i < payload.size(); ++i)
+            for (size_t i = 0; i < payload.size(); ++i)
             {
                 keyframeDataBuffer.push_back(static_cast<char>(payload[i]));
             }
