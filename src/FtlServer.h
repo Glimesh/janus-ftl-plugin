@@ -14,6 +14,7 @@
 
 #include <functional>
 #include <future>
+#include <list>
 #include <memory>
 #include <netinet/in.h>
 #include <shared_mutex>
@@ -67,7 +68,20 @@ public:
      * @brief Stops the stream with the specified channel ID and stream ID.
      * This will not fire the StreamEnded callback.
      */
-    void StopStream(ftl_channel_id_t channelId, ftl_stream_id_t streamId);
+    Result<void> StopStream(ftl_channel_id_t channelId, ftl_stream_id_t streamId);
+
+    /**
+     * @brief Retrieves stats for all active streams
+     */
+    std::list<std::pair<std::pair<ftl_channel_id_t, ftl_stream_id_t>,
+        std::pair<FtlStream::FtlStreamStats, FtlStream::FtlKeyframe>>>
+        GetAllStatsAndKeyframes();
+
+    /**
+     * @brief Retrieves stats for the given stream
+     */
+    Result<FtlStream::FtlStreamStats> GetStats(ftl_channel_id_t channelId,
+        ftl_stream_id_t streamId);
 
 private:
     /* Private types */

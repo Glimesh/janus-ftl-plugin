@@ -14,6 +14,7 @@
 #include "FtlClient.h"
 #include "FtlServer.h"
 #include "JanusSession.h"
+#include "PreviewGenerators/PreviewGenerator.h"
 #include "ServiceConnections/ServiceConnection.h"
 #include "Utilities/FtlTypes.h"
 #include "Utilities/JanssonPtr.h"
@@ -112,6 +113,7 @@ private:
     std::unique_ptr<Configuration> configuration;
     std::shared_ptr<FtlConnection> orchestrationClient;
     std::shared_ptr<ServiceConnection> serviceConnection;
+    std::unordered_map<VideoCodecKind, std::unique_ptr<PreviewGenerator>> previewGenerators;
     uint32_t metadataReportIntervalMs = 0;
     uint16_t minMediaPort = 9000; // TODO: Migrate to Configuration
     uint16_t maxMediaPort = 10000; // TODO: Migrate to Configuration
@@ -136,6 +138,7 @@ private:
     void ftlServerRtpPacket(ftl_channel_id_t channelId, ftl_stream_id_t streamId,
         const std::vector<std::byte>& packetData);
     // Initialization
+    void initPreviewGenerators();
     void initOrchestratorConnection();
     void initServiceConnection();
     // Service report thread body

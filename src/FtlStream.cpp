@@ -64,6 +64,7 @@ FtlStream::FtlStream(
 #pragma region Public methods
 Result<void> FtlStream::StartAsync()
 {
+    std::unique_lock lock(dataMutex);
     // Fire up our media connection
     Result<void> mediaStartResult = mediaTransport->StartAsync();
     if (mediaStartResult.IsError)
@@ -71,6 +72,9 @@ Result<void> FtlStream::StartAsync()
         controlConnection->Stop();
         return mediaStartResult;
     }
+    // Record start time
+    startTime = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    steadyStartTime = std::chrono::steady_clock::now();
     spdlog::info("FTL media stream started for channel {} / stream {}",
         controlConnection->GetChannelId(), streamId);
     return Result<void>::Success();
@@ -88,14 +92,52 @@ void FtlStream::Stop()
     controlConnection->Stop();
 }
 
-ftl_channel_id_t FtlStream::GetChannelId()
+ftl_channel_id_t FtlStream::GetChannelId() const
 {
     return controlConnection->GetChannelId();
 }
 
-ftl_stream_id_t FtlStream::GetStreamId()
+ftl_stream_id_t FtlStream::GetStreamId() const
 {
     return streamId;
+}
+
+FtlStream::FtlStreamStats FtlStream::GetStats() const
+{
+    std::shared_lock lock(dataMutex);
+    FtlStreamStats stats { 0 };
+    uint32_t bytesReceived = 0;
+    stats.StartTime = startTime;
+    stats.DurationSeconds = std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::steady_clock::now() - steadyStartTime).count();
+    for (const auto& dataPair : ssrcData)
+    {
+        const SsrcData& data = dataPair.second;
+        stats.PacketsReceived += data.PacketsReceived;
+        stats.PacketsNacked += data.PacketsNacked;
+        stats.PacketsLost += data.PacketsLost;
+        for (const auto& bytesPair : dataPair.second.RollingBytesReceivedByTime)
+        {
+            bytesReceived += bytesPair.second;
+        }
+    }
+    stats.RollingAverageBitrateBps = (bytesReceived * 8) / (ROLLING_SIZE_AVERAGE_MS / 1000.0f);
+
+    return stats;
+}
+
+FtlStream::FtlKeyframe FtlStream::GetKeyframe() const
+{
+    std::shared_lock lock(dataMutex);
+    FtlKeyframe keyframe { mediaMetadata.VideoCodec };
+    // Return the last available keyframe for the default video ssrc
+    if (ssrcData.count(mediaMetadata.VideoSsrc) <= 0)
+    {
+        spdlog::error("No ssrc data available for video ssrc {}", mediaMetadata.VideoSsrc);
+        return keyframe;
+    }
+    keyframe.Packets = ssrcData.at(mediaMetadata.VideoSsrc).CurrentKeyframePackets;
+    return keyframe;
 }
 #pragma endregion
 
@@ -257,6 +299,33 @@ void FtlStream::processRtpPacketSequencing(const std::vector<std::byte>& rtpPack
     data.NackQueue.erase(seqNum);
     data.NackedSequences.erase(seqNum);
 
+    // Tally up the size of the packet
+    std::chrono::time_point<std::chrono::steady_clock> steadyNow = std::chrono::steady_clock::now();
+    if (data.RollingBytesReceivedByTime.count(steadyNow) > 0)
+    {
+        data.RollingBytesReceivedByTime.at(steadyNow) += rtpPacket.size();
+    }
+    else
+    {
+        data.RollingBytesReceivedByTime.try_emplace(steadyNow, rtpPacket.size());
+    }
+    // Trim any packets that are too old
+    for (auto it = data.RollingBytesReceivedByTime.begin();
+        it != data.RollingBytesReceivedByTime.end();)
+    {
+        uint32_t msDelta = 
+            std::chrono::duration_cast<std::chrono::milliseconds>(steadyNow - it->first).count();
+        if (msDelta > ROLLING_SIZE_AVERAGE_MS)
+        {
+            it = data.RollingBytesReceivedByTime.erase(it);
+        }
+        else
+        {
+            // Map is sorted in ascending order - so we can break early
+            break;
+        }
+    }
+
     // Insert the packet into the buffer in sequence number order
     std::set<rtp_sequence_num_t> missingSequences =
         insertPacketInSequenceOrder(data.CircularPacketBuffer, rtpPacket);
@@ -269,13 +338,6 @@ void FtlStream::processRtpPacketSequencing(const std::vector<std::byte>& rtpPack
 
     // Grab the latest sequence # received for reference
     rtp_sequence_num_t latestSequence = Rtp::GetRtpSequence(data.CircularPacketBuffer.back());
-
-    // std::stringstream sequenceList;
-    // for (const auto& packet : data.CircularPacketBuffer)
-    // {
-    //     sequenceList << Rtp::GetRtpSequence(packet) << " ";
-    // }
-    // spdlog::debug("{} BUFFER: {}", ssrc, sequenceList.str());
 
     // Calculate which packets are missing and should be NACK'd
     if (missingSequences.size() == 0)

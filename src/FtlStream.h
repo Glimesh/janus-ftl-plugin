@@ -34,6 +34,20 @@ public:
     using ClosedCallback = std::function<void(FtlStream&)>;
     using RtpPacketCallback = std::function<void(
         ftl_channel_id_t, ftl_stream_id_t, const std::vector<std::byte>&)>;
+    struct FtlStreamStats
+    {
+        time_t StartTime;
+        uint32_t DurationSeconds;
+        uint32_t RollingAverageBitrateBps;
+        uint32_t PacketsReceived;
+        uint32_t PacketsNacked;
+        uint32_t PacketsLost;
+    };
+    struct FtlKeyframe
+    {
+        VideoCodecKind Codec;
+        std::list<std::vector<std::byte>> Packets;
+    };
 
     /* Constructor/Destructor */
     FtlStream(
@@ -50,8 +64,10 @@ public:
     void Stop();
 
     /* Getters/Setters */
-    ftl_channel_id_t GetChannelId();
-    ftl_stream_id_t GetStreamId();
+    ftl_channel_id_t GetChannelId() const;
+    ftl_stream_id_t GetStreamId() const;
+    FtlStreamStats GetStats() const;
+    FtlKeyframe GetKeyframe() const;
 
 private:
     /* Private types */
@@ -62,6 +78,8 @@ private:
         uint32_t PacketsLost = 0;
         size_t PacketsSinceLastMissedSequence = 0;
         std::list<std::vector<std::byte>> CircularPacketBuffer;
+        std::map<std::chrono::time_point<std::chrono::steady_clock>, uint16_t> 
+            RollingBytesReceivedByTime;
         std::set<rtp_sequence_num_t> NackQueue;
         std::set<rtp_sequence_num_t> NackedSequences;
         std::list<std::vector<std::byte>> CurrentKeyframePackets;
@@ -76,6 +94,7 @@ private:
     static constexpr size_t              PACKET_BUFFER_SIZE             = 128;
     static constexpr size_t              MAX_PACKETS_BEFORE_NACK        = 16;
     static constexpr size_t              NACK_TIMEOUT_SEQUENCE_DELTA    = 128;
+    static constexpr uint32_t            ROLLING_SIZE_AVERAGE_MS        = 2000;
 
     /* Private members */
     const std::unique_ptr<FtlControlConnection> controlConnection;
@@ -88,6 +107,8 @@ private:
     bool stopping = false;
     // Stream data
     std::shared_mutex dataMutex;
+    time_t startTime { 0 };
+    std::chrono::time_point<std::chrono::steady_clock> steadyStartTime;
     std::unordered_map<rtp_ssrc_t, SsrcData> ssrcData;
 
     /* Private methods */

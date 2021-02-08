@@ -14,6 +14,7 @@
 #include "FtlClient.h"
 #include "FtlServer.h"
 #include "JanusFtl.h"
+#include "PreviewGenerators/H264PreviewGenerator.h"
 #include "ServiceConnections/DummyServiceConnection.h"
 #include "ServiceConnections/EdgeNodeServiceConnection.h"
 #include "ServiceConnections/GlimeshServiceConnection.h"
@@ -61,6 +62,8 @@ int JanusFtl::Init(janus_callbacks* callback, const char* config_path)
     configuration = std::make_unique<Configuration>();
     configuration->Load();
     metadataReportIntervalMs = configuration->GetServiceConnectionMetadataReportIntervalMs();
+
+    initPreviewGenerators();
 
     initOrchestratorConnection();
 
@@ -460,6 +463,12 @@ void JanusFtl::ftlServerRtpPacket(ftl_channel_id_t channelId, ftl_stream_id_t st
     }
 }
 
+void JanusFtl::initPreviewGenerators()
+{
+    // H264
+    previewGenerators.try_emplace(VideoCodecKind::H264, std::make_unique<H264PreviewGenerator>());
+}
+
 void JanusFtl::initOrchestratorConnection()
 {
     if (configuration->GetNodeKind() != NodeKind::Standalone)
@@ -545,23 +554,66 @@ void JanusFtl::serviceReportThreadBody(std::promise<void>&& threadEndedPromise)
             break;
         }
 
-        // Quickly gather data from active streams while under lock (defer reporting to avoid holding
-        // up other threads)
-        // TODO
-        // std::shared_lock lock(streamDataMutex);
-        // std::unordered_map<ftl_channel_id_t, StreamMetadata> metadataMap;
-        // for (const auto& streamPair : streams)
-        // {
-        //     const ActiveStream& stream = streamPair.second;
-        //     StreamMetadata data
-        //     {
-        //         .ingestServerHostname = configuration->GetMyHostname(),
-        //         .streamTimeSeconds = (std::time(nullptr) - stream.streamStartTime),
-        //         .numActiveViewers = static_cast<uint32_t>(stream.ViewerSessions.count()),
-        //         .currentSourceBitrateBps = 0, // TODO
-        //         .numPacketsReceived
-        //     };
-        // }
+        // Quickly gather data from active streams while under lock (defer reporting to avoid
+        // holding up other threads)
+        std::shared_lock lock(streamDataMutex);
+        std::list<std::pair<std::pair<ftl_channel_id_t, ftl_stream_id_t>,
+            std::pair<FtlStream::FtlStreamStats, FtlStream::FtlKeyframe>>> statsAndKeyframes = 
+                ftlServer->GetAllStatsAndKeyframes();
+        std::unordered_map<ftl_channel_id_t, MediaMetadata> metadataByChannel;
+        std::unordered_map<ftl_channel_id_t, uint32_t> viewersByChannel;
+        for (const auto& streamInfo : statsAndKeyframes)
+        {
+            const ftl_channel_id_t& channelId = streamInfo.first.first;
+            if (streams.count(channelId) <= 0)
+            {
+                continue;
+            }
+            metadataByChannel.try_emplace(channelId, streams.at(channelId).Metadata);
+            viewersByChannel.try_emplace(channelId, streams.at(channelId).ViewerSessions.size());
+        }
+        lock.unlock();
+
+        for (const auto& streamInfo : statsAndKeyframes)
+        {
+            const ftl_channel_id_t& channelId = streamInfo.first.first;
+            const ftl_stream_id_t& streamId = streamInfo.first.second;
+            const FtlStream::FtlStreamStats& stats = streamInfo.second.first;
+            const FtlStream::FtlKeyframe& keyframe = streamInfo.second.second;
+            if ((viewersByChannel.count(channelId) <= 0) ||
+                (metadataByChannel.count(channelId) <= 0))
+            {
+                continue;
+            }
+            const MediaMetadata& mediaMetadata = metadataByChannel.at(channelId);
+            const uint32_t& numActiveViewers = viewersByChannel.at(channelId);
+            StreamMetadata metadata
+            {
+                .ingestServerHostname = configuration->GetMyHostname(),
+                .streamTimeSeconds = stats.DurationSeconds,
+                .numActiveViewers = numActiveViewers,
+                .currentSourceBitrateBps = stats.RollingAverageBitrateBps,
+                .numPacketsReceived = stats.PacketsReceived,
+                .numPacketsNacked = stats.PacketsNacked,
+                .numPacketsLost = stats.PacketsLost,
+                .streamerToIngestPingMs = 0, // TODO
+                .streamerClientVendorName = mediaMetadata.VendorName,
+                .streamerClientVendorVersion = mediaMetadata.VendorVersion,
+                .videoCodec = SupportedVideoCodecs::VideoCodecString(mediaMetadata.VideoCodec),
+                .audioCodec = SupportedAudioCodecs::AudioCodecString(mediaMetadata.AudioCodec),
+                .videoWidth = mediaMetadata.VideoWidth,
+                .videoHeight = mediaMetadata.VideoHeight,
+            };
+            serviceConnection->UpdateStreamMetadata(streamId, metadata);
+
+            // Do we have a previewgenerator available for this stream's codec?
+            if (previewGenerators.count(keyframe.Codec) > 0)
+            {
+                std::vector<uint8_t> jpegBytes = 
+                    previewGenerators.at(keyframe.Codec)->GenerateJpegImage(keyframe.Packets);
+                serviceConnection->SendJpegPreviewImage(streamId, jpegBytes);
+            }
+        }
     }
 }
 

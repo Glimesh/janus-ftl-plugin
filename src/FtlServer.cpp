@@ -57,7 +57,7 @@ void FtlServer::Stop()
     spdlog::info("Stopping FtlServer...");
 }
 
-void FtlServer::StopStream(ftl_channel_id_t channelId, ftl_stream_id_t streamId)
+Result<void> FtlServer::StopStream(ftl_channel_id_t channelId, ftl_stream_id_t streamId)
 {
     std::unique_lock lock(streamDataMutex);
     for (const auto& pair : activeStreams)
@@ -67,10 +67,42 @@ void FtlServer::StopStream(ftl_channel_id_t channelId, ftl_stream_id_t streamId)
         {
             stream->Stop();
             removeStreamRecord(pair.first, lock);
-            return;
+            return Result<void>::Success();
         }
     }
-    throw std::invalid_argument("StopStream called for non-existant channelId and streamId");
+    return Result<void>::Error("Stream does not exist.");
+}
+
+std::list<std::pair<std::pair<ftl_channel_id_t, ftl_stream_id_t>,
+    std::pair<FtlStream::FtlStreamStats, FtlStream::FtlKeyframe>>>
+    FtlServer::GetAllStatsAndKeyframes()
+{
+    std::shared_lock lock(streamDataMutex);
+    std::list<std::pair<std::pair<ftl_channel_id_t, ftl_stream_id_t>,
+        std::pair<FtlStream::FtlStreamStats, FtlStream::FtlKeyframe>>>
+        returnVal;
+    for (const auto& pair : activeStreams)
+    {
+        const std::unique_ptr<FtlStream>& stream = pair.second.Stream;
+        returnVal.emplace_back(std::make_pair(stream->GetChannelId(), stream->GetStreamId()),
+            std::make_pair(stream->GetStats(), stream->GetKeyframe()));
+    }
+    return returnVal;
+}
+
+Result<FtlStream::FtlStreamStats> FtlServer::GetStats(ftl_channel_id_t channelId,
+    ftl_stream_id_t streamId)
+{
+    std::shared_lock lock(streamDataMutex);
+    for (const auto& pair : activeStreams)
+    {
+        const std::unique_ptr<FtlStream>& stream = pair.second.Stream;
+        if ((stream->GetChannelId() == channelId) && (stream->GetStreamId() == streamId))
+        {
+            return Result<FtlStream::FtlStreamStats>::Success(stream->GetStats());
+        }
+    }
+    return Result<FtlStream::FtlStreamStats>::Error("Stream does not exist.");
 }
 #pragma endregion Public functions
 
