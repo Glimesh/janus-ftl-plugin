@@ -418,13 +418,11 @@ void FtlStream::processRtpH264PacketKeyframe(const std::vector<std::byte>& rtpPa
     {
         // SPS often precedes an IDR (Instantaneous Decoder Refresh) aka Keyframe
         // and provides information on how to decode it. We should keep this around.
-        spdlog::debug("PPS/SPS NAL {} detected", nalType);
         isKeyframePart = true;
     }
     else if (nalType == 5) // IDR
     {
         // Managed to fit an entire IDR into one packet!
-        spdlog::debug("IDR NAL 5 detected");
         isKeyframePart = true;
     }
     // See https://tools.ietf.org/html/rfc3984#section-5.8
@@ -434,20 +432,7 @@ void FtlStream::processRtpH264PacketKeyframe(const std::vector<std::byte>& rtpPa
         if ((fragmentType == 7) || // Fragment of SPS
             (fragmentType == 5))   // Fragment of IDR
         {
-            spdlog::debug("NAL {} fragment {} detected", nalType, fragmentType);
             isKeyframePart = true;
-        }
-    }
-
-    if (data.PendingKeyframePackets.size() > 0)
-    {
-        std::vector<std::byte>& firstPacket = data.PendingKeyframePackets.front();
-        const Rtp::RtpHeader* firstHeader = Rtp::GetRtpHeader(firstPacket);
-        rtp_timestamp_t lastTimestamp = ntohl(firstHeader->Timestamp);
-        rtp_timestamp_t currentTimestamp = ntohl(rtpHeader->Timestamp);
-        if (lastTimestamp == currentTimestamp && !isKeyframePart)
-        {
-            spdlog::warn("Whoops! We missed NAL {}", nalType);
         }
     }
 

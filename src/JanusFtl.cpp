@@ -351,7 +351,7 @@ Result<ftl_stream_id_t> JanusFtl::ftlServerStreamStarted(ftl_channel_id_t channe
     {
         const ActiveStream& activeStream = streams[channelId];
         ftlServer->StopStream(activeStream.ChannelId, activeStream.StreamId);
-        ftlServerStreamEnded(activeStream.ChannelId, activeStream.StreamId);
+        endStream(activeStream.ChannelId, activeStream.StreamId, lock);
     }
 
     // Insert new stream
@@ -398,56 +398,7 @@ Result<ftl_stream_id_t> JanusFtl::ftlServerStreamStarted(ftl_channel_id_t channe
 void JanusFtl::ftlServerStreamEnded(ftl_channel_id_t channelId, ftl_stream_id_t streamId)
 {
     std::unique_lock lock(streamDataMutex);
-
-    if (streams.count(channelId) <= 0)
-    {
-        spdlog::error("Received stream ended from unknown channel {} / stream {}", channelId,
-            streamId);
-        return;
-    }
-    const ActiveStream& activeStream = streams[channelId];
-    if (activeStream.StreamId != streamId)
-    {
-        spdlog::error("Stream ended from channel {} had unexpected stream id {}, expected {}",
-            channelId, streamId, activeStream.StreamId);
-        return;
-    }
-
-    // Reset any existing viewers to a pending state
-    if (pendingViewerSessions.count(channelId) == 0)
-    {
-        pendingViewerSessions.insert_or_assign(channelId, std::unordered_set<JanusSession*>());
-    }
-    pendingViewerSessions[channelId].insert(activeStream.ViewerSessions.begin(),
-        activeStream.ViewerSessions.end());
-    // TODO: Tell viewers stream is offline.
-
-    // If we are configured as an Ingest node, notify the Orchestrator that a stream has ended.
-    if ((configuration->GetNodeKind() == NodeKind::Ingest) && (orchestrationClient != nullptr))
-    {
-        spdlog::info("Unpublishing channel {} / stream {} from Orchestrator",
-            activeStream.ChannelId, activeStream.StreamId);
-        orchestrationClient->SendStreamPublish(ConnectionPublishPayload
-            {
-                .IsPublish = false,
-                .ChannelId = activeStream.ChannelId,
-                .StreamId = activeStream.StreamId,
-            });
-    }
-
-    // If relays exist for this stream, stop them
-    for (const auto& relay : activeStream.Relays)
-    {
-        spdlog::info("Stopping relay for channel {} / stream {}...", activeStream.ChannelId,
-            activeStream.StreamId);
-        relay->Stop();
-    }
-
-    spdlog::info("Stream ended. Channel {} / stream {}", activeStream.ChannelId,
-        activeStream.StreamId);
-
-    serviceConnection->EndStream(streamId);
-    streams.erase(channelId);
+    endStream(channelId, streamId, lock);
 }
 
 void JanusFtl::ftlServerRtpPacket(ftl_channel_id_t channelId, ftl_stream_id_t streamId,
@@ -643,6 +594,60 @@ void JanusFtl::serviceReportThreadBody(std::promise<void>&& threadEndedPromise)
             }
         }
     }
+}
+
+void JanusFtl::endStream(ftl_channel_id_t channelId, ftl_stream_id_t streamId,
+    const std::unique_lock<std::shared_mutex>& streamDataLock)
+{
+    if (streams.count(channelId) <= 0)
+    {
+        spdlog::error("Received stream ended from unknown channel {} / stream {}", channelId,
+            streamId);
+        return;
+    }
+    const ActiveStream& activeStream = streams[channelId];
+    if (activeStream.StreamId != streamId)
+    {
+        spdlog::error("Stream ended from channel {} had unexpected stream id {}, expected {}",
+            channelId, streamId, activeStream.StreamId);
+        return;
+    }
+
+    // Reset any existing viewers to a pending state
+    if (pendingViewerSessions.count(channelId) == 0)
+    {
+        pendingViewerSessions.insert_or_assign(channelId, std::unordered_set<JanusSession*>());
+    }
+    pendingViewerSessions[channelId].insert(activeStream.ViewerSessions.begin(),
+        activeStream.ViewerSessions.end());
+    // TODO: Tell viewers stream is offline.
+
+    // If we are configured as an Ingest node, notify the Orchestrator that a stream has ended.
+    if ((configuration->GetNodeKind() == NodeKind::Ingest) && (orchestrationClient != nullptr))
+    {
+        spdlog::info("Unpublishing channel {} / stream {} from Orchestrator",
+            activeStream.ChannelId, activeStream.StreamId);
+        orchestrationClient->SendStreamPublish(ConnectionPublishPayload
+            {
+                .IsPublish = false,
+                .ChannelId = activeStream.ChannelId,
+                .StreamId = activeStream.StreamId,
+            });
+    }
+
+    // If relays exist for this stream, stop them
+    for (const auto& relay : activeStream.Relays)
+    {
+        spdlog::info("Stopping relay for channel {} / stream {}...", activeStream.ChannelId,
+            activeStream.StreamId);
+        relay->Stop();
+    }
+
+    spdlog::info("Stream ended. Channel {} / stream {}", activeStream.ChannelId,
+        activeStream.StreamId);
+
+    serviceConnection->EndStream(streamId);
+    streams.erase(channelId);
 }
 
 void JanusFtl::handlePsfbRtcpPacket(janus_plugin_session* handle, janus_rtcp_header* packet)

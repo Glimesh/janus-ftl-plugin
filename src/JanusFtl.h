@@ -144,6 +144,9 @@ private:
     void initServiceReportThread();
     // Service report thread body
     void serviceReportThreadBody(std::promise<void>&& threadEndedPromise);
+    // Stream handling
+    void endStream(ftl_channel_id_t channelId, ftl_stream_id_t streamId,
+        const std::unique_lock<std::shared_mutex>& streamDataLock);
     // Packet handling
     void handlePsfbRtcpPacket(janus_plugin_session* handle, janus_rtcp_header* packet);
     // Message handling
