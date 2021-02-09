@@ -45,7 +45,7 @@ void GlimeshServiceConnection::Init()
 Result<std::vector<std::byte>> GlimeshServiceConnection::GetHmacKey(uint32_t channelId)
 {
     std::stringstream query;
-    query << "query { channel(id: \"" << channelId << "\") { streamKey } }";
+    query << "query { channel(id: \"" << channelId << "\") { hmacKey } }";
 
     JsonPtr queryResult = runGraphQlQuery(query.str());
     json_t* jsonData = json_object_get(queryResult.get(), "data");
@@ -54,7 +54,7 @@ Result<std::vector<std::byte>> GlimeshServiceConnection::GetHmacKey(uint32_t cha
         json_t* jsonChannel = json_object_get(jsonData, "channel");
         if (jsonChannel != nullptr)
         {
-            json_t* jsonStreamKey = json_object_get(jsonChannel, "streamKey");
+            json_t* jsonStreamKey = json_object_get(jsonChannel, "hmacKey");
             if (jsonStreamKey != nullptr && json_is_string(jsonStreamKey))
             {
                 const char* keyValue = json_string_value(jsonStreamKey);
