@@ -79,7 +79,7 @@ public:
     /**
      * @brief Relays a packet from an incoming FtlStream
      */
-    void RelayPacket(RtpRelayPacket packet);
+    void RelayPacket(const std::vector<std::byte>& packet);
 
 private:
     /* Private structs */

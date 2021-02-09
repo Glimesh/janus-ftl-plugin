@@ -9,25 +9,45 @@
  */
 
 #include "Configuration.h"
+#include "ConnectionCreators/ConnectionCreator.h"
+#include "ConnectionListeners/ConnectionListener.h"
 #include "FtlClient.h"
+#include "FtlServer.h"
 #include "JanusFtl.h"
-#include "JanssonPtr.h"
+#include "PreviewGenerators/H264PreviewGenerator.h"
 #include "ServiceConnections/DummyServiceConnection.h"
 #include "ServiceConnections/EdgeNodeServiceConnection.h"
 #include "ServiceConnections/GlimeshServiceConnection.h"
+#include "Utilities/JanssonPtr.h"
+
+#include <fmt/core.h>
+#include <spdlog/spdlog.h>
+#include <stdexcept>
 
 extern "C"
 {
     #include <apierror.h>
-    #include <debug.h>
     #include <jansson.h>
     #include <rtcp.h>
 }
 
 #pragma region Constructor/Destructor
-JanusFtl::JanusFtl(janus_plugin* plugin) : 
+JanusFtl::JanusFtl(
+    janus_plugin* plugin,
+    std::unique_ptr<ConnectionListener> ingestControlListener,
+    std::unique_ptr<ConnectionCreator> mediaConnectionCreator) : 
     pluginHandle(plugin)
-{ }
+{
+    ftlServer = std::make_unique<FtlServer>(std::move(ingestControlListener),
+        std::move(mediaConnectionCreator),
+        std::bind(&JanusFtl::ftlServerRequestKey, this, std::placeholders::_1),
+        std::bind(&JanusFtl::ftlServerStreamStarted, this, std::placeholders::_1,
+            std::placeholders::_2),
+        std::bind(&JanusFtl::ftlServerStreamEnded, this, std::placeholders::_1,
+            std::placeholders::_2),
+        std::bind(&JanusFtl::ftlServerRtpPacket, this, std::placeholders::_1,
+            std::placeholders::_2, std::placeholders::_3));
+}
 #pragma endregion
 
 #pragma region Init/Destroy
@@ -35,92 +55,96 @@ int JanusFtl::Init(janus_callbacks* callback, const char* config_path)
 {
     this->janusCore = callback;
 
+#ifdef DEBUG
+    spdlog::set_level(spdlog::level::trace);
+#else
+    spdlog::set_level(spdlog::level::info);
+#endif
+
     configuration = std::make_unique<Configuration>();
     configuration->Load();
+    metadataReportIntervalMs = configuration->GetServiceConnectionMetadataReportIntervalMs();
+
+    initPreviewGenerators();
 
     initOrchestratorConnection();
 
     initServiceConnection();
 
-    ftlStreamStore = std::make_shared<FtlStreamStore>();
+    ftlServer->StartAsync();
 
-    relayThreadPool = std::make_shared<RelayThreadPool>(ftlStreamStore);
-    relayThreadPool->Start();
+    initServiceReportThread();
 
-    ingestServer = std::make_unique<IngestServer>(serviceConnection);
-    ingestServer->SetOnRequestMediaConnection(std::bind(
-        &JanusFtl::newIngestFtlStream,
-        this,
-        std::placeholders::_1));
-    ingestServer->Start();
-
-    JANUS_LOG(LOG_INFO, "FTL: Plugin initialized!\n");
+    spdlog::info("FTL plugin initialized!");
     return 0;
 }
 
 void JanusFtl::Destroy()
 {
     JANUS_LOG(LOG_INFO, "FTL: Tearing down FTL!\n");
+    {
+        std::lock_guard lock(threadShutdownMutex);
+        isStopping = true;
+    }
+    threadShutdownConditionVariable.notify_all();
+    serviceReportThreadEndedFuture.wait();
     // TODO: Remove all mountpoints, kill threads, sessions, etc.
-    ingestServer->Stop();
-    relayThreadPool->Stop();
+    ftlServer->Stop();
+    
 }
 #pragma endregion
 
 #pragma region Public plugin methods
 void JanusFtl::CreateSession(janus_plugin_session* handle, int* error)
 {
-    std::shared_ptr<JanusSession> session = std::make_shared<JanusSession>(handle, janusCore);
+    std::unique_lock lock(streamDataMutex);
+    auto session = std::make_unique<JanusSession>(handle, janusCore);
     handle->plugin_handle = session.get();
-    std::lock_guard<std::mutex> lock(sessionsMutex);
-    sessions[handle] = session;
+    sessions[handle] = ActiveSession
+    {
+        .WatchingChannelId = std::nullopt,
+        .Session = std::move(session),
+    };
 }
 
-struct janus_plugin_result* JanusFtl::HandleMessage(
-        janus_plugin_session* handle,
-        char* transaction,
-        json_t* message,
-        json_t* jsep)
+struct janus_plugin_result* JanusFtl::HandleMessage(janus_plugin_session* handle, char* transaction,
+    json_t* message, json_t* jsep)
 {
+    std::unique_lock lock(streamDataMutex);
+
     JsonPtr messagePtr(message);
     JsonPtr jsepPtr(jsep);
 
     // If we're not meant to be streaming to viewers, don't acknowledge any messages.
     if (configuration->GetNodeKind() == NodeKind::Ingest)
     {
-        JANUS_LOG(LOG_WARN, "FTL: Ingest service is ignoring incoming WebRTC message.\n");
+        spdlog::warn("Ingest service is ignoring incoming WebRTC message.");
         return generateMessageErrorResponse(
             FTL_PLUGIN_ERROR_INVALID_REQUEST,
             "Server is ingest-only.");
     }
 
     // Look up the session
-    std::shared_ptr<JanusSession> session;
+    if (sessions.count(handle) <= 0)
     {
-        std::lock_guard<std::mutex> lock(sessionsMutex);
-    
-        if (sessions.count(handle) <= 0)
-        {
-            JANUS_LOG(LOG_ERR, "FTL: No sessions associated with this handle...\n");
-            return generateMessageErrorResponse(
-                FTL_PLUGIN_ERROR_UNKNOWN,
-                "No sessions associated with this handle.");
-        }
-
-        session = sessions[handle];
+        spdlog::error("No sessions associated with incoming handle");
+        return generateMessageErrorResponse(
+            FTL_PLUGIN_ERROR_UNKNOWN,
+            "No sessions associated with this handle.");
     }
+    ActiveSession& session = sessions[handle];
 
     // Do we have a message?
     if (messagePtr.get() == nullptr)
     {
-        JANUS_LOG(LOG_ERR, "FTL: Received empty message!\n");
+        spdlog::error("Received empty message!");
         return generateMessageErrorResponse(
             FTL_PLUGIN_ERROR_NO_MESSAGE,
             "Received empty message.");
     }
     if (!json_is_object(messagePtr.get()))
     {
-        JANUS_LOG(LOG_ERR, "FTL: Error parsing JSON message!\n");
+        spdlog::error("Error parsing JSON message!");
         return generateMessageErrorResponse(
             FTL_PLUGIN_ERROR_INVALID_JSON,
             "Error parsing JSON message.");
@@ -130,7 +154,7 @@ struct janus_plugin_result* JanusFtl::HandleMessage(
     // Parse out request
     json_t *request = json_object_get(message, "request");
     const char *requestText = json_string_value(request);
-    JANUS_LOG(LOG_INFO, "FTL: New request %s\n", requestText);
+    spdlog::info("New request {}", requestText);
     if (std::strcmp(requestText, "watch") == 0)
     {
         return handleWatchMessage(session, std::move(messagePtr), transaction);
@@ -141,7 +165,7 @@ struct janus_plugin_result* JanusFtl::HandleMessage(
     }
     else
     {
-        JANUS_LOG(LOG_WARN, "FTL: Unknown request '%s'\n", requestText);
+        spdlog::warn("Unknown request '{}'", requestText);
         return generateMessageErrorResponse(
             FTL_PLUGIN_ERROR_INVALID_REQUEST,
             "Unknown request.");
@@ -151,36 +175,22 @@ struct janus_plugin_result* JanusFtl::HandleMessage(
 json_t* JanusFtl::HandleAdminMessage(json_t* message)
 {
     // TODO: Parse and handle the message.
-
     return json_object();
 }
 
 void JanusFtl::SetupMedia(janus_plugin_session* handle)
 {
-    JANUS_LOG(LOG_INFO, "FTL: SetupMedia\n");
+    std::shared_lock lock(streamDataMutex);
+    spdlog::info("SetupMedia");
 
-    std::shared_ptr<JanusSession> session;
+    if (sessions.count(handle) <= 0)
     {
-        std::lock_guard<std::mutex> lock(sessionsMutex);
-        if (sessions.count(handle) <= 0)
-        {
-            JANUS_LOG(LOG_ERR, "FTL: No session associated with this handle...\n");
-            return;
-        }
-        session = sessions[handle];
-    }
-
-    std::shared_ptr<FtlStream> ftlStream = ftlStreamStore->GetStreamBySession(session);
-    if (ftlStream == nullptr)
-    {
-        JANUS_LOG(LOG_ERR, "FTL: No FTL stream associated with this session.");
+        spdlog::error("No session associated with this handle");
         return;
     }
+    ActiveSession& session = sessions[handle];
 
-    session->ResetRtpSwitchingContext();
-    session->SetIsStarted(true);
-    // BUG: Disabling this behavior for now due to #20
-    // ftlStream->SendKeyframeToViewer(session);
+    session.Session->SetIsStarted(true);
 }
 
 void JanusFtl::IncomingRtp(janus_plugin_session* handle, janus_plugin_rtp* packet)
@@ -205,7 +215,7 @@ void JanusFtl::IncomingRtcp(janus_plugin_session* handle, janus_plugin_rtcp* pac
             handlePsfbRtcpPacket(handle, rtcpHeader);
             break;
         default:
-            JANUS_LOG(LOG_INFO, "FTL: Got unknown RTCP packet! Type: %d\n", rtcpHeader->type);
+            spdlog::info("Got unknown RTCP packet! Type: {}", rtcpHeader->type);
             break;
         }
 
@@ -239,82 +249,71 @@ void JanusFtl::HangUpMedia(janus_plugin_session* handle)
 
 void JanusFtl::DestroySession(janus_plugin_session* handle, int* error)
 {
-    std::lock_guard<std::mutex> lock(sessionsMutex);
+    std::unique_lock lock(streamDataMutex);
     if (sessions.count(handle) == 0)
     {
-        JANUS_LOG(LOG_ERR, "FTL: No session associated with this handle...\n");
+        spdlog::error("DestroySession: No session associated with this handle");
         *error = -2;
         return;
     }
 
-    // TODO: Mutex
-    std::shared_ptr<JanusSession> session = sessions.at(handle);
-    std::shared_ptr<FtlStream> viewingStream = ftlStreamStore->GetStreamBySession(session);
-    if (viewingStream != nullptr)
+    ActiveSession& session = sessions[handle];
+    if (session.WatchingChannelId.has_value())
     {
-        ftlStreamStore->RemoveViewer(viewingStream, session);
+        bool orchestratorUnsubscribe = false;
+        ftl_channel_id_t channelId = session.WatchingChannelId.value();
 
-        // If we're an Edge node and there are no more viewers for this channel, we can
-        // un-subscribe.
-        if ((configuration->GetNodeKind() == NodeKind::Edge) &&
-            (viewingStream->GetViewers().size() == 0))
+        // If session is watching an active stream, remove it
+        if (streams.count(channelId) > 0)
         {
-            // Remove temporary stream key
-            const auto& edgeServiceConnection = 
-                std::dynamic_pointer_cast<EdgeNodeServiceConnection>(
-                    serviceConnection);
-            if (edgeServiceConnection == nullptr)
-            {
-                throw std::runtime_error(
-                    "Unexpected service connection type - expected EdgeNodeServiceConnection.");
-            }
-            edgeServiceConnection->ClearStreamKey(viewingStream->GetChannelId());
+            ActiveStream& watchingStream = streams[channelId];
+            watchingStream.ViewerSessions.erase(session.Session.get());
 
-            JANUS_LOG(LOG_INFO,
-                "FTL: Last viewer for channel %d has disconnected - unsubscribing...\n",
-                viewingStream->GetChannelId());
-            orchestrationClient->SendChannelSubscription(ConnectionSubscriptionPayload
-                {
-                    .IsSubscribe = false,
-                    .ChannelId = viewingStream->GetChannelId(),
-                });
+            // If we're an Edge node and there are no more viewers for this channel, we can
+            // unsubscribe.
+            if ((configuration->GetNodeKind() == NodeKind::Edge) &&
+                (watchingStream.ViewerSessions.size() == 0))
+            {
+                orchestratorUnsubscribe = true;
+            }
         }
-    }
 
-    // If this session was marked as pending for a particular channel, remove that record
-    std::optional<ftl_channel_id_t> pendingChannelId = 
-        ftlStreamStore->GetPendingChannelIdForSession(session);
-    if (pendingChannelId.has_value())
-    {
-        // Remove this viewer
-        ftlStreamStore->RemovePendingViewershipForSession(session);
+        // If session is pending on an inactive stream, remove it
+        if ((pendingViewerSessions.count(channelId) > 0) &&
+            (pendingViewerSessions[channelId].count(session.Session.get()) > 0))
+        {
+            pendingViewerSessions[channelId].erase(session.Session.get());
 
-        std::set<std::shared_ptr<JanusSession>> outstandingPendingViewers = 
-            ftlStreamStore->GetPendingViewersForChannelId(pendingChannelId.value());
+            // If this was the last pending viewer for this channel, unsubscribe.
+            if (pendingViewerSessions[channelId].size() == 0)
+            {
+                if (configuration->GetNodeKind() == NodeKind::Edge)
+                {
+                    orchestratorUnsubscribe = true;
+                }
+                pendingViewerSessions.erase(channelId);
+            }
+        }
 
-        // If we're an Edge node and there are no more pending viewers for this channel, we can
-        // un-subscribe.
-        if ((configuration->GetNodeKind() == NodeKind::Edge) &&
-            (outstandingPendingViewers.size() == 0))
+        // Unsubscribe for relays on this channel if this session was the last viewer
+        if (orchestratorUnsubscribe)
         {
             // Remove temporary stream key
             const auto& edgeServiceConnection = 
-                std::dynamic_pointer_cast<EdgeNodeServiceConnection>(
-                    serviceConnection);
+                std::dynamic_pointer_cast<EdgeNodeServiceConnection>(serviceConnection);
             if (edgeServiceConnection == nullptr)
             {
                 throw std::runtime_error(
                     "Unexpected service connection type - expected EdgeNodeServiceConnection.");
             }
-            edgeServiceConnection->ClearStreamKey(pendingChannelId.value());
+            edgeServiceConnection->ClearStreamKey(channelId);
 
-            JANUS_LOG(LOG_INFO,
-                "FTL: Last pending viewer for channel %d has disconnected - unsubscribing...\n",
-                pendingChannelId.value());
+            spdlog::info("Last viewer for channel %d has disconnected - unsubscribing...",
+                channelId);
             orchestrationClient->SendChannelSubscription(ConnectionSubscriptionPayload
                 {
                     .IsSubscribe = false,
-                    .ChannelId = pendingChannelId.value(),
+                    .ChannelId = channelId,
                 });
         }
     }
@@ -326,12 +325,119 @@ void JanusFtl::DestroySession(janus_plugin_session* handle, int* error)
 json_t* JanusFtl::QuerySession(janus_plugin_session* handle)
 {
     // TODO
-
     return json_object();
 }
 #pragma endregion
 
 #pragma region Private methods
+Result<std::vector<std::byte>> JanusFtl::ftlServerRequestKey(ftl_channel_id_t channelId)
+{
+    return serviceConnection->GetHmacKey(channelId);
+}
+
+Result<ftl_stream_id_t> JanusFtl::ftlServerStreamStarted(ftl_channel_id_t channelId,
+    MediaMetadata mediaMetadata)
+{
+    std::unique_lock lock(streamDataMutex);
+
+    // Attempt to start the stream on the service connection
+    Result<ftl_stream_id_t> startResult = serviceConnection->StartStream(channelId);
+    if (startResult.IsError)
+    {
+        return startResult;
+    }
+    ftl_stream_id_t streamId = startResult.Value;
+
+    // Stop any existing streams on this channel
+    if (streams.count(channelId) > 0)
+    {
+        const ActiveStream& activeStream = streams[channelId];
+        ftlServer->StopStream(activeStream.ChannelId, activeStream.StreamId);
+        endStream(activeStream.ChannelId, activeStream.StreamId, lock);
+    }
+
+    // Insert new stream
+    streams.insert_or_assign(channelId, ActiveStream
+    {
+        .ChannelId = channelId,
+        .StreamId = streamId,
+        .Metadata = mediaMetadata,
+        .ViewerSessions = {},
+    });
+
+    // Move any pending viewer sessions over
+    if (pendingViewerSessions.count(channelId) > 0)
+    {
+        for (const auto& pendingSession : pendingViewerSessions[channelId])
+        {
+            streams[channelId].ViewerSessions.insert(pendingSession);
+            sendJsep(sessions[pendingSession->GetJanusPluginSessionHandle()], streams[channelId],
+                nullptr);
+        }
+        pendingViewerSessions.erase(channelId);
+    }
+    // TODO: Notify viewer sessions
+
+    // If we are configured as an Ingest node, notify the Orchestrator that a stream has started.
+    if ((configuration->GetNodeKind() == NodeKind::Ingest) && (orchestrationClient != nullptr))
+    {
+        spdlog::info("FTL: Publishing channel %d / stream %d to Orchestrator...", channelId,
+            streamId);
+        orchestrationClient->SendStreamPublish(ConnectionPublishPayload
+            {
+                .IsPublish = true,
+                .ChannelId = channelId,
+                .StreamId = streamId,
+            });
+    }
+
+    spdlog::info("New stream started. Channel {} / Stream {}.", channelId, streamId);
+
+    return Result<ftl_stream_id_t>::Success(streamId);
+}
+
+void JanusFtl::ftlServerStreamEnded(ftl_channel_id_t channelId, ftl_stream_id_t streamId)
+{
+    std::unique_lock lock(streamDataMutex);
+    endStream(channelId, streamId, lock);
+}
+
+void JanusFtl::ftlServerRtpPacket(ftl_channel_id_t channelId, ftl_stream_id_t streamId,
+    const std::vector<std::byte>& packetData)
+{
+    std::shared_lock lock(streamDataMutex);
+    if (streams.count(channelId) <= 0)
+    {
+        spdlog::error("Packet received for unexpected channel {}", channelId);
+        return;
+    }
+    const ActiveStream& stream = streams[channelId];
+    if (stream.StreamId != streamId)
+    {
+        spdlog::error("Packet received for channel {} had an unexpected stream ID: {}, expected {}",
+            channelId, streamId, stream.StreamId);
+        return;
+    }
+    for (const auto& session : stream.ViewerSessions)
+    {
+        session->SendRtpPacket(packetData, stream.Metadata);
+    }
+
+    if (relayClients.count(channelId) > 0)
+    {
+        for (const auto& relay : relayClients.at(channelId))
+        {
+            relay.Client->RelayPacket(packetData);
+        }
+    }
+}
+
+void JanusFtl::initPreviewGenerators()
+{
+    // H264
+    previewGenerators.try_emplace(VideoCodecKind::H264, std::make_unique<H264PreviewGenerator>());
+}
+
 void JanusFtl::initOrchestratorConnection()
 {
     if (configuration->GetNodeKind() != NodeKind::Standalone)
@@ -404,135 +510,158 @@ void JanusFtl::initServiceConnection()
     serviceConnection->Init();
 }
 
-uint16_t JanusFtl::newIngestFtlStream(std::shared_ptr<IngestConnection> connection)
+void JanusFtl::initServiceReportThread()
 {
-    // Find a free port
-    std::lock_guard<std::mutex> portAssignmentGuard(portAssignmentMutex);
-    uint16_t targetPort = 0;
-    for (uint16_t i = minMediaPort; i < maxMediaPort; ++i)
-    {
-        if (ftlStreamStore->GetStreamByMediaPort(i) == nullptr)
-        {
-            targetPort = i;
-            break;
-        }
-    }
-    if (targetPort == 0)
-    {
-        // TODO: More gracefully handle this rather than crash...
-        throw std::runtime_error("No more free media ports could be found!");
-    }
-
-    // Spin up a new FTL stream
-    bool nackLostPackets = ((configuration->GetNodeKind() == NodeKind::Standalone) || 
-        (configuration->GetNodeKind() == NodeKind::Ingest));
-    bool generatePreviews = ((configuration->GetNodeKind() == NodeKind::Standalone) || 
-        (configuration->GetNodeKind() == NodeKind::Ingest));
-    auto ftlStream = std::make_shared<FtlStream>(
-        connection,
-        targetPort,
-        relayThreadPool,
-        serviceConnection,
-        configuration->GetServiceConnectionMetadataReportIntervalMs(),
-        configuration->GetMyHostname(),
-        nackLostPackets,
-        generatePreviews);
-    ftlStream->SetOnClosed(std::bind(
-        &JanusFtl::ftlStreamClosed,
+    std::promise<void> serviceReportThreadEndedPromise;
+    serviceReportThreadEndedFuture = serviceReportThreadEndedPromise.get_future();
+    serviceReportThread = std::thread(
+        &JanusFtl::serviceReportThreadBody,
         this,
-        std::placeholders::_1));
-    ftlStreamStore->AddStream(ftlStream);
-    ftlStream->Start();
-
-    // If we are configured as an Ingest node, notify the Orchestrator that a stream has started.
-    if ((configuration->GetNodeKind() == NodeKind::Ingest) && (orchestrationClient != nullptr))
-    {
-        JANUS_LOG(
-            LOG_INFO,
-            "FTL: Publishing channel %d / stream %d to Orchestrator...\n",
-            ftlStream->GetChannelId(),
-            ftlStream->GetStreamId());
-        orchestrationClient->SendStreamPublish(ConnectionPublishPayload
-            {
-                .IsPublish = true,
-                .ChannelId = ftlStream->GetChannelId(),
-                .StreamId = ftlStream->GetStreamId(),
-            });
-    }
-
-    // Add any pending viewers
-    std::set<std::shared_ptr<JanusSession>> pendingViewers = 
-        ftlStreamStore->ClearPendingViewersForChannelId(ftlStream->GetChannelId());
-    for (const auto& pendingViewer : pendingViewers)
-    {
-        ftlStreamStore->AddViewer(ftlStream, pendingViewer);
-
-        // Start er up!
-        sendJsep(pendingViewer, ftlStream, nullptr);
-    }
-    
-    // Return the port back to the ingest connection
-    return targetPort;
+        std::move(serviceReportThreadEndedPromise));
+    serviceReportThread.detach();
 }
 
-void JanusFtl::ftlStreamClosed(FtlStream& ftlStream)
+void JanusFtl::serviceReportThreadBody(std::promise<void>&& threadEndedPromise)
 {
-    // Try to find stream in stream store
-    std::shared_ptr<FtlStream> stream = 
-        ftlStreamStore->GetStreamByChannelId(ftlStream.GetChannelId());
-    if (stream == nullptr)
+    threadEndedPromise.set_value_at_thread_exit();
+    std::unique_lock lock(threadShutdownMutex);
+    while (true)
     {
-        stream = ftlStreamStore->GetStreamByMediaPort(ftlStream.GetMediaPort());
+        threadShutdownConditionVariable.wait_for(lock,
+            std::chrono::milliseconds(metadataReportIntervalMs));
+        if (isStopping)
+        {
+            break;
+        }
+
+        // Quickly gather data from active streams while under lock (defer reporting to avoid
+        // holding up other threads)
+        std::shared_lock lock(streamDataMutex);
+        std::list<std::pair<std::pair<ftl_channel_id_t, ftl_stream_id_t>,
+            std::pair<FtlStream::FtlStreamStats, FtlStream::FtlKeyframe>>> statsAndKeyframes = 
+                ftlServer->GetAllStatsAndKeyframes();
+        std::unordered_map<ftl_channel_id_t, MediaMetadata> metadataByChannel;
+        std::unordered_map<ftl_channel_id_t, uint32_t> viewersByChannel;
+        for (const auto& streamInfo : statsAndKeyframes)
+        {
+            const ftl_channel_id_t& channelId = streamInfo.first.first;
+            if (streams.count(channelId) <= 0)
+            {
+                continue;
+            }
+            metadataByChannel.try_emplace(channelId, streams.at(channelId).Metadata);
+            viewersByChannel.try_emplace(channelId, streams.at(channelId).ViewerSessions.size());
+        }
+        lock.unlock();
+
+        for (const auto& streamInfo : statsAndKeyframes)
+        {
+            const ftl_channel_id_t& channelId = streamInfo.first.first;
+            const ftl_stream_id_t& streamId = streamInfo.first.second;
+            const FtlStream::FtlStreamStats& stats = streamInfo.second.first;
+            const FtlStream::FtlKeyframe& keyframe = streamInfo.second.second;
+            if ((viewersByChannel.count(channelId) <= 0) ||
+                (metadataByChannel.count(channelId) <= 0))
+            {
+                continue;
+            }
+            const MediaMetadata& mediaMetadata = metadataByChannel.at(channelId);
+            const uint32_t& numActiveViewers = viewersByChannel.at(channelId);
+            StreamMetadata metadata
+            {
+                .ingestServerHostname = configuration->GetMyHostname(),
+                .streamTimeSeconds = stats.DurationSeconds,
+                .numActiveViewers = numActiveViewers,
+                .currentSourceBitrateBps = stats.RollingAverageBitrateBps,
+                .numPacketsReceived = stats.PacketsReceived,
+                .numPacketsNacked = stats.PacketsNacked,
+                .numPacketsLost = stats.PacketsLost,
+                .streamerToIngestPingMs = 0, // TODO
+                .streamerClientVendorName = mediaMetadata.VendorName,
+                .streamerClientVendorVersion = mediaMetadata.VendorVersion,
+                .videoCodec = SupportedVideoCodecs::VideoCodecString(mediaMetadata.VideoCodec),
+                .audioCodec = SupportedAudioCodecs::AudioCodecString(mediaMetadata.AudioCodec),
+                .videoWidth = mediaMetadata.VideoWidth,
+                .videoHeight = mediaMetadata.VideoHeight,
+            };
+            serviceConnection->UpdateStreamMetadata(streamId, metadata);
+
+            // Do we have a previewgenerator available for this stream's codec?
+            if ((keyframe.Packets.size() > 0) && (previewGenerators.count(keyframe.Codec) > 0))
+            {
+                try
+                {
+                    std::vector<uint8_t> jpegBytes = 
+                        previewGenerators.at(keyframe.Codec)->GenerateJpegImage(keyframe.Packets);
+                    serviceConnection->SendJpegPreviewImage(streamId, jpegBytes);
+                }
+                catch (const PreviewGenerationFailedException& e)
+                {
+                    spdlog::warn("Couldn't generate preview for channel {} / stream {}: {}",
+                        channelId, streamId, e.what());
+                }
+            }
+        }
     }
-    if (stream == nullptr)
+}
+
+void JanusFtl::endStream(ftl_channel_id_t channelId, ftl_stream_id_t streamId,
+    const std::unique_lock<std::shared_mutex>& streamDataLock)
+{
+    if (streams.count(channelId) <= 0)
     {
-        throw std::runtime_error("Stream reporting closed could not be found.");
+        spdlog::error("Received stream ended from unknown channel {} / stream {}", channelId,
+            streamId);
+        return;
+    }
+    const ActiveStream& activeStream = streams[channelId];
+    if (activeStream.StreamId != streamId)
+    {
+        spdlog::error("Stream ended from channel {} had unexpected stream id {}, expected {}",
+            channelId, streamId, activeStream.StreamId);
+        return;
     }
 
-    uint16_t channelId = stream->GetChannelId();
-    
-    // Remove viewers from stream and place them back into pending status
-    std::list<std::shared_ptr<JanusSession>> viewers = stream->GetViewers();
-    for (const std::shared_ptr<JanusSession>& viewer : viewers)
+    // Reset any existing viewers to a pending state
+    if (pendingViewerSessions.count(channelId) == 0)
     {
-        ftlStreamStore->RemoveViewer(stream, viewer);
-        ftlStreamStore->AddPendingViewerForChannelId(channelId, viewer);
-
-        // TODO: Tell the viewers that this stream has stopped
+        pendingViewerSessions.insert_or_assign(channelId, std::unordered_set<JanusSession*>());
     }
+    pendingViewerSessions[channelId].insert(activeStream.ViewerSessions.begin(),
+        activeStream.ViewerSessions.end());
+    // TODO: Tell viewers stream is offline.
 
     // If we are configured as an Ingest node, notify the Orchestrator that a stream has ended.
     if ((configuration->GetNodeKind() == NodeKind::Ingest) && (orchestrationClient != nullptr))
     {
-        JANUS_LOG(
-            LOG_INFO,
-            "FTL: Unpublishing channel %d / stream %d from Orchestrator...\n",
-            stream->GetChannelId(),
-            stream->GetStreamId());
+        spdlog::info("Unpublishing channel {} / stream {} from Orchestrator",
+            activeStream.ChannelId, activeStream.StreamId);
         orchestrationClient->SendStreamPublish(ConnectionPublishPayload
             {
                 .IsPublish = false,
-                .ChannelId = stream->GetChannelId(),
-                .StreamId = stream->GetStreamId(),
+                .ChannelId = activeStream.ChannelId,
+                .StreamId = activeStream.StreamId,
             });
     }
 
-    // If relays exist for this stream, stop and remove them
-    std::list<FtlStreamStore::RelayStore> relays = 
-        ftlStreamStore->GetRelaysForChannelId(stream->GetChannelId());
-    for (const auto& relay : relays)
+    // If relays exist for this stream, stop them
+    if (relayClients.count(channelId) > 0)
     {
-        JANUS_LOG(
-            LOG_INFO,
-            "FTL: Stopping %s relay for channel %d / stream %d...\n",
-            relay.TargetHost.c_str(),
-            stream->GetChannelId(),
-            stream->GetStreamId());
-        relay.FtlClientInstance->Stop();
+        for (auto it = relayClients.at(channelId).begin(); it != relayClients.at(channelId).end();)
+        {
+            const ActiveRelay& relay = *it;
+            spdlog::info("Stopping relay for channel {} / stream {} -> {}...", activeStream.ChannelId,
+                activeStream.StreamId, relay.TargetHostname);
+            relay.Client->Stop();
+        }
+        relayClients.erase(channelId);
     }
-    ftlStreamStore->ClearRelays(stream->GetChannelId());
 
-    ftlStreamStore->RemoveStream(stream);
+    spdlog::info("Stream ended. Channel {} / stream {}", activeStream.ChannelId,
+        activeStream.StreamId);
+
+    serviceConnection->EndStream(streamId);
+    streams.erase(channelId);
 }
 
 void JanusFtl::handlePsfbRtcpPacket(janus_plugin_session* handle, janus_rtcp_header* packet)
@@ -541,13 +670,7 @@ void JanusFtl::handlePsfbRtcpPacket(janus_plugin_session* handle, janus_rtcp_hea
     {
     case 1:
     {
-        // BUG: Disabling this behavior for now due to #20
-        // std::shared_ptr<JanusSession> session = sessions.at(handle);
-        // std::shared_ptr<FtlStream> viewingStream = ftlStreamStore->GetStreamBySession(session);
-        // if (viewingStream != nullptr)
-        // {
-        //     viewingStream->SendKeyframeToViewer(session);
-        // }
+        // PLI - send keyframe?
         break;
     }
     default:
@@ -564,37 +687,39 @@ janus_plugin_result* JanusFtl::generateMessageErrorResponse(int errorCode, std::
     return janus_plugin_result_new(JANUS_PLUGIN_OK, NULL, event);
 }
 
-janus_plugin_result* JanusFtl::handleWatchMessage(
-    std::shared_ptr<JanusSession> session,
-    JsonPtr message,
+janus_plugin_result* JanusFtl::handleWatchMessage(ActiveSession& session, JsonPtr message,
     char* transaction)
 {
+    // We are already holding a unique lock on streamDataMutex
+    
     json_t* channelIdJs = json_object_get(message.get(), "channelId");
-    if (channelIdJs == nullptr)
+    if ((channelIdJs == nullptr) || !json_is_integer(channelIdJs))
     {
         return generateMessageErrorResponse(
             FTL_PLUGIN_ERROR_MISSING_ELEMENT,
-            "Expected 'channelId' property.");
+            "Expected 'channelId' property with integer value.");
     }
+    uint32_t channelId = json_integer_value(channelIdJs);
 
     // Look up the stream associated with given channel ID
-    uint32_t channelId = json_integer_value(channelIdJs);
-    std::shared_ptr<FtlStream> ftlStream = ftlStreamStore->GetStreamByChannelId(channelId);
-    JANUS_LOG(LOG_INFO, "FTL: Request to watch stream channel id %d.\n", channelId);
-
-    if (ftlStream == nullptr)
+    spdlog::info("Request to watch channel {}", channelId);
+    session.WatchingChannelId = channelId;
+    if (streams.count(channelId) <= 0)
     {
         // This channel doesn't have a stream running!
+        int pendingViewers = 0;
+        if (pendingViewerSessions.count(channelId) > 0)
+        {
+            pendingViewers = pendingViewerSessions[channelId].size();
+        }
 
         // If we're an Edge node and this is a first viewer for a given channel,
         // request that this channel be relayed to us.
-        if ((configuration->GetNodeKind() == NodeKind::Edge) &&
-            (ftlStreamStore->GetPendingViewersForChannelId(channelId).size() == 0))
+        if ((configuration->GetNodeKind() == NodeKind::Edge) && (pendingViewers == 0))
         {
             // Generate a new stream key for incoming relay of this channel
             const auto& edgeServiceConnection = 
-                std::dynamic_pointer_cast<EdgeNodeServiceConnection>(
-                    serviceConnection);
+                std::dynamic_pointer_cast<EdgeNodeServiceConnection>(serviceConnection);
             if (edgeServiceConnection == nullptr)
             {
                 throw std::runtime_error(
@@ -615,11 +740,12 @@ janus_plugin_result* JanusFtl::handleWatchMessage(
         }
 
         // Add this session to a pending viewership list.
-        JANUS_LOG(
-            LOG_INFO,
-            "FTL: No current stream for channel %d - session is pending.\n",
-            channelId);
-        ftlStreamStore->AddPendingViewerForChannelId(channelId, session);
+        spdlog::info("No current stream for channel {} - viewer session is pending.", channelId);
+        if (pendingViewerSessions.count(channelId) <= 0)
+        {
+            pendingViewerSessions.insert_or_assign(channelId, std::unordered_set<JanusSession*>());
+        }
+        pendingViewerSessions[channelId].insert(session.Session.get());
 
         // Tell the client that we're pending an active stream
         JsonPtr eventPtr(json_object());
@@ -629,7 +755,7 @@ janus_plugin_result* JanusFtl::handleWatchMessage(
         json_object_set_new(eventPtr.get(), "result", result);
 
         janusCore->push_event(
-            session->GetJanusPluginSessionHandle(),
+            session.Session->GetJanusPluginSessionHandle(),
             pluginHandle,
             transaction,
             eventPtr.get(),
@@ -638,34 +764,32 @@ janus_plugin_result* JanusFtl::handleWatchMessage(
         return janus_plugin_result_new(JANUS_PLUGIN_OK_WAIT, NULL, NULL);
     }
 
+    // Otherwise, we've got a live stream!
+    ActiveStream& stream = streams[channelId];
+
     // TODO allow user to request ICE restart (new offer)
 
     // TODO if they're already watching, handle it
 
     // Set this session as a viewer
-    ftlStreamStore->AddViewer(ftlStream, session);
+    stream.ViewerSessions.insert(session.Session.get());
 
     // Send the JSEP to initiate the media connection
-    sendJsep(session, ftlStream, transaction);
+    sendJsep(session, stream, transaction);
 
     return janus_plugin_result_new(JANUS_PLUGIN_OK_WAIT, NULL, NULL);
 }
 
-janus_plugin_result* JanusFtl::handleStartMessage(
-    std::shared_ptr<JanusSession> session,
-    JsonPtr message,
+janus_plugin_result* JanusFtl::handleStartMessage(ActiveSession& session, JsonPtr message,
     char* transaction)
 {
     return janus_plugin_result_new(JANUS_PLUGIN_OK_WAIT, NULL, NULL);
 }
 
-int JanusFtl::sendJsep(
-    std::shared_ptr<JanusSession> session,
-    std::shared_ptr<FtlStream> ftlStream,
-    char* transaction)
+int JanusFtl::sendJsep(const ActiveSession& session, const ActiveStream& stream, char* transaction)
 {
     // Prepare JSEP payload
-    std::string sdpOffer = generateSdpOffer(session, ftlStream);
+    std::string sdpOffer = generateSdpOffer(session, stream);
     JsonPtr jsepPtr(json_pack("{ssss}", "type", "offer", "sdp", sdpOffer.c_str()));
 
     // Prepare message response
@@ -677,16 +801,14 @@ int JanusFtl::sendJsep(
 
     // Push response
     return janusCore->push_event(
-        session->GetJanusPluginSessionHandle(),
+        session.Session->GetJanusPluginSessionHandle(),
         pluginHandle,
         transaction,
         eventPtr.get(),
         jsepPtr.get());
 }
 
-std::string JanusFtl::generateSdpOffer(
-    std::shared_ptr<JanusSession> session,
-    std::shared_ptr<FtlStream> ftlStream)
+std::string JanusFtl::generateSdpOffer(const ActiveSession& session, const ActiveStream& stream)
 {
     // https://tools.ietf.org/html/rfc4566
 
@@ -695,14 +817,15 @@ std::string JanusFtl::generateSdpOffer(
     // Session description
     offerStream <<  
         "v=0\r\n" <<
-        "o=- " << session->GetSdpSessionId() << " " << session->GetSdpVersion() << " IN IP4 127.0.0.1\r\n" <<
-        "s=Channel " << ftlStream->GetChannelId() << "\r\n";
+        "o=- " << session.Session->GetSdpSessionId() << " " << session.Session->GetSdpVersion() << " IN IP4 127.0.0.1\r\n" <<
+        "s=Channel " << stream.ChannelId << "\r\n";
 
     // Audio media description
-    if (ftlStream->GetHasAudio())
+    if (stream.Metadata.HasAudio)
     {
-        std::string audioPayloadType = std::to_string(ftlStream->GetAudioPayloadType());
-        std::string audioCodec = SupportedAudioCodecs::AudioCodecString(ftlStream->GetAudioCodec());
+        std::string audioPayloadType = std::to_string(stream.Metadata.AudioPayloadType);
+        std::string audioCodec = 
+            SupportedAudioCodecs::AudioCodecString(stream.Metadata.AudioCodec);
         offerStream <<  
             "m=audio 1 RTP/SAVPF " << audioPayloadType << "\r\n" <<
             "c=IN IP4 1.1.1.1\r\n" <<
@@ -712,10 +835,11 @@ std::string JanusFtl::generateSdpOffer(
     }
 
     // Video media description
-    if (ftlStream->GetHasVideo())
+    if (stream.Metadata.HasVideo)
     {
-        std::string videoPayloadType = std::to_string(ftlStream->GetVideoPayloadType());
-        std::string videoCodec = SupportedVideoCodecs::VideoCodecString(ftlStream->GetVideoCodec());
+        std::string videoPayloadType = std::to_string(stream.Metadata.VideoPayloadType);
+        std::string videoCodec = 
+            SupportedVideoCodecs::VideoCodecString(stream.Metadata.VideoCodec);
         offerStream <<  
             "m=video 1 RTP/SAVPF " << videoPayloadType << "\r\n" <<
             "c=IN IP4 1.1.1.1\r\n" <<
@@ -760,75 +884,61 @@ ConnectionResult JanusFtl::onOrchestratorOutro(ConnectionOutroPayload payload)
 
 ConnectionResult JanusFtl::onOrchestratorStreamRelay(ConnectionRelayPayload payload)
 {
+    std::unique_lock lock(streamDataMutex);
     if (payload.IsStartRelay)
     {
-        JANUS_LOG(
-            LOG_INFO,
-            "FTL: Start Stream Relay request from Orchestrator: Channel %d, Stream %d, Target %s\n",
-            payload.ChannelId,
-            payload.StreamId,
-            payload.TargetHostname.c_str());
+        spdlog::info("Start Stream Relay request from Orchestrator: "
+            "Channel {}, Stream {}, Target {}", payload.ChannelId, payload.StreamId,
+            payload.TargetHostname);
 
         // Do we have an active stream?
-        std::shared_ptr<FtlStream> activeStream = 
-            ftlStreamStore->GetStreamByChannelId(payload.ChannelId);
-        if (activeStream == nullptr)
+        if (streams.count(payload.ChannelId) <= 0)
         {
-            JANUS_LOG(
-                LOG_ERR,
-                "FTL: Orchestrator requested a relay for channel that is not streaming."
-                "Target hostname: %s, Channel ID: %d\n",
-                payload.TargetHostname.c_str(),
-                payload.ChannelId);
+            spdlog::error("Orchestrator requested a relay for channel that is not streaming."
+                "Target hostname: {}, Channel ID: {}", payload.TargetHostname, payload.ChannelId);
             return ConnectionResult
                 {
                     .IsSuccess = false,
                 };
         }
+        ActiveStream& activeStream = streams[payload.ChannelId];
 
         // Start the relay now!
-        std::shared_ptr<FtlClient> relayClient = std::make_shared<FtlClient>(
-            payload.TargetHostname,
-            payload.ChannelId,
+        auto relayClient = std::make_unique<FtlClient>(payload.TargetHostname, payload.ChannelId,
             payload.StreamKey);
         Result<void> connectResult = relayClient->ConnectAsync(FtlClient::ConnectMetadata
             {
                 .VendorName = "janus-ftl-plugin",
                 .VendorVersion = "0.0.0", // TODO: Versioning
-                .HasVideo = activeStream->GetHasVideo(),
-                .VideoCodec = 
-                    SupportedVideoCodecs::VideoCodecString(activeStream->GetVideoCodec()),
-                .VideoHeight = activeStream->GetVideoHeight(),
-                .VideoWidth = activeStream->GetVideoWidth(),
-                .VideoPayloadType = activeStream->GetVideoPayloadType(),
-                .VideoIngestSsrc = activeStream->GetVideoSsrc(),
-                .HasAudio = activeStream->GetHasAudio(),
-                .AudioCodec = 
-                    SupportedAudioCodecs::AudioCodecString(activeStream->GetAudioCodec()),
-                .AudioPayloadType = activeStream->GetAudioPayloadType(),
-                .AudioIngestSsrc = activeStream->GetAudioSsrc(),
+                .HasVideo = activeStream.Metadata.HasVideo,
+                .VideoCodec = SupportedVideoCodecs::VideoCodecString(
+                    activeStream.Metadata.VideoCodec),
+                .VideoHeight = activeStream.Metadata.VideoHeight,
+                .VideoWidth = activeStream.Metadata.VideoWidth,
+                .VideoPayloadType = activeStream.Metadata.VideoPayloadType,
+                .VideoIngestSsrc = activeStream.Metadata.VideoSsrc,
+                .HasAudio = activeStream.Metadata.HasAudio,
+                .AudioCodec = SupportedAudioCodecs::AudioCodecString(
+                    activeStream.Metadata.AudioCodec),
+                .AudioPayloadType = activeStream.Metadata.AudioPayloadType,
+                .AudioIngestSsrc = activeStream.Metadata.AudioSsrc,
             });
         if (connectResult.IsError)
         {
-            JANUS_LOG(
-                LOG_ERR,
-                "FTL: Failed to connect to relay target %s for channel %d: %s\n",
-                payload.TargetHostname.c_str(),
-                payload.ChannelId,
-                connectResult.ErrorMessage.c_str());
+            spdlog::error("Failed to connect to relay target %s for channel {}: {}",
+                payload.TargetHostname, payload.ChannelId, connectResult.ErrorMessage);
             return ConnectionResult
                 {
                     .IsSuccess = false,
                 };
         }
 
-        ftlStreamStore->AddRelay(FtlStreamStore::RelayStore
-            {
-                .ChannelId = payload.ChannelId,
-                .TargetHost = payload.TargetHostname,
-                .StreamKey = payload.StreamKey,
-                .FtlClientInstance = relayClient,
-            });
+        if (relayClients.count(payload.ChannelId) <= 0)
+        {
+            relayClients.insert_or_assign(payload.ChannelId, std::list<ActiveRelay>());
+        }
+        relayClients.at(payload.ChannelId).emplace_back(payload.ChannelId, payload.TargetHostname,
+            std::move(relayClient));
         
         return ConnectionResult
         {
@@ -837,30 +947,37 @@ ConnectionResult JanusFtl::onOrchestratorStreamRelay(ConnectionRelayPayload payl
     }
     else
     {
-        JANUS_LOG(
-            LOG_INFO,
-            "FTL: End Stream Relay request from Orchestrator: Channel %d, Stream %d, Target: %s\n",
-            payload.ChannelId,
-            payload.StreamId,
-            payload.TargetHostname.c_str());
+        spdlog::info("End Stream Relay request from Orchestrator: "
+            "Channel {}, Stream {}, Target: {}", payload.ChannelId, payload.StreamId,
+            payload.TargetHostname);
 
-        // Remove and stop the relay
-        std::optional<FtlStreamStore::RelayStore> relay = 
-            ftlStreamStore->RemoveRelay(payload.ChannelId, payload.TargetHostname);
-        if (relay.has_value() == false)
+        // Remove and stop matching relays
+        int numRelaysRemoved = 0;
+        if (relayClients.count(payload.ChannelId) > 0)
         {
-            JANUS_LOG(
-                LOG_WARN,
-                "FTL: Orchestrator requested to stop non-existant relay: "
-                "Channel %d, Stream %d, Target: %s\n",
-                payload.ChannelId,
-                payload.StreamId,
-                payload.TargetHostname.c_str());
+            for (auto it = relayClients.at(payload.ChannelId).begin();
+                it != relayClients.at(payload.ChannelId).end();)
+            {
+                ActiveRelay& relay = *it;
+                if ((relay.ChannelId == payload.ChannelId) &&
+                    (relay.TargetHostname == payload.TargetHostname))
+                {
+                    relay.Client->Stop();
+                    it = relayClients.at(payload.ChannelId).erase(it);
+                    ++numRelaysRemoved;
+                }
+                else
+                {
+                    ++it;
+                }
+            }
         }
-        else
+
+        if (numRelaysRemoved == 0)
         {
-            // Stop the relay
-            relay.value().FtlClientInstance->Stop();
+            spdlog::warn("Orchestrator requested to stop non-existant relay: "
+                "Channel {}, Stream {}, Target: {}", payload.ChannelId, payload.StreamId,
+                payload.TargetHostname);
         }
 
         return ConnectionResult
@@ -868,6 +985,5 @@ ConnectionResult JanusFtl::onOrchestratorStreamRelay(ConnectionRelayPayload payl
             .IsSuccess = true,
         };
     }
-    
 }
 #pragma endregion Private methods

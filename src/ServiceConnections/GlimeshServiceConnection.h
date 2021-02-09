@@ -10,13 +10,14 @@
 
 #pragma once
 
-#include <string>
+#include "ServiceConnection.h"
+#include "../Utilities/JanssonPtr.h"
+
 #include <chrono>
 #include <ctime>
 #include <httplib.h>
 #include <mutex>
-#include "ServiceConnection.h"
-#include "JanssonPtr.h"
+#include <string>
 
 /**
  * @brief
@@ -37,11 +38,12 @@ public:
 
     /* ServiceConnection */
     void Init() override;
-    std::string GetHmacKey(ftl_channel_id_t channelId) override;
-    ftl_stream_id_t StartStream(ftl_channel_id_t channelId) override;
-    void UpdateStreamMetadata(ftl_stream_id_t streamId, StreamMetadata metadata) override;
-    void EndStream(ftl_stream_id_t streamId) override;
-    void SendJpegPreviewImage(ftl_stream_id_t streamId, std::vector<uint8_t> jpegData) override;
+    Result<std::vector<std::byte>> GetHmacKey(ftl_channel_id_t channelId) override;
+    Result<ftl_stream_id_t> StartStream(ftl_channel_id_t channelId) override;
+    Result<void> UpdateStreamMetadata(ftl_stream_id_t streamId, StreamMetadata metadata) override;
+    Result<void> EndStream(ftl_stream_id_t streamId) override;
+    Result<void> SendJpegPreviewImage(ftl_stream_id_t streamId,
+        std::vector<uint8_t> jpegData) override;
 
 private:
     /* Private members */

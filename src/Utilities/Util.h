@@ -6,10 +6,12 @@
  */
 #pragma once
 
+#include <arpa/inet.h>
 #include <iomanip>
 #include <random>
 #include <sstream>
 #include <string>
+#include <string.h>
 #include <vector>
 
 class Util
@@ -61,6 +63,23 @@ public:
             payload[i] = std::byte{ uniformDistribution(randomEngine) };
         }
         return payload;
+    }
+
+    /**
+     * @brief Given an errno error code, return the string representation.
+     */
+    static std::string ErrnoToString(int error)
+    {
+        char errnoStrBuf[256];
+        char* errMsg = strerror_r(error, errnoStrBuf, sizeof(errnoStrBuf));
+        return std::string(errMsg);
+    }
+
+    static std::string AddrToString(in_addr addr)
+    {
+        char str[INET_ADDRSTRLEN];
+        inet_ntop(AF_INET, &(addr), str, INET_ADDRSTRLEN);
+        return std::string(str);
     }
 
 private:

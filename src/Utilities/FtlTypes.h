@@ -19,11 +19,6 @@
 #include <string>
 #include <vector>
 
-extern "C"
-{
-    #include <rtp.h>
-}
-
 #pragma region Typedefs for various number values
 /* FTL data types */
 typedef uint32_t ftl_channel_id_t;
@@ -120,7 +115,23 @@ struct Keyframe
     Keyframe() : isCapturing(false), rtpTimestamp(0) { }
     bool isCapturing;
     uint32_t rtpTimestamp;
-    std::list<std::shared_ptr<std::vector<unsigned char>>> rtpPackets;
+    std::list<std::vector<std::byte>> rtpPackets;
+};
+
+struct MediaMetadata
+{
+    std::string VendorName;
+    std::string VendorVersion;
+    bool HasVideo;
+    bool HasAudio;
+    VideoCodecKind VideoCodec;
+    AudioCodecKind AudioCodec;
+    uint16_t VideoWidth;
+    uint16_t VideoHeight;
+    rtp_ssrc_t VideoSsrc;
+    rtp_ssrc_t AudioSsrc;
+    rtp_payload_type_t VideoPayloadType;
+    rtp_payload_type_t AudioPayloadType;
 };
 
 struct StreamMetadata
@@ -149,7 +160,7 @@ enum class RtpRelayPacketKind
 
 struct RtpRelayPacket
 {
-    std::shared_ptr<std::vector<unsigned char>> rtpPacketPayload;
+    std::vector<std::byte> rtpPacketPayload;
     RtpRelayPacketKind type;
     uint64_t channelId;
 };

@@ -9,6 +9,7 @@
 
 #include "ServiceConnection.h"
 
+#include <atomic>
 #include <unordered_map>
 
 /**
@@ -36,17 +37,18 @@ public:
 
     /* ServiceConnection */
     void Init() override;
-    std::string GetHmacKey(ftl_channel_id_t channelId) override;
-    ftl_stream_id_t StartStream(ftl_channel_id_t channelId) override;
-    void UpdateStreamMetadata(ftl_stream_id_t streamId, StreamMetadata metadata) override;
-    void EndStream(ftl_stream_id_t streamId) override;
-    void SendJpegPreviewImage(ftl_stream_id_t streamId, std::vector<uint8_t> jpegData) override;
+    Result<std::vector<std::byte>> GetHmacKey(ftl_channel_id_t channelId) override;
+    Result<ftl_stream_id_t> StartStream(ftl_channel_id_t channelId) override;
+    Result<void> UpdateStreamMetadata(ftl_stream_id_t streamId, StreamMetadata metadata) override;
+    Result<void> EndStream(ftl_stream_id_t streamId) override;
+    Result<void> SendJpegPreviewImage(ftl_stream_id_t streamId, std::vector<uint8_t> jpegData) override;
 
 private:
     /* Static private members */
     static constexpr size_t DEFAULT_KEY_SIZE = 32;
 
-    /* Static members */
+    /* Private fields */
     size_t streamKeySize = DEFAULT_KEY_SIZE;
     std::unordered_map<ftl_channel_id_t, std::vector<std::byte>> streamKeys;
+    std::atomic<ftl_stream_id_t> lastAssignedStreamId = { 1 };
 };

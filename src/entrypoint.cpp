@@ -11,15 +11,18 @@
  * 
  */
 
+#include "ConnectionCreators/UdpConnectionCreator.h"
+#include "ConnectionListeners/TcpConnectionListener.h"
+#include "JanusFtl.h"
+
+#include <memory>
 extern "C" 
 {
     #include <plugins/plugin.h>
 }
 
-#include "JanusFtl.h"
-#include <memory>
-
 #pragma region Plugin metadata
+static const uint16_t     FTL_CONTROL_PORT          = 8084;
 static const unsigned int FTL_PLUGIN_VERSION        = 1;
 static const char*        FTL_PLUGIN_VERSION_STRING = "0.0.1";
 static const char*        FTL_PLUGIN_DESCRIPTION    = "Plugin to ingest and relay FTL streams.";
@@ -29,7 +32,7 @@ static const char*        FTL_PLUGIN_PACKAGE        = "janus.plugin.ftl";
 #pragma endregion
 
 #pragma region Plugin references
-static std::unique_ptr<JanusFtl> janusFtl;
+static JanusFtl* janusFtl = nullptr;
 #pragma endregion
 
 #pragma region Plugin methods
@@ -92,8 +95,12 @@ static janus_plugin janus_ftl_plugin =
 #pragma endregion
 
 #pragma region Plugin creator
-extern "C" janus_plugin *create(void) {
-    janusFtl = std::make_unique<JanusFtl>(&janus_ftl_plugin);
+extern "C" janus_plugin *create(void)
+{
+    auto ingestControlListener = std::make_unique<TcpConnectionListener>(FTL_CONTROL_PORT);
+    auto mediaConnectionCreator = std::make_unique<UdpConnectionCreator>();
+    janusFtl = new JanusFtl(&janus_ftl_plugin, std::move(ingestControlListener),
+        std::move(mediaConnectionCreator));
     JANUS_LOG(LOG_VERB, "%s created!\n", FTL_PLUGIN_NAME);
     return &janus_ftl_plugin;
 }
@@ -108,6 +115,7 @@ static int Init(janus_callbacks *callback, const char* config_path)
 static void Destroy()
 {
     janusFtl->Destroy();
+    delete janusFtl;
 }
 #pragma endregion
 

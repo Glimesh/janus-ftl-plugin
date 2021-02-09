@@ -11,6 +11,7 @@
 #pragma once
 
 #include <cstdint>
+#include <list>
 #include <vector>
 
 struct Keyframe;
@@ -26,5 +27,6 @@ public:
     virtual ~PreviewGenerator()
     { }
 
-    virtual std::vector<uint8_t> GenerateJpegImage(const Keyframe& keyframe) = 0;
+    virtual std::vector<uint8_t> GenerateJpegImage(
+        const std::list<std::vector<std::byte>>& keyframePackets) = 0;
 };

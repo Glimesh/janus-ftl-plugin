@@ -15,6 +15,7 @@
 #include <limits.h>
 #include <sstream>
 #include <string>
+#include <string.h>
 #include <unistd.h>
 #include <wordexp.h>
 
@@ -121,7 +122,13 @@ void Configuration::Load()
     // FTL_SERVICE_DUMMY_HMAC_KEY -> DummyHmacKey
     if (char* varVal = std::getenv("FTL_SERVICE_DUMMY_HMAC_KEY"))
     {
-        dummyHmacKey = std::string(varVal);
+        size_t varValLen = strlen(varVal);
+        dummyHmacKey.clear();
+        dummyHmacKey.reserve(varValLen);
+        for (size_t i = 0; i < varValLen; ++i)
+        {
+            dummyHmacKey.push_back(std::byte(varVal[i]));
+        }
     }
 
     // FTL_SERVICE_DUMMY_PREVIEWIMAGEPATH -> DummyPreviewImagePath
@@ -202,7 +209,7 @@ ServiceConnectionKind Configuration::GetServiceConnectionKind()
     return serviceConnectionKind;
 }
 
-std::string Configuration::GetDummyHmacKey()
+std::vector<std::byte> Configuration::GetDummyHmacKey()
 {
     return dummyHmacKey;
 }

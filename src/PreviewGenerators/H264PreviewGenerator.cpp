@@ -10,34 +10,29 @@
 
 #include "H264PreviewGenerator.h"
 
-extern "C"
-{
-    #include <rtp.h>
-}
+#include "../Utilities/Rtp.h"
 
 #pragma region PreviewGenerator
-std::vector<uint8_t> H264PreviewGenerator::GenerateJpegImage(const Keyframe& keyframe)
+std::vector<uint8_t> H264PreviewGenerator::GenerateJpegImage(
+    const std::list<std::vector<std::byte>>& keyframePackets)
 {
     std::vector<char> keyframeDataBuffer;
 
     // We need to shove all of the keyframe NAL units into a buffer to feed into libav
-    for (const auto& packet : keyframe.rtpPackets)
+    for (const auto& packet : keyframePackets)
     {
         // Grab the payload out of the RTP packet
-        int payloadLength = 0;
-        char* payload = 
-            janus_rtp_payload(reinterpret_cast<char*>(packet->data()), packet->size(), &payloadLength);
-        
-        if (!payload || payloadLength < 2)
+        const std::span<const std::byte> payload = Rtp::GetRtpPayload(packet);
+        if (payload.size() < 2)
         {
             // Invalid packet payload
             continue;
         }
 
         // Parse out H264 packet data
-        uint8_t fragmentType = *(payload)   & 0b00011111; // 0x1F
+        uint8_t fragmentType = static_cast<uint8_t>(payload[0]) & 0b00011111; // 0x1F
         // uint8_t nalType      = *(payload+1) & 0b00011111; // 0x1F
-        uint8_t startBit     = *(payload+1) & 0b10000000; // 0x80
+        uint8_t startBit = static_cast<uint8_t>(payload[1]) & 0b10000000; // 0x80
         // uint8_t endBit       = *(payload+1) & 0b01000000; // 0x40
 
         // For fragmented types, start bits are special, they have some extra data in the NAL header
@@ -52,14 +47,15 @@ std::vector<uint8_t> H264PreviewGenerator::GenerateJpegImage(const Keyframe& key
                 keyframeDataBuffer.push_back(0x01);
 
                 // Write the re-constructed header
-                char firstByte = (*payload & 0b11100000) | (*(payload + 1) & 0b00011111);
+                char firstByte = (static_cast<uint8_t>(payload[0]) & 0b11100000) | 
+                    (static_cast<uint8_t>(payload[1]) & 0b00011111);
                 keyframeDataBuffer.push_back(firstByte);
             }
 
             // Write the rest of the payload
-            for (int i = 2; i < payloadLength; ++i)
+            for (size_t i = 2; i < payload.size(); ++i)
             {
-                keyframeDataBuffer.push_back(payload[i]);
+                keyframeDataBuffer.push_back(static_cast<char>(payload[i]));
             }
         }
         else
@@ -70,9 +66,9 @@ std::vector<uint8_t> H264PreviewGenerator::GenerateJpegImage(const Keyframe& key
             keyframeDataBuffer.push_back(0x01);
 
             // Write the rest of the payload
-            for (int i = 0; i < payloadLength; ++i)
+            for (size_t i = 0; i < payload.size(); ++i)
             {
-                keyframeDataBuffer.push_back(payload[i]);
+                keyframeDataBuffer.push_back(static_cast<char>(payload[i]));
             }
         }
         

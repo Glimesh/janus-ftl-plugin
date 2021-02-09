@@ -19,23 +19,23 @@
  * DummyServiceConnection is a generic service connection implementation that returns static
  * values for testing.
  */
-class DummyServiceConnection : 
-    public ServiceConnection
+class DummyServiceConnection : public ServiceConnection
 {
 public:
     /* Constructor/Destructor */
-    DummyServiceConnection(std::string hmacKey, std::string previewSavePath);
+    DummyServiceConnection(std::vector<std::byte> hmacKey, std::string previewSavePath);
 
     // ServiceConnection
     void Init() override;
-    std::string GetHmacKey(ftl_channel_id_t channelId) override;
-    ftl_stream_id_t StartStream(ftl_channel_id_t channelId) override;
-    void UpdateStreamMetadata(ftl_stream_id_t streamId, StreamMetadata metadata) override;
-    void EndStream(ftl_stream_id_t streamId) override;
-    void SendJpegPreviewImage(ftl_stream_id_t streamId, std::vector<uint8_t> jpegData) override;
+    Result<std::vector<std::byte>> GetHmacKey(ftl_channel_id_t channelId) override;
+    Result<ftl_stream_id_t> StartStream(ftl_channel_id_t channelId) override;
+    Result<void> UpdateStreamMetadata(ftl_stream_id_t streamId, StreamMetadata metadata) override;
+    Result<void> EndStream(ftl_stream_id_t streamId) override;
+    Result<void> SendJpegPreviewImage(ftl_stream_id_t streamId,
+        std::vector<uint8_t> jpegData) override;
 
 private:
-    std::string hmacKey;
+    std::vector<std::byte> hmacKey;
     std::string previewSavePath;
     ftl_stream_id_t currentStreamId = 0;
 

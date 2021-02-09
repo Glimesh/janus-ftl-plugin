@@ -39,40 +39,35 @@ void EdgeNodeServiceConnection::ClearStreamKey(ftl_channel_id_t channelId)
 void EdgeNodeServiceConnection::Init()
 { }
 
-std::string EdgeNodeServiceConnection::GetHmacKey(ftl_channel_id_t channelId)
+Result<std::vector<std::byte>> EdgeNodeServiceConnection::GetHmacKey(ftl_channel_id_t channelId)
 {
     if (streamKeys.count(channelId) > 0)
     {
         const auto& key = streamKeys[channelId];
-        std::string returnVal;
-        returnVal.reserve(key.size());
-        std::transform(
-            key.begin(),
-            key.end(),
-            std::back_inserter(returnVal),
-            [](std::byte b) { return static_cast<char>(b); });
-
-        return returnVal;
+        return Result<std::vector<std::byte>>::Success(key);
     }
-    return "";
+    return Result<std::vector<std::byte>>::Error("Could not find key for given channel.");
 }
 
-ftl_stream_id_t EdgeNodeServiceConnection::StartStream(ftl_channel_id_t channelId)
+Result<ftl_stream_id_t> EdgeNodeServiceConnection::StartStream(ftl_channel_id_t channelId)
 {
-    return 0;
+    return Result<ftl_stream_id_t>::Success(lastAssignedStreamId++);
 }
 
-void EdgeNodeServiceConnection::UpdateStreamMetadata(
-    ftl_stream_id_t streamId,
+Result<void> EdgeNodeServiceConnection::UpdateStreamMetadata(ftl_stream_id_t streamId,
     StreamMetadata metadata)
-{ }
+{
+    return Result<void>::Success();
+}
 
-void EdgeNodeServiceConnection::EndStream(
-    ftl_stream_id_t streamId)
-{ }
+Result<void> EdgeNodeServiceConnection::EndStream(ftl_stream_id_t streamId)
+{
+    return Result<void>::Success();
+}
 
-void EdgeNodeServiceConnection::SendJpegPreviewImage(
-    ftl_stream_id_t streamId,
+Result<void> EdgeNodeServiceConnection::SendJpegPreviewImage(ftl_stream_id_t streamId,
     std::vector<uint8_t> jpegData)
-{ }
+{
+    return Result<void>::Success();
+}
 #pragma endregion ServiceConnection

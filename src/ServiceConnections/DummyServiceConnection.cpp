@@ -15,12 +15,15 @@
 #include <fstream>
 #include <iostream>
 #include <linux/limits.h>
-#include <sys/stat.h>
+#include <spdlog/spdlog.h>
 #include <sstream>
 #include <stdexcept>
+#include <sys/stat.h>
 
 #pragma region Constructor/Destructor
-DummyServiceConnection::DummyServiceConnection(std::string hmacKey, std::string previewSavePath) : 
+DummyServiceConnection::DummyServiceConnection(std::vector<std::byte> hmacKey,
+    std::string previewSavePath)
+:
     hmacKey(hmacKey),
     previewSavePath(previewSavePath)
 { }
@@ -38,23 +41,56 @@ void DummyServiceConnection::Init()
     }
 }
 
-std::string DummyServiceConnection::GetHmacKey(ftl_channel_id_t channelId)
+Result<std::vector<std::byte>> DummyServiceConnection::GetHmacKey(ftl_channel_id_t channelId)
 {
-    return this->hmacKey;
+    return Result<std::vector<std::byte>>::Success(this->hmacKey);
 }
 
-ftl_stream_id_t DummyServiceConnection::StartStream(ftl_channel_id_t channelId)
+Result<ftl_stream_id_t> DummyServiceConnection::StartStream(ftl_channel_id_t channelId)
 {
-    return currentStreamId++;
+    return Result<ftl_stream_id_t>::Success(currentStreamId++);
 }
 
-void DummyServiceConnection::UpdateStreamMetadata(ftl_stream_id_t streamId, StreamMetadata metadata)
-{ }
+Result<void> DummyServiceConnection::UpdateStreamMetadata(ftl_stream_id_t streamId,
+    StreamMetadata metadata)
+{
+    spdlog::debug("Stats received for stream {}:"
+        "\n\tStreamTimeSeconds: {}"
+        "\n\tNumActiveViewers: {}"
+        "\n\tCurrentSourceBitrateBps: {}"
+        "\n\tNumPacketsReceived: {}"
+        "\n\tNumPacketsNacked: {}"
+        "\n\tNumPacketsLost: {}"
+        "\n\tStreamToIngestPingMs: {}"
+        "\n\tStreamerClientVendorName: {}"
+        "\n\tStreamerClientVendorVersion: {}"
+        "\n\tVideoCodec: {}"
+        "\n\tAudioCodec: {}"
+        "\n\tVideoWidth: {}"
+        "\n\tVideoHeight: {}",
+        streamId,
+        metadata.streamTimeSeconds,
+        metadata.numActiveViewers,
+        metadata.currentSourceBitrateBps,
+        metadata.numPacketsReceived,
+        metadata.numPacketsNacked,
+        metadata.numPacketsLost,
+        metadata.streamerToIngestPingMs,
+        metadata.streamerClientVendorName,
+        metadata.streamerClientVendorVersion,
+        metadata.videoCodec,
+        metadata.audioCodec,
+        metadata.videoWidth,
+        metadata.videoHeight);
+    return Result<void>::Success();
+}
 
-void DummyServiceConnection::EndStream(ftl_stream_id_t streamId)
-{ }
+Result<void> DummyServiceConnection::EndStream(ftl_stream_id_t streamId)
+{
+    return Result<void>::Success();
+}
 
-void DummyServiceConnection::SendJpegPreviewImage(
+Result<void> DummyServiceConnection::SendJpegPreviewImage(
     ftl_stream_id_t streamId,
     std::vector<uint8_t> jpegData)
 {
@@ -67,11 +103,12 @@ void DummyServiceConnection::SendJpegPreviewImage(
     {
         std::stringstream errStr;
         errStr << "Could not open file '" << pathStr.str().c_str() << "' for writing.";
-        throw ServiceConnectionCommunicationFailedException(errStr.str().c_str());
+        return Result<void>::Error(errStr.str());
     }
 
     jpegFile.write(reinterpret_cast<const char*>(jpegData.data()), jpegData.size());
     jpegFile.close();
+    return Result<void>::Success();
 }
 #pragma endregion
 

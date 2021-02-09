@@ -10,705 +10,595 @@
 
 #include "FtlStream.h"
 
+#include "ConnectionTransports/ConnectionTransport.h"
+#include "FtlControlConnection.h"
 #include "JanusSession.h"
+#include "Utilities/Rtp.h"
 
 #include <algorithm>
 #include <fstream>
 #include <iostream>
+#include <memory>
+#include <mutex>
 #include <poll.h>
+#include <spdlog/spdlog.h>
 
-extern "C"
-{
-    #include <unistd.h>
-    #include <debug.h>
-    #include <sys/time.h>
-    #include <rtcp.h>
-    #include <utils.h>
-}
+#include <spdlog/fmt/bin_to_hex.h>
 
 #pragma region Constructor/Destructor
 FtlStream::FtlStream(
-    const std::shared_ptr<IngestConnection> ingestConnection,
-    const uint16_t mediaPort,
-    const std::shared_ptr<RelayThreadPool> relayThreadPool,
-    const std::shared_ptr<ServiceConnection> serviceConnection,
-    const uint16_t metadataReportIntervalMs,
-    const std::string myHostname,
-    const bool nackLostPackets,
-    const bool generatePreviews) : 
-    ingestConnection(ingestConnection),
-    mediaPort(mediaPort),
-    relayThreadPool(relayThreadPool),
-    serviceConnection(serviceConnection),
-    metadataReportIntervalMs(metadataReportIntervalMs),
-    myHostname(myHostname),
-    nackLostPackets(nackLostPackets),
-    generatePreviews(generatePreviews)
+    std::unique_ptr<FtlControlConnection> controlConnection,
+    std::unique_ptr<ConnectionTransport> mediaTransport,
+    const MediaMetadata mediaMetadata,
+    const ftl_stream_id_t streamId,
+    const ClosedCallback onClosed,
+    const RtpPacketCallback onRtpPacket,
+    const bool nackLostPackets)
+:
+    controlConnection(std::move(controlConnection)),
+    mediaTransport(std::move(mediaTransport)),
+    mediaMetadata(mediaMetadata),
+    streamId(streamId),
+    onClosed(onClosed),
+    onRtpPacket(onRtpPacket),
+    nackLostPackets(nackLostPackets)
 {
-    // Bind to ingest callbacks
-    ingestConnection->SetOnClosed(std::bind(
-        &FtlStream::ingestConnectionClosed,
-        this,
-        std::placeholders::_1));
+    // Prepare stream data stores to accept packets from SSRCs specified by control handshake
+    ssrcData.try_emplace(mediaMetadata.AudioSsrc);
+    ssrcData.try_emplace(mediaMetadata.VideoSsrc);
+
+    // Bind to control callbacks
+    this->controlConnection->SetOnConnectionClosed(
+        std::bind(&FtlStream::controlConnectionClosed, this, std::placeholders::_1));
+
+    // Bind to media transport callbacks
+    this->mediaTransport->SetOnBytesReceived(
+        std::bind(
+            &FtlStream::mediaBytesReceived,
+            this,
+            std::placeholders::_1));
+    this->mediaTransport->SetOnConnectionClosed(std::bind(&FtlStream::mediaConnectionClosed, this));
 }
 #pragma endregion
 
 #pragma region Public methods
-void FtlStream::Start()
+Result<void> FtlStream::StartAsync()
 {
-    // Mark our start time
-    streamStartTime = std::time(nullptr);
-
-    // Initialize PreviewGenerator
-    if (generatePreviews)
+    std::unique_lock lock(dataMutex);
+    // Fire up our media connection
+    Result<void> mediaStartResult = mediaTransport->StartAsync();
+    if (mediaStartResult.IsError)
     {
-        switch (GetVideoCodec())
-        {
-        case VideoCodecKind::H264:
-            previewGenerator = std::make_unique<H264PreviewGenerator>();
-            break;
-        case VideoCodecKind::Unsupported:
-        default:
-            break;
-        }
+        controlConnection->Stop();
+        return mediaStartResult;
     }
-
-    // Start listening for incoming packets
-    std::promise<void> streamThreadReadyPromise;
-    std::future<void> streamThreadReadyFuture = streamThreadReadyPromise.get_future();
-    streamThread = std::thread(
-        &FtlStream::startStreamThread,
-        this,
-        std::move(streamThreadReadyPromise));
-    streamThread.detach();
-    // Wait for the stream thread to be ready
-    streamThreadReadyFuture.get();
-
-    // Start thread for reporting stream metadata out
-    streamMetadataReportingThread = 
-        std::thread(&FtlStream::startStreamMetadataReportingThread, this);
-    streamMetadataReportingThread.detach();
+    // Record start time
+    startTime = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    steadyStartTime = std::chrono::steady_clock::now();
+    spdlog::info("FTL media stream started for channel {} / stream {}",
+        controlConnection->GetChannelId(), streamId);
+    return Result<void>::Success();
 }
 
 void FtlStream::Stop()
 {
-    // Stop the ingest connection, which will end up reporting closed to us
-    ingestConnection->Stop();
-    
-    // Join our outstanding threads
-    if (streamThread.joinable())
-    {
-        streamThread.join();
-    }
-    if (streamMetadataReportingThread.joinable())
-    {
-        streamMetadataReportingThread.join();
-    }
+    spdlog::info("Stopping FTL channel {} / stream {}...", controlConnection->GetChannelId(),
+        streamId);
+
+    // Stop our media connection
+    mediaTransport->Stop();
+
+    // Stop the control connection
+    controlConnection->Stop();
 }
 
-void FtlStream::AddViewer(std::shared_ptr<JanusSession> viewerSession)
+ftl_channel_id_t FtlStream::GetChannelId() const
 {
-    std::lock_guard<std::mutex> lock(viewerSessionsMutex);
-    viewerSessions.push_back(viewerSession);
+    return controlConnection->GetChannelId();
 }
 
-void FtlStream::RemoveViewer(std::shared_ptr<JanusSession> viewerSession)
-{
-    std::lock_guard<std::mutex> lock(viewerSessionsMutex);
-    std::lock_guard<std::mutex> keyframeLock(keyframeMutex);
-    viewerSessions.erase(
-        std::remove(viewerSessions.begin(), viewerSessions.end(), viewerSession),
-        viewerSessions.end());
-    keyframeSentToViewers.erase(viewerSession);
-}
-
-void FtlStream::SetOnClosed(std::function<void (FtlStream&)> callback)
-{
-    onClosed = callback;
-}
-
-void FtlStream::SendKeyframeToViewer(std::shared_ptr<JanusSession> viewerSession)
-{
-    std::lock_guard<std::mutex> keyframeLock(keyframeMutex);
-    if (keyframe.rtpPackets.size() > 0)
-    {
-        if (keyframeSentToViewers.count(viewerSession) == 0)
-        {
-            JANUS_LOG(
-                LOG_INFO,
-                "FTL: Channel %u sending %lu keyframe packets to viewer.\n",
-                GetChannelId(),
-                keyframe.rtpPackets.size());
-            for (const auto& packet : keyframe.rtpPackets)
-            {
-                viewerSession->SendRtpPacket(
-                {
-                    .rtpPacketPayload = packet,
-                    .type = RtpRelayPacketKind::Video,
-                    .channelId = GetChannelId()
-                });
-            }
-            keyframeSentToViewers.insert(viewerSession);
-        }
-    }
-}
-#pragma endregion
-
-#pragma region Getters/Setters
-ftl_channel_id_t FtlStream::GetChannelId()
-{
-    return ingestConnection->GetChannelId();
-}
-
-ftl_stream_id_t FtlStream::GetStreamId()
+ftl_stream_id_t FtlStream::GetStreamId() const
 {
     return streamId;
 }
 
-uint16_t FtlStream::GetMediaPort()
+FtlStream::FtlStreamStats FtlStream::GetStats()
 {
-    return mediaPort;
+    std::shared_lock lock(dataMutex);
+    FtlStreamStats stats { 0 };
+    uint32_t bytesReceived = 0;
+    stats.StartTime = startTime;
+    stats.DurationSeconds = std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::steady_clock::now() - steadyStartTime).count();
+    for (const auto& dataPair : ssrcData)
+    {
+        const SsrcData& data = dataPair.second;
+        stats.PacketsReceived += data.PacketsReceived;
+        stats.PacketsNacked += data.PacketsNacked;
+        stats.PacketsLost += data.PacketsLost;
+        for (const auto& bytesPair : dataPair.second.RollingBytesReceivedByTime)
+        {
+            bytesReceived += bytesPair.second;
+        }
+    }
+    stats.RollingAverageBitrateBps = (bytesReceived * 8) / (ROLLING_SIZE_AVERAGE_MS / 1000.0f);
+
+    return stats;
 }
 
-bool FtlStream::GetHasVideo()
+FtlStream::FtlKeyframe FtlStream::GetKeyframe()
 {
-    return ingestConnection->GetHasVideo();
-}
-
-bool FtlStream::GetHasAudio()
-{
-    return ingestConnection->GetHasAudio();
-}
-
-VideoCodecKind FtlStream::GetVideoCodec()
-{
-    return ingestConnection->GetVideoCodec();
-}
-
-uint16_t FtlStream::GetVideoWidth()
-{
-    return ingestConnection->GetVideoWidth();
-}
-
-uint16_t FtlStream::GetVideoHeight()
-{
-    return ingestConnection->GetVideoHeight();
-}
-
-AudioCodecKind FtlStream::GetAudioCodec()
-{
-    return ingestConnection->GetAudioCodec();
-}
-
-uint32_t FtlStream::GetAudioSsrc()
-{
-    return ingestConnection->GetAudioSsrc();
-}
-
-uint32_t FtlStream::GetVideoSsrc()
-{
-    return ingestConnection->GetVideoSsrc();
-}
-
-uint8_t FtlStream::GetAudioPayloadType()
-{
-    return ingestConnection->GetAudioPayloadType();
-}
-
-uint8_t FtlStream::GetVideoPayloadType()
-{
-    return ingestConnection->GetVideoPayloadType();
-}
-
-std::list<std::shared_ptr<JanusSession>> FtlStream::GetViewers()
-{
-    std::lock_guard<std::mutex> lock(viewerSessionsMutex);
-    return viewerSessions;
+    std::shared_lock lock(dataMutex);
+    FtlKeyframe keyframe { mediaMetadata.VideoCodec };
+    // Return the last available keyframe for the default video ssrc
+    if (ssrcData.count(mediaMetadata.VideoSsrc) <= 0)
+    {
+        spdlog::error("No ssrc data available for video ssrc {}", mediaMetadata.VideoSsrc);
+        return keyframe;
+    }
+    keyframe.Packets = ssrcData.at(mediaMetadata.VideoSsrc).CurrentKeyframePackets;
+    return keyframe;
 }
 #pragma endregion
 
 #pragma region Private methods
-void FtlStream::ingestConnectionClosed(IngestConnection& connection)
+void FtlStream::controlConnectionClosed(FtlControlConnection& connection)
 {
-    // Ingest connection was closed, let's stop this stream.
-    stopping = true;
+    // Stop the media connection
+    mediaTransport->Stop();
+
+    // Indicate that we've been stopped
+    onClosed(*this);
 }
 
-void FtlStream::startStreamThread(std::promise<void>&& streamReadyPromise)
+void FtlStream::mediaBytesReceived(const std::vector<std::byte>& bytes)
 {
-    sockaddr_in socketAddress;
-    socketAddress.sin_family = AF_INET;
-    socketAddress.sin_addr.s_addr = htonl(INADDR_ANY);
-    socketAddress.sin_port = htons(mediaPort);
-
-    mediaSocketHandle = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-
-    int bindResult = bind(
-        mediaSocketHandle,
-        (const sockaddr*)&socketAddress,
-        sizeof(socketAddress));
-
-    JANUS_LOG(LOG_INFO, "FTL: Started media connection for %d on port %d\n", GetChannelId(), mediaPort);
-    switch (bindResult)
+    if (bytes.size() < 12)
     {
-    case 0:
-        break;
-    case EADDRINUSE:
-        throw std::runtime_error("FTL stream could not bind to media socket, "
-            "this address is already in use.");
-    case EACCES:
-        throw std::runtime_error("FTL stream could not bind to media socket, "
-            "access was denied.");
-    default:
-        throw std::runtime_error("FTL stream could not bind to media socket.");
+        // This packet is too small to have an RTP header.
+        spdlog::warn(
+            "Channel {} / stream {} received non-RTP packet of size {} (< 12 bytes). Discarding...",
+            GetChannelId(), streamId, bytes.size());
+        return;
     }
 
-    // Let the service know that we're streaming!
-    streamId = serviceConnection->StartStream(GetChannelId());
-
-    // We're ready to start accepting packets.
-    streamReadyPromise.set_value();
-
-    // Set up some values we'll be using in our read thread
-    socklen_t addrlen;
-    sockaddr_in remote;
-    char buffer[1500] = { 0 };
-    int bytesRead = 0;
-    // Set up poll
-    struct pollfd fds[1];
-    fds[0].fd = mediaSocketHandle;
-    fds[0].events = POLLIN;
-    fds[0].revents = 0;
-    while (true)
-    {
-        // Are we stopping?
-        if (stopping)
-        {
-            // Close the socket handle
-            close(mediaSocketHandle);
-            break;
-        }
-
-        int pollResult = poll(fds, 1, 1000);
-
-        if (pollResult < 0)
-        {
-            // We've lost our socket
-            JANUS_LOG(LOG_ERR, "FTL: Unknown media connection read error.\n");
-            break;
-        }
-        else if (pollResult == 0)
-        {
-            // No new data
-            continue;
-        }
-
-        // We've got a poll event, let's process it.
-        if (fds[0].revents & (POLLERR | POLLHUP))
-        {
-            JANUS_LOG(LOG_ERR, "FTL: Media connection polling error.\n");
-            break;
-        }
-        else if (fds[0].revents & POLLIN)
-        {
-            // Ooh, yummy data
-            addrlen = sizeof(remote);
-            bytesRead = recvfrom(
-                mediaSocketHandle,
-                buffer,
-                sizeof(buffer),
-                0,
-                (struct sockaddr*)&remote,
-                &addrlen);
-
-            if (remote.sin_addr.s_addr != ingestConnection->GetAcceptAddress().sin_addr.s_addr)
-            {
-                JANUS_LOG(
-                    LOG_ERR,
-                    "FTL: Channel %u received packet from unexpected address.\n",
-                    GetChannelId());
-                continue;
-            }
-
-            if (bytesRead < 12)
-            {
-                // This packet is too small to have an RTP header.
-                JANUS_LOG(LOG_WARN, "FTL: Channel %u received non-RTP packet.\n", GetChannelId());
-                continue;
-            }
-
-            // Parse out RTP packet
-            janus_rtp_header* rtpHeader = (janus_rtp_header*)buffer;
-            rtp_sequence_num_t sequenceNumber = ntohs(rtpHeader->seq_number);
-
-            // Process audio/video packets
-            if ((rtpHeader->type == GetAudioPayloadType()) || 
-                (rtpHeader->type == GetVideoPayloadType()))
-            {
-                // Count it!
-                ++numPacketsReceived;
-
-                std::shared_ptr<std::vector<unsigned char>> rtpPacket =
-                    std::make_shared<std::vector<unsigned char>>(buffer, buffer + bytesRead);
-
-                // Do additional processing on video packets
-                if (rtpHeader->type == GetVideoPayloadType())
-                {
-                    processKeyframePacket(rtpPacket);
-                }
-
-                // Relay the packet
-                RtpRelayPacketKind packetKind = rtpHeader->type == GetVideoPayloadType() ? 
-                    RtpRelayPacketKind::Video : RtpRelayPacketKind::Audio;
-                
-                relayThreadPool->RelayPacket({
-                    .rtpPacketPayload = rtpPacket,
-                    .type = packetKind,
-                    .channelId = GetChannelId()
-                });
-
-                if (nackLostPackets)
-                {
-                    // Check for any lost packets
-                    markReceivedSequence(rtpHeader->type, sequenceNumber);
-                    processLostPackets(remote, rtpHeader->type, sequenceNumber, rtpHeader->timestamp);
-                }
-            }
-            else
-            {
-                // FTL implementation uses the marker bit space for payload types above 127
-                // when the payload type is not audio or video. So we need to reconstruct it.
-                uint8_t payloadType = 
-                    ((static_cast<uint8_t>(rtpHeader->markerbit) << 7) | 
-                    static_cast<uint8_t>(rtpHeader->type));
-                
-                if (payloadType == FTL_PAYLOAD_TYPE_PING)
-                {
-                    handlePing(rtpHeader, bytesRead);
-                }
-                else if (payloadType == FTL_PAYLOAD_TYPE_SENDER_REPORT)
-                {
-                    handleSenderReport(rtpHeader, bytesRead);
-                }
-                else
-                {
-                    JANUS_LOG(
-                        LOG_WARN,
-                        "FTL: Unknown RTP payload type %d (orig %d)\n",
-                        payloadType,
-                        rtpHeader->type);
-                }
-            }
-        }
-    }
-
-    // We're no longer listening to incoming packets.
-
-    // Tell the service this stream has ended.
-    serviceConnection->EndStream(streamId);
-
-    // TODO: Tell the sessions that we're going away
-    if (onClosed != nullptr)
-    {
-        onClosed(*this);
-    }
+    processRtpPacket(bytes);
 }
 
-void FtlStream::startStreamMetadataReportingThread()
+void FtlStream::mediaConnectionClosed()
 {
-    while (true)
-    {
-        std::this_thread::sleep_for(std::chrono::milliseconds(metadataReportIntervalMs));
+    // Somehow our media connection closed - since this transport is usually stateless, we don't
+    // expect this to ever happen. Shut everything down nonetheless.
+    spdlog::error(
+        "Media connection closed unexpectedly for channel {} / stream {}",
+        GetChannelId(), streamId);
+    controlConnection->Stop();
+    onClosed(*this);
+}
 
-        // Are we stopping?
-        if (stopping)
+std::set<rtp_sequence_num_t> FtlStream::insertPacketInSequenceOrder(
+    std::list<std::vector<std::byte>>& packetList, const std::vector<std::byte>& packet)
+{
+    std::set<rtp_sequence_num_t> missingSequences;
+    const Rtp::RtpHeader* rtpHeader = Rtp::GetRtpHeader(packet);
+    const rtp_sequence_num_t seqNum = ntohs(rtpHeader->SequenceNumber);
+    // If the list is empty, just add it and we're done.
+    if (packetList.size() == 0)
+    {
+        packetList.push_back(packet);
+        return missingSequences;
+    }
+    // Insert the packet into list according to sequence number
+    bool wasInserted = false;
+    for (auto it = packetList.rbegin(); it != packetList.rend(); it++)
+    {
+        const std::vector<std::byte>& cachedPacket = *it;
+        const Rtp::RtpHeader* cachedRtpHeader = Rtp::GetRtpHeader(cachedPacket);
+        const rtp_sequence_num_t cachedSeqNum = ntohs(cachedRtpHeader->SequenceNumber);
+
+        if (isSequenceNewer(seqNum, cachedSeqNum))
         {
+            // If there are any gaps between the sequence numbers, mark them as missing.
+            // cast to uint16_t to account for overflow (sequence numbers wrap from 65535 -> 0)
+            if (cachedSeqNum != static_cast<uint16_t>(seqNum - 1))
+            {
+                for (uint16_t missingSeqNum = (cachedSeqNum + 1);
+                    (missingSeqNum < seqNum); missingSeqNum++)
+                {
+                    missingSequences.insert(missingSeqNum);
+                }
+            }
+            packetList.insert(it.base(), packet);
+            wasInserted = true;
             break;
         }
+    }
 
-        std::time_t currentTime = std::time(nullptr);
-        uint32_t streamTimeSeconds = currentTime - streamStartTime;
+    if (!wasInserted)
+    {
+        // The packet's sequence number was older than the whole list - insert at the very front.
+        const std::vector<std::byte>& firstPacket = packetList.front();
+        const Rtp::RtpHeader* firstRtpHeader = Rtp::GetRtpHeader(firstPacket);
+        const rtp_sequence_num_t firstSeqNum = ntohs(firstRtpHeader->SequenceNumber);
 
-        serviceConnection->UpdateStreamMetadata(
-            streamId,
-            {
-                .ingestServerHostname         = myHostname,
-                .streamTimeSeconds            = streamTimeSeconds,
-                .numActiveViewers             = static_cast<uint32_t>(viewerSessions.size()),
-                .currentSourceBitrateBps      = currentSourceBitrateBps,
-                .numPacketsReceived           = numPacketsReceived,
-                .numPacketsNacked             = numPacketsNacked,
-                .numPacketsLost               = numPacketsLost,
-                .streamerToIngestPingMs       = streamerToIngestPingMs,
-                .streamerClientVendorName     = ingestConnection->GetVendorName(),
-                .streamerClientVendorVersion  = ingestConnection->GetVendorVersion(),
-                .videoCodec                   = SupportedVideoCodecs::VideoCodecString(GetVideoCodec()),
-                .audioCodec                   = SupportedAudioCodecs::AudioCodecString(GetAudioCodec()),
-                .videoWidth                   = GetVideoWidth(),
-                .videoHeight                  = GetVideoHeight(),
-            });
-
-        // Send a preview of the latest keyframe if needed
-        if (previewGenerator && (lastKeyframePreviewReported != keyframe.rtpTimestamp))
+        // Mark in-between packets missing.
+        for (uint16_t missingSeqNum = (seqNum + 1);
+            (missingSeqNum < firstSeqNum); missingSeqNum++)
         {
-            // Create our own copy of the keyframe to avoid holding up processing
-            // new keyframe packets
-            Keyframe previewKeyframe;
-            {
-                std::lock_guard<std::mutex> lock(keyframeMutex);
-                previewKeyframe = keyframe;
-            }
+            missingSequences.insert(missingSeqNum);
+        }
+        packetList.push_front(packet);
+    }
 
-            // Generate a JPEG image and send it off to the service connection
-            try
-            {
-                std::vector<uint8_t> jpegData = 
-                    previewGenerator->GenerateJpegImage(previewKeyframe);
-                serviceConnection->SendJpegPreviewImage(streamId, jpegData);
-            }
-            catch (const PreviewGenerationFailedException& e)
-            {
-                JANUS_LOG(
-                    LOG_ERR,
-                    "FTL: Failed to generate JPEG preview for stream %d. Error: %s\n",
-                    streamId,
-                    e.what());
-            }
-            catch (const ServiceConnectionCommunicationFailedException& e)
-            {
-                JANUS_LOG(
-                    LOG_ERR,
-                    "FTL: Failed to send JPEG preview for stream %d to service connection. Error: %s\n",
-                    streamId,
-                    e.what());
-            }
+    return missingSequences;
+}
+
+void FtlStream::processRtpPacket(const std::vector<std::byte>& rtpPacket)
+{
+    std::unique_lock lock(dataMutex);
+    const Rtp::RtpHeader* rtpHeader = Rtp::GetRtpHeader(rtpPacket);
+    rtp_ssrc_t ssrc = ntohl(rtpHeader->Ssrc);
+
+    // Process audio/video packets
+    if ((ssrc == mediaMetadata.AudioSsrc) || 
+        (ssrc == mediaMetadata.VideoSsrc))
+    {
+        processRtpPacketSequencing(rtpPacket, lock);
+        processAudioVideoRtpPacket(rtpPacket, lock);
+    }
+    else
+    {
+        // FTL implementation uses the marker bit space for payload types above 127
+        // when the payload type is not audio or video. So we need to reconstruct it.
+        uint8_t payloadType = 
+            ((static_cast<uint8_t>(rtpHeader->MarkerBit) << 7) | 
+            static_cast<uint8_t>(rtpHeader->Type));
+        
+        if (payloadType == FTL_PAYLOAD_TYPE_PING)
+        {
+            handlePing(rtpPacket);
+        }
+        else if (payloadType == FTL_PAYLOAD_TYPE_SENDER_REPORT)
+        {
+            handleSenderReport(rtpPacket);
+        }
+        else
+        {
+            spdlog::warn("FTL: Unknown RTP payload type %d (orig %d)\n", payloadType, 
+                rtpHeader->Type);
         }
     }
 }
 
-void FtlStream::processKeyframePacket(std::shared_ptr<std::vector<unsigned char>> rtpPacket)
+void FtlStream::processRtpPacketSequencing(const std::vector<std::byte>& rtpPacket,
+    const std::unique_lock<std::shared_mutex>& dataLock)
 {
-    if (rtpPacket == nullptr)
+    const Rtp::RtpHeader* rtpHeader = Rtp::GetRtpHeader(rtpPacket);
+    const rtp_ssrc_t ssrc = ntohl(rtpHeader->Ssrc);
+    const rtp_sequence_num_t seqNum = ntohs(rtpHeader->SequenceNumber);
+
+    if (ssrcData.count(ssrc) <= 0)
+    {
+        const rtp_payload_type_t payloadType = ntohs(rtpHeader->Type);
+        spdlog::warn("Received RTP payload type {} with unexpected ssrc {}", payloadType, ssrc);
+        return;
+    }
+
+    SsrcData& data = ssrcData.at(ssrc);
+
+    // The FTL client will sometimes send a bunch of audio packets first as a 'speed test'.
+    // We should ignore these until we see our first video packet show up.
+    if ((ssrc == mediaMetadata.AudioSsrc) &&
+        (ssrcData.count(mediaMetadata.VideoSsrc) > 0) &&
+        (ssrcData.at(mediaMetadata.VideoSsrc).CircularPacketBuffer.size() <= 0))
     {
         return;
     }
 
-    std::lock_guard<std::mutex> lock(keyframeMutex);
+    // If this sequence is marked as missing anywhere, un-mark it.
+    data.NackQueue.erase(seqNum);
+    data.NackedSequences.erase(seqNum);
 
-    janus_rtp_header* rtpHeader = reinterpret_cast<janus_rtp_header*>(rtpPacket->data());
-
-    uint16_t sequence = ntohs(rtpHeader->seq_number);
-    uint32_t timestamp = ntohl(rtpHeader->timestamp);
-
-    // If we have an ongoing keyframe capture and we see different timestamps come in, we're done
-    // capturing that keyframe.
-    if ((pendingKeyframe.isCapturing) && (timestamp != pendingKeyframe.rtpTimestamp))
+    // Tally up the size of the packet
+    data.PacketsReceived++;
+    std::chrono::time_point<std::chrono::steady_clock> steadyNow = std::chrono::steady_clock::now();
+    if (data.RollingBytesReceivedByTime.count(steadyNow) > 0)
     {
-        keyframe = pendingKeyframe;
-        pendingKeyframe.isCapturing = false;
-        pendingKeyframe.rtpTimestamp = 0;
-        pendingKeyframe.rtpPackets.clear();
-        keyframeSentToViewers.clear();
-
-        JANUS_LOG(
-            LOG_VERB,
-            "FTL: Channel %u keyframe complete ts %u w/ %lu packets\n",
-            GetChannelId(),
-            keyframe.rtpTimestamp,
-            keyframe.rtpPackets.size());
-    }
-
-    // Determine if this packet is part of a keyframe
-    bool isKeyframePacket = false;
-    int payloadLength = 0;
-    char* payload = janus_rtp_payload(reinterpret_cast<char*>(rtpPacket->data()), rtpPacket->size(), &payloadLength);
-    if (payload != nullptr)
-    {
-        isKeyframePacket = janus_h264_is_keyframe(payload, payloadLength);
-    }
-    
-    // Our first keyframe packet?
-    if (isKeyframePacket && !pendingKeyframe.isCapturing)
-    {
-        JANUS_LOG(
-            LOG_VERB,
-            "FTL: Channel %u new keyframe seq %u ts %u\n",
-            GetChannelId(),
-            sequence,
-            timestamp);
-        pendingKeyframe.isCapturing = true;
-        pendingKeyframe.rtpTimestamp = timestamp;
-        pendingKeyframe.rtpPackets.push_back(rtpPacket);
-    }
-    // Part of our current keyframe?
-    else if (timestamp == pendingKeyframe.rtpTimestamp && pendingKeyframe.isCapturing)
-    {
-        pendingKeyframe.rtpPackets.push_back(rtpPacket);
-    }
-}
-
-void FtlStream::markReceivedSequence(
-    rtp_payload_type_t payloadType,
-    rtp_sequence_num_t receivedSequence)
-{
-    // If this sequence was previously marked as lost, remove it
-    if (lostPackets.count(payloadType) > 0)
-    {
-        auto& lostPayloadPackets = lostPackets[payloadType];
-        if (lostPayloadPackets.count(receivedSequence) > 0)
-        {
-            lostPayloadPackets.erase(receivedSequence);
-        }
-    }
-
-    // If this is the first sequence, record it
-    if (latestSequence.count(payloadType) <= 0)
-    {
-        latestSequence[payloadType] = receivedSequence;
-        JANUS_LOG(
-            LOG_INFO,
-            "FTL: Channel %u first %u sequence: %u\n",
-            GetChannelId(),
-            payloadType,
-            receivedSequence);
+        data.RollingBytesReceivedByTime.at(steadyNow) += rtpPacket.size();
     }
     else
     {
-        // Make sure we're actually the latest
-        auto lastSequence = latestSequence[payloadType];
-        if (lastSequence < receivedSequence)
+        data.RollingBytesReceivedByTime.try_emplace(steadyNow, rtpPacket.size());
+    }
+    // Trim any packets that are too old
+    for (auto it = data.RollingBytesReceivedByTime.begin();
+        it != data.RollingBytesReceivedByTime.end();)
+    {
+        uint32_t msDelta = 
+            std::chrono::duration_cast<std::chrono::milliseconds>(steadyNow - it->first).count();
+        if (msDelta > ROLLING_SIZE_AVERAGE_MS)
         {
-            // Identify any lost packets between the last sequence
-            if (lostPackets.count(payloadType) <= 0)
-            {
-                lostPackets[payloadType] = std::set<rtp_sequence_num_t>();
-            }
-            for (auto seq = lastSequence + 1; seq < receivedSequence; ++seq)
-            {
-                lostPackets[payloadType].insert(seq);
-            }
-            if ((receivedSequence - lastSequence) > 1)
-            {
-                JANUS_LOG(
-                    LOG_WARN,
-                    "FTL: Channel %u PL %u lost %u packets.\n",
-                    GetChannelId(),
-                    payloadType,
-                    (receivedSequence - (lastSequence + 1)));
+            it = data.RollingBytesReceivedByTime.erase(it);
+        }
+        else
+        {
+            // Map is sorted in ascending order - so we can break early
+            break;
+        }
+    }
 
-                // Count em!
-                numPacketsLost += (receivedSequence - lastSequence);
+    // Insert the packet into the buffer in sequence number order
+    std::set<rtp_sequence_num_t> missingSequences =
+        insertPacketInSequenceOrder(data.CircularPacketBuffer, rtpPacket);
+
+    // Trim circular packet buffer to stay within buffer size limit
+    while (data.CircularPacketBuffer.size() > PACKET_BUFFER_SIZE)
+    {
+        data.CircularPacketBuffer.pop_front();
+    }
+
+    // Grab the latest sequence # received for reference
+    rtp_sequence_num_t latestSequence = Rtp::GetRtpSequence(data.CircularPacketBuffer.back());
+
+    // Calculate which packets are missing and should be NACK'd
+    if (missingSequences.size() == 0)
+    {
+        data.PacketsSinceLastMissedSequence++;
+    }
+    else if (missingSequences.size() > (MAX_PACKETS_BEFORE_NACK * 2))
+    {
+        spdlog::warn("At least {} packets were lost before current sequence {} - ignoring and "
+            "waiting for stream to stabilize...",
+            missingSequences.size(), seqNum);
+        data.PacketsSinceLastMissedSequence = 0;
+        data.PacketsLost += missingSequences.size();
+    }
+    else
+    {
+        // Only nack packets if they're reasonably new, and haven't already been nack'd
+        int missingPacketCount = 0;
+        for (const auto& missingSeq : missingSequences)
+        {
+            if ((data.NackedSequences.count(missingSeq) <= 0) &&
+                (static_cast<uint16_t>(latestSequence - missingSeq) < NACK_TIMEOUT_SEQUENCE_DELTA))
+            {
+                data.NackQueue.insert(missingSeq);
+                ++missingPacketCount;
             }
-            latestSequence[payloadType] = receivedSequence;
+        }
+        spdlog::debug("Marking {} packets missing since sequence {}", missingPacketCount,
+            seqNum);
+        data.PacketsSinceLastMissedSequence = 0;
+    }
+
+    processNacks(ssrc, dataLock);
+}
+
+void FtlStream::processRtpPacketKeyframe(const std::vector<std::byte>& rtpPacket,
+    const std::unique_lock<std::shared_mutex>& dataLock)
+{
+    const Rtp::RtpHeader* rtpHeader = Rtp::GetRtpHeader(rtpPacket);
+    // Is this a video packet?
+    if (ntohl(rtpHeader->Ssrc) == mediaMetadata.VideoSsrc)
+    {
+        switch (mediaMetadata.VideoCodec)
+        {
+        case VideoCodecKind::H264:
+            processRtpH264PacketKeyframe(rtpPacket, dataLock);
+            break;
+        case VideoCodecKind::Unsupported:
+        default:
+            // We don't know how to process keyframes for this video codec.
+            break;
         }
     }
 }
 
-void FtlStream::processLostPackets(
-    sockaddr_in remote,
-    rtp_payload_type_t payloadType,
-    rtp_sequence_num_t currentSequence,
-    rtp_timestamp_t currentTimestamp)
+void FtlStream::processRtpH264PacketKeyframe(const std::vector<std::byte>& rtpPacket,
+    const std::unique_lock<std::shared_mutex>& dataLock)
 {
-    if (lostPackets.count(payloadType) > 0)
+    const Rtp::RtpHeader* rtpHeader = Rtp::GetRtpHeader(rtpPacket);
+    const rtp_ssrc_t ssrc = ntohl(rtpHeader->Ssrc);
+    if (ssrcData.count(ssrc) <= 0)
     {
-        auto& lostPayloadPackets = lostPackets[payloadType];
-        for (auto it = lostPayloadPackets.cbegin(); it != lostPayloadPackets.cend();)
+        spdlog::warn("Couldn't process H264 keyframes for unknown ssrc {}", ssrc);
+        return;
+    }
+    SsrcData& data = ssrcData.at(ssrc);
+
+    // Is this packet part of a keyframe?
+    std::span<const std::byte> packetPayload = Rtp::GetRtpPayload(rtpPacket);
+    if (packetPayload.size() < 2)
+    {
+        return;
+    }
+    bool isKeyframePart = false;
+    uint8_t nalType = (static_cast<uint8_t>(packetPayload[0]) & 0b00011111);
+    if ((nalType == 7) || (nalType == 8)) // Sequence Parameter Set / Picture Parameter Set
+    {
+        // SPS often precedes an IDR (Instantaneous Decoder Refresh) aka Keyframe
+        // and provides information on how to decode it. We should keep this around.
+        isKeyframePart = true;
+    }
+    else if (nalType == 5) // IDR
+    {
+        // Managed to fit an entire IDR into one packet!
+        isKeyframePart = true;
+    }
+    // See https://tools.ietf.org/html/rfc3984#section-5.8
+    else if (nalType == 28 || nalType == 29) // Fragmentation unit (FU-A)
+    {
+        uint8_t fragmentType = (static_cast<uint8_t>(packetPayload[1]) & 0b00011111);
+        if ((fragmentType == 7) || // Fragment of SPS
+            (fragmentType == 5))   // Fragment of IDR
         {
-            const auto lostPacketSequence = *it;
+            isKeyframePart = true;
+        }
+    }
 
-            // If this 'lost' packet came from the future, get rid of it
-            if (lostPacketSequence > currentSequence)
-            {
-                it = lostPayloadPackets.erase(it);
-                continue;
-            }
+    if (!isKeyframePart)
+    {
+        return;
+    }
 
-            // Otherwise, ask for re-transmission
-            rtp_ssrc_t ssrc;
-            if (payloadType == GetVideoPayloadType())
+    if (data.PendingKeyframePackets.size() <= 0)
+    {
+        insertPacketInSequenceOrder(data.PendingKeyframePackets, rtpPacket);
+    }
+    else
+    {
+        std::vector<std::byte>& firstPacket = data.PendingKeyframePackets.front();
+        const Rtp::RtpHeader* firstHeader = Rtp::GetRtpHeader(firstPacket);
+        rtp_timestamp_t lastTimestamp = ntohl(firstHeader->Timestamp);
+        rtp_timestamp_t currentTimestamp = ntohl(rtpHeader->Timestamp);
+        if (lastTimestamp == currentTimestamp)
+        {
+            insertPacketInSequenceOrder(data.PendingKeyframePackets, rtpPacket);
+        }
+        else
+        {
+            spdlog::debug("{} keyframe packets recorded @ timestamp {}",
+                data.PendingKeyframePackets.size(), currentTimestamp);
+            data.CurrentKeyframePackets = std::move(data.PendingKeyframePackets); // swap?
+            data.PendingKeyframePackets.clear();
+            data.PendingKeyframePackets.push_back(rtpPacket);
+        }
+    }
+}
+
+bool FtlStream::isSequenceNewer(rtp_sequence_num_t newSeq, rtp_sequence_num_t oldSeq,
+    size_t bufferSize)
+{
+    // Check for rollover
+    uint16_t rolloverDeltaThreshold = (UINT16_MAX - (bufferSize * 2));
+    if ((newSeq < oldSeq) && ((oldSeq - newSeq) > rolloverDeltaThreshold))
+    {
+        return true; 
+    }
+    else
+    {
+        return (newSeq > oldSeq);
+    }
+}
+
+void FtlStream::processNacks(const rtp_ssrc_t ssrc,
+    const std::unique_lock<std::shared_mutex>& dataLock)
+{
+    if (ssrcData.count(ssrc) <= 0)
+    {
+        spdlog::warn("Couldn't process NACKs for unknown ssrc {}", ssrc);
+        return;
+    }
+    SsrcData& data = ssrcData.at(ssrc);
+    rtp_sequence_num_t latestSequence = Rtp::GetRtpSequence(data.CircularPacketBuffer.back());
+    
+    // First, toss any old NACK'd packets that we haven't received and mark them lost.
+    for (auto it = data.NackedSequences.begin(); it != data.NackedSequences.end();)
+    {
+        const rtp_sequence_num_t& nackedSeq = *it;
+        if (static_cast<uint16_t>(latestSequence - nackedSeq) > NACK_TIMEOUT_SEQUENCE_DELTA)
+        {
+            data.PacketsLost++;
+            it = data.NackedSequences.erase(it);
+        }
+        else
+        {
+            break;
+        }
+    }
+
+    // If enough packets have been marked as missing, or enough time has passed, send NACKs
+    if ((data.NackQueue.size() >= MAX_PACKETS_BEFORE_NACK) ||
+        ((data.NackQueue.size() > 0) &&
+            (data.PacketsSinceLastMissedSequence >= MAX_PACKETS_BEFORE_NACK)))
+    {
+        spdlog::debug(fmt::format("Sending NACKs for sequences {}",
+            fmt::join(data.NackQueue, ", ")));
+
+        // Mark packets as NACK'd
+        data.NackedSequences.insert(data.NackQueue.begin(), data.NackQueue.end());
+        data.PacketsNacked += data.NackQueue.size();
+
+        // Send the NACK request packets
+        while (data.NackQueue.size() > 0)
+        {
+            auto it = data.NackQueue.begin();
+            rtp_sequence_num_t firstSeq = *it;
+            uint16_t extraPacketBitmast = 0;
+            spdlog::debug("FIRST SEQ {}", firstSeq);
+            it++;
+            while (true)
             {
-                ssrc = GetVideoSsrc();
+                if (it == data.NackQueue.end())
+                {
+                    break;
+                }
+
+                rtp_sequence_num_t nextSeq = *it;
+                if ((nextSeq - firstSeq) > 15)
+                {
+                    break;
+                }
+                spdlog::debug("SUB SEQ {}", nextSeq);
+                extraPacketBitmast |= (0x1 << ((nextSeq - firstSeq) - 1));
+                it = data.NackQueue.erase(it);
             }
-            else if (payloadType == GetAudioPayloadType())
-            {
-                ssrc = GetAudioSsrc();
-            }
-            else
-            {
-                JANUS_LOG(
-                    LOG_ERR,
-                    "FTL: Channel %u cannot NACK unknown payload type %u\n",
-                    GetChannelId(),
-                    payloadType);
-                it = lostPayloadPackets.erase(it);
-                continue;
-            }
+            data.NackQueue.erase(firstSeq);
 
             // See https://tools.ietf.org/html/rfc4585 Section 6.1
             // for information on how the nack packet is formed
-            char nackBuf[120];
-            janus_rtcp_header *rtcpHeader = reinterpret_cast<janus_rtcp_header*>(nackBuf);
-            rtcpHeader->version = 2;
-            rtcpHeader->type = RTCP_RTPFB;
-            rtcpHeader->rc = 1;
-            janus_rtcp_fb* rtcpFeedback = reinterpret_cast<janus_rtcp_fb*>(rtcpHeader);
-            rtcpFeedback->media = htonl(ssrc);
-            rtcpFeedback->ssrc = htonl(ssrc);
-            janus_rtcp_nack* rtcpNack = reinterpret_cast<janus_rtcp_nack*>(rtcpFeedback->fci);
-            rtcpNack->pid = htons(lostPacketSequence);
-            rtcpNack->blp = 0;
-            rtcpHeader->length = htons(3);
+            char nackBuffer[16] { 0 };
+            auto rtcpPacket = reinterpret_cast<Rtp::RtcpFeedbackPacket*>(nackBuffer);
+            rtcpPacket->Header.Version = 2;
+            rtcpPacket->Header.Padding = 0;
+            rtcpPacket->Header.Rc = Rtp::RtcpFeedbackMessageType::NACK;
+            rtcpPacket->Header.Type = Rtp::RtcpType::RTPFB;
+            rtcpPacket->Header.Length = htons(3);
+            rtcpPacket->Ssrc = htonl(ssrc);
+            rtcpPacket->Media = htonl(ssrc);
+            auto rtcpNack = 
+                reinterpret_cast<Rtp::RtcpFeedbackPacketNackControlInfo*>(rtcpPacket->Fci);
+            rtcpNack->Pid = htons(firstSeq);
+            rtcpNack->Blp = htons(extraPacketBitmast);
+            std::vector<std::byte> nackBytes(reinterpret_cast<std::byte*>(nackBuffer),
+                reinterpret_cast<std::byte*>(nackBuffer) + sizeof(nackBuffer));
+            mediaTransport->Write(nackBytes);
 
-            int res = sendto(
-                mediaSocketHandle,
-                nackBuf,
-                16,
-                0,
-                reinterpret_cast<sockaddr*>(&remote),
-                sizeof(remote));
-            if (res == -1)
-            {
-                JANUS_LOG(
-                    LOG_ERR,
-                    "FTL: Channel %u PL %u NACK failed: %d\n",
-                    GetChannelId(),
-                    payloadType,
-                    errno);
-            }
-
-            // Sent! Take it out of the list for now.
-            it = lostPayloadPackets.erase(it);
-
-            JANUS_LOG(
-                    LOG_INFO,
-                    "FTL: Channel %u PL %u sent NACK for seq %u\n",
-                    GetChannelId(),
-                    payloadType,
-                    lostPacketSequence);
-
-            // Count number of packets we NACK
-            ++numPacketsNacked;
+            spdlog::debug(
+                "SENT {}",
+                spdlog::to_hex(nackBytes.begin(), nackBytes.end()));
         }
     }
 }
 
-void FtlStream::handlePing(janus_rtp_header* rtpHeader, uint16_t length)
+void FtlStream::processAudioVideoRtpPacket(const std::vector<std::byte>& rtpPacket,
+    std::unique_lock<std::shared_mutex>& dataLock)
+{
+    processRtpPacketKeyframe(rtpPacket, dataLock);
+
+    if (onRtpPacket)
+    {
+        dataLock.unlock(); // Unlock while we call out
+        onRtpPacket(GetChannelId(), streamId, rtpPacket);
+        dataLock.lock();
+    }
+}
+
+void FtlStream::handlePing(const std::vector<std::byte>& rtpPacket)
 {
     // These pings are useless - FTL tries to determine 'ping' by having a timestamp
     // sent across and compared against the remote's clock. This assumes that there is
     // no time difference between the client and server, which is practically never true.
 
-    // We'll just ignore these pings, since they wouldn't give us any useful information
-    // anyway.
+    // We'll just ignore these pings, since they wouldn't give us any useful information anyway.
 }
 
-void FtlStream::handleSenderReport(janus_rtp_header* rtpHeader, uint16_t length)
+void FtlStream::handleSenderReport(const std::vector<std::byte>& rtpPacket)
 {
     // We expect this packet to be 28 bytes big.
-    if (length != 28)
+    if (rtpPacket.size() != 28)
     {
-        JANUS_LOG(LOG_WARN, "FTL: Invalid sender report packet of length %d (expect 28)\n", length);
+        spdlog::warn("Invalid sender report packet of length {} (expect 28)", rtpPacket.size());
     }
     // char* packet = reinterpret_cast<char*>(rtpHeader);
     // uint32_t ssrc              = ntohl(*reinterpret_cast<uint32_t*>(packet + 4));
