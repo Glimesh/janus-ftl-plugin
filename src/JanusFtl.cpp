@@ -361,7 +361,6 @@ Result<ftl_stream_id_t> JanusFtl::ftlServerStreamStarted(ftl_channel_id_t channe
         .StreamId = streamId,
         .Metadata = mediaMetadata,
         .ViewerSessions = {},
-        .Relays = {},
     });
 
     // Move any pending viewer sessions over
@@ -420,6 +419,14 @@ void JanusFtl::ftlServerRtpPacket(ftl_channel_id_t channelId, ftl_stream_id_t st
     for (const auto& session : stream.ViewerSessions)
     {
         session->SendRtpPacket(packetData, stream.Metadata);
+    }
+
+    if (relayClients.count(channelId) > 0)
+    {
+        for (const auto& relay : relayClients.at(channelId))
+        {
+            relay.Client->RelayPacket(packetData);
+        }
     }
 }
 
@@ -636,11 +643,16 @@ void JanusFtl::endStream(ftl_channel_id_t channelId, ftl_stream_id_t streamId,
     }
 
     // If relays exist for this stream, stop them
-    for (const auto& relay : activeStream.Relays)
+    if (relayClients.count(channelId) > 0)
     {
-        spdlog::info("Stopping relay for channel {} / stream {}...", activeStream.ChannelId,
-            activeStream.StreamId);
-        relay->Stop();
+        for (auto it = relayClients.at(channelId).begin(); it != relayClients.at(channelId).end();)
+        {
+            const ActiveRelay& relay = *it;
+            spdlog::info("Stopping relay for channel {} / stream {} -> {}...", activeStream.ChannelId,
+                activeStream.StreamId, relay.TargetHostname);
+            relay.Client->Stop();
+        }
+        relayClients.erase(channelId);
     }
 
     spdlog::info("Stream ended. Channel {} / stream {}", activeStream.ChannelId,
@@ -923,7 +935,7 @@ ConnectionResult JanusFtl::onOrchestratorStreamRelay(ConnectionRelayPayload payl
         {
             relayClients.insert_or_assign(payload.ChannelId, std::list<ActiveRelay>());
         }
-        relayClients[payload.ChannelId].emplace_back(payload.ChannelId, payload.TargetHostname,
+        relayClients.at(payload.ChannelId).emplace_back(payload.ChannelId, payload.TargetHostname,
             std::move(relayClient));
         
         return ConnectionResult
@@ -941,15 +953,15 @@ ConnectionResult JanusFtl::onOrchestratorStreamRelay(ConnectionRelayPayload payl
         int numRelaysRemoved = 0;
         if (relayClients.count(payload.ChannelId) > 0)
         {
-            for (auto it = relayClients[payload.ChannelId].begin();
-                it != relayClients[payload.ChannelId].end();)
+            for (auto it = relayClients.at(payload.ChannelId).begin();
+                it != relayClients.at(payload.ChannelId).end();)
             {
                 ActiveRelay& relay = *it;
                 if ((relay.ChannelId == payload.ChannelId) &&
                     (relay.TargetHostname == payload.TargetHostname))
                 {
                     relay.Client->Stop();
-                    it = relayClients[payload.ChannelId].erase(it);
+                    it = relayClients.at(payload.ChannelId).erase(it);
                     ++numRelaysRemoved;
                 }
                 else

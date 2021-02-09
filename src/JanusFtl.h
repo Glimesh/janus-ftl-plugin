@@ -91,7 +91,6 @@ private:
         ftl_stream_id_t StreamId;
         MediaMetadata Metadata;
         std::unordered_set<JanusSession*> ViewerSessions;
-        std::list<std::unique_ptr<FtlClient>> Relays;
         std::time_t streamStartTime;
     };
     struct ActiveSession
