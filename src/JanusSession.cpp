@@ -22,9 +22,7 @@ JanusSession::JanusSession(janus_plugin_session* handle, janus_callbacks* janusC
     janusCore(janusCore),
     sdpSessionId(janus_get_real_time()),
     sdpVersion(1)
-{
-    JANUS_LOG(LOG_INFO, "Handle: %p", handle);
-}
+{ }
 #pragma endregion
 
 #pragma region Public methods

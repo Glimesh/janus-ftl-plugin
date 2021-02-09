@@ -264,7 +264,7 @@ void FtlStream::processRtpPacket(const std::vector<std::byte>& rtpPacket)
         }
         else
         {
-            spdlog::warn("FTL: Unknown RTP payload type %d (orig %d)\n", payloadType, 
+            spdlog::warn("Unknown RTP payload type {} (orig {})\n", payloadType, 
                 rtpHeader->Type);
         }
     }

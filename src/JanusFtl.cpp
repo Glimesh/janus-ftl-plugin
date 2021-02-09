@@ -81,7 +81,7 @@ int JanusFtl::Init(janus_callbacks* callback, const char* config_path)
 
 void JanusFtl::Destroy()
 {
-    JANUS_LOG(LOG_INFO, "FTL: Tearing down FTL!\n");
+    spdlog::info("Tearing down FTL!");
     {
         std::lock_guard lock(threadShutdownMutex);
         isStopping = true;
@@ -238,13 +238,13 @@ void JanusFtl::IncomingRtcp(janus_plugin_session* handle, janus_plugin_rtcp* pac
 void JanusFtl::DataReady(janus_plugin_session* handle)
 {
     // TODO
-    JANUS_LOG(LOG_INFO, "FTL: DataReady\n");
+    spdlog::info("DataReady");
 }
 
 void JanusFtl::HangUpMedia(janus_plugin_session* handle)
 {
     // TODO
-    JANUS_LOG(LOG_WARN, "FTL: HangUpMedia called by session, but we're not handling it!\n");
+    spdlog::warn("HangUpMedia called by session, but we're not handling it!");
 }
 
 void JanusFtl::DestroySession(janus_plugin_session* handle, int* error)
@@ -308,7 +308,7 @@ void JanusFtl::DestroySession(janus_plugin_session* handle, int* error)
             }
             edgeServiceConnection->ClearStreamKey(channelId);
 
-            spdlog::info("Last viewer for channel %d has disconnected - unsubscribing...",
+            spdlog::info("Last viewer for channel {} has disconnected - unsubscribing...",
                 channelId);
             orchestrationClient->SendChannelSubscription(ConnectionSubscriptionPayload
                 {
@@ -381,7 +381,7 @@ Result<ftl_stream_id_t> JanusFtl::ftlServerStreamStarted(ftl_channel_id_t channe
     // If we are configured as an Ingest node, notify the Orchestrator that a stream has started.
     if ((configuration->GetNodeKind() == NodeKind::Ingest) && (orchestrationClient != nullptr))
     {
-        spdlog::info("FTL: Publishing channel %d / stream %d to Orchestrator...", channelId,
+        spdlog::info("Publishing channel {} / stream {} to Orchestrator...", channelId,
             streamId);
         orchestrationClient->SendStreamPublish(ConnectionPublishPayload
             {
@@ -442,9 +442,8 @@ void JanusFtl::initOrchestratorConnection()
 {
     if (configuration->GetNodeKind() != NodeKind::Standalone)
     {
-        JANUS_LOG(
-            LOG_INFO,
-            "FTL: Connecting to Orchestration service @ %s:%d...\n",
+        spdlog::info(
+            "Connecting to Orchestration service @ {}:{}...",
             configuration->GetOrchestratorHostname().c_str(),
             configuration->GetOrchestratorPort());
         
@@ -727,8 +726,7 @@ janus_plugin_result* JanusFtl::handleWatchMessage(ActiveSession& session, JsonPt
             std::vector<std::byte> streamKey = edgeServiceConnection->ProvisionStreamKey(channelId);
 
             // Subscribe for relay of this stream
-            JANUS_LOG(LOG_INFO,
-                "FTL: First viewer for channel %d - subscribing...\n",
+            spdlog::info("First viewer for channel {} - subscribing...",
                channelId);
             orchestrationClient->SendChannelSubscription(ConnectionSubscriptionPayload
                 {
@@ -861,7 +859,7 @@ void JanusFtl::onOrchestratorConnectionClosed()
 
 ConnectionResult JanusFtl::onOrchestratorIntro(ConnectionIntroPayload payload)
 {
-    JANUS_LOG(LOG_INFO, "FTL: Received Intro from Orchestrator.\n");
+    spdlog::info("Received Intro from Orchestrator.\n");
     return ConnectionResult
     {
         .IsSuccess = true,
@@ -870,10 +868,7 @@ ConnectionResult JanusFtl::onOrchestratorIntro(ConnectionIntroPayload payload)
 
 ConnectionResult JanusFtl::onOrchestratorOutro(ConnectionOutroPayload payload)
 {
-    JANUS_LOG(
-        LOG_INFO,
-        "FTL: Received Outro from Orchestrator: %s\n",
-        payload.DisconnectReason.c_str());
+    spdlog::info("Received Outro from Orchestrator: {}", payload.DisconnectReason);
 
     return ConnectionResult
     {
@@ -924,7 +919,7 @@ ConnectionResult JanusFtl::onOrchestratorStreamRelay(ConnectionRelayPayload payl
             });
         if (connectResult.IsError)
         {
-            spdlog::error("Failed to connect to relay target %s for channel {}: {}",
+            spdlog::error("Failed to connect to relay target {} for channel {}: {}",
                 payload.TargetHostname, payload.ChannelId, connectResult.ErrorMessage);
             return ConnectionResult
                 {

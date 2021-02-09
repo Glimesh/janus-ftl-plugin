@@ -92,7 +92,6 @@ void TcpConnectionListener::Listen(std::promise<void>&& readyPromise)
     }
 
     // Now we begin listening
-    // JANUS_LOG(LOG_INFO, "FTL: Ingest server is listening on port %d\n", listenPort);
     readyPromise.set_value();
     while (true)
     {
@@ -102,7 +101,6 @@ void TcpConnectionListener::Listen(std::promise<void>&& readyPromise)
         {
             if (errno == EINVAL)
             {
-                // JANUS_LOG(LOG_INFO, "FTL: Ingest server is being shut down.\n");
                 break;
             }
         }
