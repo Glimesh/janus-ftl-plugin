@@ -20,7 +20,7 @@ add_project_arguments('-DCPPHTTPLIB_OPENSSL_SUPPORT', language: 'cpp')
 add_project_arguments('-DSPDLOG_FMT_EXTERNAL', language: 'cpp')
 
 # Set the DEBUG define if we're a debug build
-if get_option('buildtype').startswith('debug')
+if get_option('buildtype').to_lower() == 'debug'
     add_project_arguments('-DDEBUG', language : 'cpp')
 endif
 

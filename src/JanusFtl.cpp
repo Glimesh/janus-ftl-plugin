@@ -57,6 +57,8 @@ int JanusFtl::Init(janus_callbacks* callback, const char* config_path)
 
 #ifdef DEBUG
     spdlog::set_level(spdlog::level::trace);
+#else
+    spdlog::set_level(spdlog::level::info);
 #endif
 
     configuration = std::make_unique<Configuration>();

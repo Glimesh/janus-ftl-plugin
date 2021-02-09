@@ -110,7 +110,11 @@ void FtlClient::RelayPacket(const std::vector<std::byte>& packet)
 {
     if (mediaSocketHandle != 0)
     {
-        write(mediaSocketHandle, packet.data(), packet.size());
+        size_t writeResult = write(mediaSocketHandle, packet.data(), packet.size());
+        if (writeResult != packet.size())
+        {
+            // TODO: Handle writeResult
+        }
     }
 }
 #pragma endregion Public methods
@@ -418,7 +422,11 @@ void FtlClient::endConnection()
 
 void FtlClient::sendControlMessage(std::string message)
 {
-    write(controlSocketHandle, message.c_str(), message.size());
+    size_t writeResult = write(controlSocketHandle, message.c_str(), message.size());
+    if (writeResult != message.size())
+    {
+        // TODO: handle writeResult
+    }
 }
 
 Result<FtlClient::FtlResponse> FtlClient::waitForResponse(std::chrono::milliseconds timeout)
