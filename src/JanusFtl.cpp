@@ -647,9 +647,8 @@ void JanusFtl::endStream(ftl_channel_id_t channelId, ftl_stream_id_t streamId,
     // If relays exist for this stream, stop them
     if (relayClients.count(channelId) > 0)
     {
-        for (auto it = relayClients.at(channelId).begin(); it != relayClients.at(channelId).end();)
+        for (const auto& relay : relayClients.at(channelId))
         {
-            const ActiveRelay& relay = *it;
             spdlog::info("Stopping relay for channel {} / stream {} -> {}...", activeStream.ChannelId,
                 activeStream.StreamId, relay.TargetHostname);
             relay.Client->Stop();
