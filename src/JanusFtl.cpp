@@ -308,7 +308,7 @@ void JanusFtl::DestroySession(janus_plugin_session* handle, int* error)
             }
             edgeServiceConnection->ClearStreamKey(channelId);
 
-            spdlog::info("Last viewer for channel %d has disconnected - unsubscribing...",
+            spdlog::info("Last viewer for channel {} has disconnected - unsubscribing...",
                 channelId);
             orchestrationClient->SendChannelSubscription(ConnectionSubscriptionPayload
                 {
