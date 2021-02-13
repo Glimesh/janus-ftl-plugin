@@ -265,7 +265,7 @@ JsonPtr RestServiceConnection::processRestResponse(httplib::Result result)
 {
     if (result)
     {
-        if (result->status == 200)
+        if (result->status <= 299)
         {
             // Try to parse out the response
             json_error_t error;
