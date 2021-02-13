@@ -2,7 +2,7 @@
  * @file RestServiceConnection.cpp
  * @author Hayden McAfee (hayden@outlook.com)
  * @version 0.1
- * @date 2020-08-09
+ * @date 2021-02-13
  *
  * @copyright Copyright (c) 2020 Hayden McAfee
  *
@@ -120,7 +120,23 @@ Result<void> RestServiceConnection::SendJpegPreviewImage(
     ftl_stream_id_t streamId,
     std::vector<uint8_t> jpegData)
 {
-    // TODO
+    std::string fileContents(jpegData.begin(), jpegData.end());
+    httplib::MultipartFormDataItems files
+    {
+        {
+            .name = "thumbdata",
+            .content = fileContents,
+            .filename = "preview.jpg",
+            .content_type = "image/jpeg"
+        }
+    };
+
+    // TODO: Allow ignoring response JSON
+    std::stringstream url;
+    url << "/preview/" << streamId;
+    runRestPostRequest(url.str(), nullptr, files);
+
+    // TODO: Handle errors
     return Result<void>::Success();
 }
 #pragma endregion
@@ -197,17 +213,6 @@ JsonPtr RestServiceConnection::runRestPostRequest(
     else
     {
         bodyString = "{}";
-    }
-
-    // If we're doing a file upload, we pack this all into a multipart request
-    if (fileData.size() > 0)
-    {
-        fileData.push_back(httplib::MultipartFormData {
-            .name = "body",
-            .content = bodyString,
-            .filename = "",
-            .content_type = "application/json"
-        });
     }
 
     // Make the request, and retry if necessary
