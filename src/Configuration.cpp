@@ -111,6 +111,10 @@ void Configuration::Load()
         {
             serviceConnectionKind = ServiceConnectionKind::GlimeshServiceConnection;
         }
+        else if (serviceConnectionStr.compare("rest") == 0)
+        {
+            serviceConnectionKind = ServiceConnectionKind::RestServiceConnection;
+        }
     }
 
     // FTL_SERVICE_METADATAREPORTINTERVALMS -> ServiceConnectionMetadataReportIntervalMs
@@ -169,6 +173,30 @@ void Configuration::Load()
     if (char* varVal = std::getenv("FTL_SERVICE_GLIMESH_CLIENTSECRET"))
     {
         glimeshServiceClientSecret = std::string(varVal);
+    }
+
+    // FTL_SERVICE_REST_HOSTNAME -> RestServiceHostname
+    if (char* varVal = std::getenv("FTL_SERVICE_REST_HOSTNAME"))
+    {
+        restServiceHostname = std::string(varVal);
+    }
+
+    // FTL_SERVICE_REST_PORT -> RestServicePort
+    if (char* varVal = std::getenv("FTL_SERVICE_REST_PORT"))
+    {
+        restServicePort = std::stoi(varVal);
+    }
+
+    // FTL_SERVICE_REST_HTTPS -> RestServiceUseHttps
+    if (char* varVal = std::getenv("FTL_SERVICE_REST_HTTPS"))
+    {
+        restServiceUseHttps = std::stoi(varVal);
+    }
+
+    // FTL_SERVICE_REST_AUTH_TOKEN -> RestServiceAuthToken
+    if (char* varVal = std::getenv("FTL_SERVICE_REST_AUTH_TOKEN"))
+    {
+        restServiceAuthToken = std::string(varVal);
     }
 }
 #pragma endregion
@@ -247,6 +275,26 @@ std::string Configuration::GetGlimeshServiceClientId()
 std::string Configuration::GetGlimeshServiceClientSecret()
 {
     return glimeshServiceClientSecret;
+}
+
+std::string Configuration::GetRestServiceHostname()
+{
+    return restServiceHostname;
+}
+
+uint16_t Configuration::GetRestServicePort()
+{
+    return restServicePort;
+}
+
+bool Configuration::GetRestServiceUseHttps()
+{
+    return restServiceUseHttps;
+}
+
+std::string Configuration::GetRestServiceAuthToken()
+{
+    return restServiceAuthToken;
 }
 #pragma endregion
 
