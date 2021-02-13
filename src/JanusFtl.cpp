@@ -18,6 +18,7 @@
 #include "ServiceConnections/DummyServiceConnection.h"
 #include "ServiceConnections/EdgeNodeServiceConnection.h"
 #include "ServiceConnections/GlimeshServiceConnection.h"
+#include "ServiceConnections/RestServiceConnection.h"
 #include "Utilities/JanssonPtr.h"
 
 #include <fmt/core.h>
@@ -496,6 +497,13 @@ void JanusFtl::initServiceConnection()
                 configuration->GetGlimeshServiceUseHttps(),
                 configuration->GetGlimeshServiceClientId(),
                 configuration->GetGlimeshServiceClientSecret());
+            break;
+        case ServiceConnectionKind::RestServiceConnection:
+            serviceConnection = std::make_shared<RestServiceConnection>(
+                configuration->GetRestServiceHostname(),
+                configuration->GetRestServicePort(),
+                configuration->GetRestServiceUseHttps(),
+                configuration->GetRestServiceAuthToken());
             break;
         case ServiceConnectionKind::DummyServiceConnection:
         default:
