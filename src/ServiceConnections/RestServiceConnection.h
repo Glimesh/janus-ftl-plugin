@@ -18,8 +18,8 @@
 
 /**
  * @brief
- * RestServiceConnection is a generic service connection implementation that returns static
- * values for testing.
+ * RestServiceConnection is a service connection implementation for a generic REST
+ * API server.
  */
 class RestServiceConnection : public ServiceConnection
 {
