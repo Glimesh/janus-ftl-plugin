@@ -106,12 +106,14 @@ Result<void> RestServiceConnection::UpdateStreamMetadata(ftl_stream_id_t streamI
     std::stringstream url;
     url << "/metadata/" << streamId;
 
+    // TODO: Allow ignoring response JSON
     runRestPostRequest(url.str(), std::move(streamMetadata));
     return Result<void>::Success();
 }
 
 Result<void> RestServiceConnection::EndStream(ftl_stream_id_t streamId)
 {
+    // TODO: Allow ignoring response JSON
     std::stringstream url;
     url << "/end/" << streamId;
     runRestPostRequest(url.str());
