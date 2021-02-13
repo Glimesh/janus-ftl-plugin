@@ -70,7 +70,7 @@ Configuration is achieved through environment variables.
 | `FTL_ORCHESTRATOR_PORT` | Port number, `1`-`65535`. | The port number to use when connecting to the Orchestrator service. |
 | `FTL_ORCHESTRATOR_PSK` | String of arbitrary hex values (ex. `001122334455ff`) | This is the pre-shared key used to establish a secure TLS1.3 connection to the Orchestrator service. |
 | `FTL_ORCHESTRATOR_REGION_CODE` | String value, default: `global` | This is a string value used by the Orchestrator to group regional nodes together to more effectively distribute video traffic. |
-| `FTL_SERVICE_CONNECTION` | `DUMMY`: (default) Dummy service connection <br />`GLIMESH`: Glimesh service connection <br />`REST`: REST service connection ([docs](docs/REST.md)) | This configuration value determines which service FTL should plug into for operations such as stream key retrieval. |
+| `FTL_SERVICE_CONNECTION` | `DUMMY`: (default) Dummy service connection <br />`GLIMESH`: Glimesh service connection <br />`REST`: REST service connection ([docs](docs/REST_SERVICE.md)) | This configuration value determines which service FTL should plug into for operations such as stream key retrieval. |
 | `FTL_SERVICE_METADATAREPORTINTERVALMS` | Time in milliseconds | Defaults to `4000`, controls how often FTL stream metadata will be reported to the service. |
 | `FTL_SERVICE_DUMMY_HMAC_KEY` | String, default: `aBcDeFgHiJkLmNoPqRsTuVwXyZ123456` | Key all FTL clients must use if service connection is `DUMMY`. The HMAC key is the part after the dash in a stream key.` |
 | `FTL_SERVICE_DUMMY_PREVIEWIMAGEPATH` | `/path/to/directory` | The path where preview images of ingested streams will be stored if service connection is `DUMMY`. Defaults to `~/.ftl/previews` |
