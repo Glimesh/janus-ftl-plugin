@@ -166,8 +166,11 @@ Result<uint16_t> FtlServer::onControlStartMediaPort(FtlControlConnection& contro
     {
         throw std::runtime_error("Unknown control connection requested a media port assignment");
     }
-    std::unique_ptr<FtlControlConnection> control = std::move(pendingControlConnections[&controlConnection]);
-    pendingControlConnections.erase(&controlConnection);
+
+    // Don't erase the connection from the pending store just yet -
+    // if there's an error assigning it a port, we need to keep it around so it can handle it!
+    std::unique_ptr<FtlControlConnection>& control = 
+        pendingControlConnections.at(&controlConnection);
 
     // Attempt to find a free media port to use
     Result<uint16_t> portResult = reserveMediaPort(lock);
@@ -198,6 +201,8 @@ Result<uint16_t> FtlServer::onControlStartMediaPort(FtlControlConnection& contro
         std::bind(&FtlServer::onStreamClosed, this, std::placeholders::_1),
         std::bind(&FtlServer::onStreamRtpPacket, this, std::placeholders::_1, std::placeholders::_2,
             std::placeholders::_3));
+    pendingControlConnections.erase(&controlConnection);
+
     Result<void> streamStartResult = stream->StartAsync();
     if (streamStartResult.IsError)
     {

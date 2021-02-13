@@ -424,7 +424,8 @@ void FtlControlConnection::processDotCommand()
         transport->GetAddr().value().sin_addr);
     if (mediaPortResult.IsError)
     {
-        spdlog::error("Could not assign media port for FTL connection.");
+        spdlog::error("Could not assign media port for FTL connection: {}",
+            mediaPortResult.ErrorMessage);
         stopConnection();
         return;
     }
