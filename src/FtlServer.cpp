@@ -57,8 +57,11 @@ void FtlServer::Stop()
 {
     spdlog::info("Stopping FtlServer...");
     // Spin down any active threads
-    isStopping = true;
-    threadShutdownConditionVariable.notify_all();
+    {
+        std::lock_guard stopLock(stoppingMutex);
+        isStopping = true;
+    }
+    stoppingConditionVariable.notify_all();
     // Stop listening for new connections
     ingestControlListener->StopListening();
     // Close any open connections
@@ -177,8 +180,8 @@ void FtlServer::onNewControlConnection(std::unique_ptr<ConnectionTransport> conn
 
     // If this connection doesn't successfully auth in a certain amount of time, close it.
     auto timeoutThread = std::thread([this, ingestControlConnectionPtr, addrString]() {
-        std::unique_lock threadLock(threadShutdownMutex);
-        threadShutdownConditionVariable.wait_for(threadLock,
+        std::unique_lock threadLock(stoppingMutex);
+        stoppingConditionVariable.wait_for(threadLock,
             std::chrono::milliseconds(CONNECTION_AUTH_TIMEOUT_MS));
         if (isStopping)
         {

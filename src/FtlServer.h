@@ -114,9 +114,9 @@ private:
     const uint16_t minMediaPort;
     const uint16_t maxMediaPort;
     // Misc fields
-    std::atomic<bool> isStopping { false };
-    std::mutex threadShutdownMutex;
-    std::condition_variable threadShutdownConditionVariable;
+    bool isStopping { false };
+    std::mutex stoppingMutex;
+    std::condition_variable stoppingConditionVariable;
     std::thread listenThread;
     std::shared_mutex streamDataMutex;
     std::unordered_map<FtlControlConnection*, std::unique_ptr<FtlControlConnection>>
