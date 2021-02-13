@@ -66,8 +66,20 @@ Result<std::vector<std::byte>> RestServiceConnection::GetHmacKey(ftl_channel_id_
 
 Result<ftl_stream_id_t> RestServiceConnection::StartStream(ftl_channel_id_t channelId)
 {
-    // TODO: Un-hardcode stream ID
-    return Result<ftl_stream_id_t>::Success(0);
+    std::stringstream url;
+    url << "/start/" << channelId;
+
+    JsonPtr result = runRestPostRequest(url.str());
+    json_t* jsonStreamId = json_object_get(result.get(), "streamId");
+
+    // TODO: Allow strings and ints from JSON
+    if (jsonStreamId != nullptr && json_is_string(jsonStreamId))
+    {
+        ftl_stream_id_t streamId = std::stoi(json_string_value(jsonStreamId));
+        return Result<ftl_stream_id_t>::Success(streamId);
+    }
+
+    return Result<ftl_stream_id_t>::Error("Could not start stream.");
 }
 
 Result<void> RestServiceConnection::UpdateStreamMetadata(ftl_stream_id_t streamId,
@@ -113,7 +125,7 @@ Result<void> RestServiceConnection::SendJpegPreviewImage(
 }
 #pragma endregion
 
-#pragma Private methods
+#pragma region Private methods
 httplib::Client RestServiceConnection::getHttpClient()
 {
     std::stringstream baseUri;
