@@ -73,7 +73,28 @@ Result<ftl_stream_id_t> RestServiceConnection::StartStream(ftl_channel_id_t chan
 Result<void> RestServiceConnection::UpdateStreamMetadata(ftl_stream_id_t streamId,
     StreamMetadata metadata)
 {
-    // TODO
+    JsonPtr streamMetadata(json_pack(
+        "{s:s, s:s, s:i, s:i, s:i, s:i, s:i, s:i, s:i, s:s, s:s, s:s, s:i, s:i}",
+        "audioCodec",        metadata.audioCodec.c_str(),
+        "ingestServer",      metadata.ingestServerHostname.c_str(),
+        "ingestViewers",     metadata.numActiveViewers,
+        "lostPackets",       metadata.numPacketsLost,
+        "nackPackets",       metadata.numPacketsNacked,
+        "recvPackets",       metadata.numPacketsReceived,
+        "sourceBitrate",     metadata.currentSourceBitrateBps,
+        "sourcePing",        metadata.streamerToIngestPingMs,
+        "streamTimeSeconds", metadata.streamTimeSeconds,
+        "vendorName",        metadata.streamerClientVendorName.c_str(),
+        "vendorVersion",     metadata.streamerClientVendorVersion.c_str(),
+        "videoCodec",        metadata.videoCodec.c_str(),
+        "videoHeight",       metadata.videoHeight,
+        "videoWidth",        metadata.videoWidth
+    ));
+
+    std::stringstream url;
+    url << "/metadata/" << streamId;
+
+    runRestPostRequest(url.str(), std::move(streamMetadata));
     return Result<void>::Success();
 }
 
@@ -154,8 +175,66 @@ JsonPtr RestServiceConnection::runRestPostRequest(
     JsonPtr body,
     httplib::MultipartFormDataItems fileData)
 {
-    // TODO
-    return nullptr;
+    std::string bodyString;
+    char* bodyStr = json_dumps(body.get(), 0);
+    bodyString = std::string(bodyStr);
+    free(bodyStr);
+
+    // If we're doing a file upload, we pack this all into a multipart request
+    if (fileData.size() > 0)
+    {
+        fileData.push_back(httplib::MultipartFormData {
+            .name = "body",
+            .content = bodyString,
+            .filename = "",
+            .content_type = "application/json"
+        });
+    }
+
+    // Make the request, and retry if necessary
+    int numRetries = 0;
+    while (true)
+    {
+        httplib::Client httpClient = getHttpClient();
+        JsonPtr result = nullptr;
+
+        // If we're doing files, use a multipart http request
+        if (fileData.size() > 0)
+        {
+            httplib::Result response = httpClient.Post(url.c_str(), fileData);
+            result = processRestResponse(response);
+        }
+        // otherwise, stick with post body
+        else
+        {
+            httplib::Result response = httpClient.Post(url.c_str(), bodyString, "application/json");
+            result = processRestResponse(response);
+        }
+
+        if (result != nullptr)
+        {
+            return result;
+        }
+
+        if (numRetries < MAX_RETRIES)
+        {
+            spdlog::warn("Attempt {} / {}: REST POST request failed. "
+                "Retrying in {} ms...", (numRetries + 1), MAX_RETRIES, TIME_BETWEEN_RETRIES_MS);
+
+            std::this_thread::sleep_for(std::chrono::milliseconds(TIME_BETWEEN_RETRIES_MS));
+            ++numRetries;
+        }
+        else
+        {
+            break;
+        }
+    }
+
+    // We've exceeded our retry limit
+    spdlog::error("Aborting REST POST request after {} failed attempts.",
+        MAX_RETRIES);
+
+    throw ServiceConnectionCommunicationFailedException("REST POST request failed.");
 }
 
 JsonPtr RestServiceConnection::processRestResponse(httplib::Result result)
