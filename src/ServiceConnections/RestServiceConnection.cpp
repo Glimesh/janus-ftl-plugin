@@ -64,7 +64,7 @@ Result<ftl_stream_id_t> RestServiceConnection::StartStream(ftl_channel_id_t chan
     std::stringstream url;
     url << "/start/" << channelId;
 
-    JsonPtr result = runRestPostRequest(url.str());
+    JsonPtr result = runRestPostRequest(url.str(), true);
     json_t* jsonStreamId = json_object_get(result.get(), "streamId");
 
     // TODO: Allow strings and ints from JSON
@@ -101,17 +101,15 @@ Result<void> RestServiceConnection::UpdateStreamMetadata(ftl_stream_id_t streamI
     std::stringstream url;
     url << "/metadata/" << streamId;
 
-    // TODO: Allow ignoring response JSON
-    runRestPostRequest(url.str(), std::move(streamMetadata));
+    runRestPostRequest(url.str(), false, std::move(streamMetadata));
     return Result<void>::Success();
 }
 
 Result<void> RestServiceConnection::EndStream(ftl_stream_id_t streamId)
 {
-    // TODO: Allow ignoring response JSON
     std::stringstream url;
     url << "/end/" << streamId;
-    runRestPostRequest(url.str());
+    runRestPostRequest(url.str(), false);
 
     return Result<void>::Success();
 }
@@ -131,10 +129,9 @@ Result<void> RestServiceConnection::SendJpegPreviewImage(
         }
     };
 
-    // TODO: Allow ignoring response JSON
     std::stringstream url;
     url << "/preview/" << streamId;
-    runRestPostRequest(url.str(), nullptr, files);
+    runRestPostRequest(url.str(), false, nullptr, files);
 
     // TODO: Handle errors
     return Result<void>::Success();
@@ -200,6 +197,7 @@ JsonPtr RestServiceConnection::runRestGetRequest(std::string url)
 
 JsonPtr RestServiceConnection::runRestPostRequest(
     std::string url,
+    bool decode,
     JsonPtr body,
     httplib::MultipartFormDataItems fileData)
 {
@@ -226,13 +224,13 @@ JsonPtr RestServiceConnection::runRestPostRequest(
         if (fileData.size() > 0)
         {
             httplib::Result response = httpClient.Post(url.c_str(), fileData);
-            result = processRestResponse(response);
+            result = processRestResponse(response, decode);
         }
         // otherwise, stick with post body
         else
         {
             httplib::Result response = httpClient.Post(url.c_str(), bodyString, "application/json");
-            result = processRestResponse(response);
+            result = processRestResponse(response, decode);
         }
 
         if (result != nullptr)
@@ -261,12 +259,18 @@ JsonPtr RestServiceConnection::runRestPostRequest(
     throw ServiceConnectionCommunicationFailedException("REST POST request failed.");
 }
 
-JsonPtr RestServiceConnection::processRestResponse(httplib::Result result)
+JsonPtr RestServiceConnection::processRestResponse(httplib::Result result, bool decode)
 {
     if (result)
     {
         if (result->status <= 299)
         {
+            if (!decode)
+            {
+                JsonPtr emptyJson(json_pack("{}"));
+                return emptyJson;
+            }
+
             // Try to parse out the response
             json_error_t error;
             JsonPtr jsonBody(json_loads(result->body.c_str(), 0, &error));

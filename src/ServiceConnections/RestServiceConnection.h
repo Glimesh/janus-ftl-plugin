@@ -52,6 +52,6 @@ private:
     /* Private methods */
     httplib::Client getHttpClient();
     JsonPtr runRestGetRequest(std::string url);
-    JsonPtr runRestPostRequest(std::string url, JsonPtr body = nullptr, httplib::MultipartFormDataItems fileData = httplib::MultipartFormDataItems());
-    JsonPtr processRestResponse(httplib::Result result);
+    JsonPtr runRestPostRequest(std::string url, bool decode = true, JsonPtr body = nullptr, httplib::MultipartFormDataItems fileData = httplib::MultipartFormDataItems());
+    JsonPtr processRestResponse(httplib::Result result, bool decode = true);
 };
