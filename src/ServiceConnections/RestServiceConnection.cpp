@@ -176,9 +176,16 @@ JsonPtr RestServiceConnection::runRestPostRequest(
     httplib::MultipartFormDataItems fileData)
 {
     std::string bodyString;
-    char* bodyStr = json_dumps(body.get(), 0);
-    bodyString = std::string(bodyStr);
-    free(bodyStr);
+    if (body)
+    {
+        char* bodyStr = json_dumps(body.get(), 0);
+        bodyString = std::string(bodyStr);
+        free(bodyStr);
+    }
+    else
+    {
+        bodyString = "{}";
+    }
 
     // If we're doing a file upload, we pack this all into a multipart request
     if (fileData.size() > 0)
