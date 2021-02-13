@@ -112,7 +112,10 @@ Result<void> RestServiceConnection::UpdateStreamMetadata(ftl_stream_id_t streamI
 
 Result<void> RestServiceConnection::EndStream(ftl_stream_id_t streamId)
 {
-    // TODO
+    std::stringstream url;
+    url << "/end/" << streamId;
+    runRestPostRequest(url.str());
+
     return Result<void>::Success();
 }
 
