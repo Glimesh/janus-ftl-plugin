@@ -43,9 +43,15 @@ Result<std::vector<std::byte>> RestServiceConnection::GetHmacKey(ftl_channel_id_
     std::stringstream url;
     url << "/hmac/" << channelId;
 
-    JsonPtr result = runRestGetRequest(url.str());
-    json_t* jsonStreamKey = json_object_get(result.get(), "hmacKey");
+    httplib::Result response = runGetRequest(url.str());
+    if (response->status >= 400)
+    {
+        return Result<std::vector<std::byte>>::Error(
+            "Channel ID does not have a stream key.");
+    }
 
+    JsonPtr result = decodeRestResponse(response);
+    json_t* jsonStreamKey = json_object_get(result.get(), "hmacKey");
     if (jsonStreamKey != nullptr && json_is_string(jsonStreamKey))
     {
         const char* keyValue = json_string_value(jsonStreamKey);
@@ -64,7 +70,16 @@ Result<ftl_stream_id_t> RestServiceConnection::StartStream(ftl_channel_id_t chan
     std::stringstream url;
     url << "/start/" << channelId;
 
-    JsonPtr result = runRestPostRequest(url.str(), true);
+    httplib::Result response = runPostRequest(url.str());
+    if (response->status >= 400)
+    {
+        std::stringstream errMsg;
+        errMsg << "Channel " << channelId << " is not allowed to stream.";
+
+        return Result<ftl_stream_id_t>::Error(errMsg.str().c_str());
+    }
+
+    JsonPtr result = decodeRestResponse(response);
     json_t* jsonStreamId = json_object_get(result.get(), "streamId");
 
     // TODO: Allow strings and ints from JSON
@@ -101,7 +116,7 @@ Result<void> RestServiceConnection::UpdateStreamMetadata(ftl_stream_id_t streamI
     std::stringstream url;
     url << "/metadata/" << streamId;
 
-    runRestPostRequest(url.str(), false, std::move(streamMetadata));
+    runPostRequest(url.str(), std::move(streamMetadata));
     return Result<void>::Success();
 }
 
@@ -109,7 +124,7 @@ Result<void> RestServiceConnection::EndStream(ftl_stream_id_t streamId)
 {
     std::stringstream url;
     url << "/end/" << streamId;
-    runRestPostRequest(url.str(), false);
+    runPostRequest(url.str());
 
     return Result<void>::Success();
 }
@@ -131,7 +146,7 @@ Result<void> RestServiceConnection::SendJpegPreviewImage(
 
     std::stringstream url;
     url << "/preview/" << streamId;
-    runRestPostRequest(url.str(), false, nullptr, files);
+    runPostRequest(url.str(), nullptr, files);
 
     // TODO: Handle errors
     return Result<void>::Success();
@@ -157,21 +172,18 @@ httplib::Client RestServiceConnection::getHttpClient()
     return client;
 }
 
-JsonPtr RestServiceConnection::runRestGetRequest(std::string url)
+httplib::Result RestServiceConnection::runGetRequest(std::string url)
 {
     // Make the request, and retry if necessary
     int numRetries = 0;
     while (true)
     {
         httplib::Client httpClient = getHttpClient();
-        JsonPtr result = nullptr;
-
         httplib::Result response = httpClient.Get(url.c_str());
-        result = processRestResponse(response);
 
-        if (result != nullptr)
+        if (response && response.error() == httplib::Error::Success && response->status < 500)
         {
-            return result;
+            return response;
         }
 
         if (numRetries < MAX_RETRIES)
@@ -195,9 +207,8 @@ JsonPtr RestServiceConnection::runRestGetRequest(std::string url)
     throw ServiceConnectionCommunicationFailedException("REST GET request failed.");
 }
 
-JsonPtr RestServiceConnection::runRestPostRequest(
+httplib::Result RestServiceConnection::runPostRequest(
     std::string url,
-    bool decode,
     JsonPtr body,
     httplib::MultipartFormDataItems fileData)
 {
@@ -210,7 +221,7 @@ JsonPtr RestServiceConnection::runRestPostRequest(
     }
     else
     {
-        bodyString = "{}";
+        bodyString = "";
     }
 
     // Make the request, and retry if necessary
@@ -218,24 +229,15 @@ JsonPtr RestServiceConnection::runRestPostRequest(
     while (true)
     {
         httplib::Client httpClient = getHttpClient();
-        JsonPtr result = nullptr;
+        httplib::Result response = (fileData.size() > 0)
+            ? httpClient.Post(url.c_str(), fileData)
+            : (body)
+            ? httpClient.Post(url.c_str(), bodyString, "application/json")
+            : httpClient.Post(url.c_str(), "", "text/plain");
 
-        // If we're doing files, use a multipart http request
-        if (fileData.size() > 0)
+        if (response && response.error() == httplib::Error::Success && response->status < 500)
         {
-            httplib::Result response = httpClient.Post(url.c_str(), fileData);
-            result = processRestResponse(response, decode);
-        }
-        // otherwise, stick with post body
-        else
-        {
-            httplib::Result response = httpClient.Post(url.c_str(), bodyString, "application/json");
-            result = processRestResponse(response, decode);
-        }
-
-        if (result != nullptr)
-        {
-            return result;
+            return response;
         }
 
         if (numRetries < MAX_RETRIES)
@@ -259,18 +261,12 @@ JsonPtr RestServiceConnection::runRestPostRequest(
     throw ServiceConnectionCommunicationFailedException("REST POST request failed.");
 }
 
-JsonPtr RestServiceConnection::processRestResponse(httplib::Result result, bool decode)
+JsonPtr RestServiceConnection::decodeRestResponse(httplib::Result result)
 {
     if (result)
     {
         if (result->status <= 299)
         {
-            if (!decode)
-            {
-                JsonPtr emptyJson(json_pack("{}"));
-                return emptyJson;
-            }
-
             // Try to parse out the response
             json_error_t error;
             JsonPtr jsonBody(json_loads(result->body.c_str(), 0, &error));
