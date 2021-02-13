@@ -12,14 +12,9 @@
 
 #include "../Utilities/FtlTypes.h"
 
-#include <fstream>
-#include <iostream>
 #include <jansson.h>
-#include <linux/limits.h>
 #include <spdlog/spdlog.h>
 #include <sstream>
-#include <stdexcept>
-#include <sys/stat.h>
 
 #pragma region Constructor/Destructor
 RestServiceConnection::RestServiceConnection(
