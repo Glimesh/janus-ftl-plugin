@@ -82,6 +82,7 @@ Configuration is achieved through environment variables.
 | `FTL_SERVICE_REST_HOSTNAME` | Hostname value (ex. `localhost`) | This is the hostname the REST service connection will attempt to reach. |
 | `FTL_SERVICE_REST_PORT` | Port number, `1`-`65535`. | This is the port used to communicate with the REST service via HTTP/HTTPS. |
 | `FTL_SERVICE_REST_HTTPS` | `0`: Use HTTP <br />`1`: Use HTTPS | Determines whether HTTPS is used to communicate with the REST service. |
+| `FTL_SERVICE_REST_PATH_BASE` | String, default: `/` | Used to add a path prefix to all REST API calls. |
 | `FTL_SERVICE_REST_AUTH_TOKEN` | String, default: `""` | Used to authenticate REST service API calls using the `Authorization` header. Leave blank to disable. |
 
 # Dockering

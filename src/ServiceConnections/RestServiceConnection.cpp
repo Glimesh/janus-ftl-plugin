@@ -21,11 +21,13 @@ RestServiceConnection::RestServiceConnection(
     std::string hostname,
     uint16_t port,
     bool useHttps,
+    std::string pathBase,
     std::string authToken)
 :
     hostname(hostname),
     port(port),
     useHttps(useHttps),
+    pathBase(pathBase),
     authToken(authToken)
 { }
 #pragma endregion

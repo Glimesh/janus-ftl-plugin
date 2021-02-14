@@ -193,6 +193,12 @@ void Configuration::Load()
         restServiceUseHttps = std::stoi(varVal);
     }
 
+    // FTL_SERVICE_REST_PATH_BASE -> RestServicePathBase
+    if (char* varVal = std::getenv("FTL_SERVICE_REST_PATH_BASE"))
+    {
+        restServicePathBase = std::string(varVal);
+    }
+
     // FTL_SERVICE_REST_AUTH_TOKEN -> RestServiceAuthToken
     if (char* varVal = std::getenv("FTL_SERVICE_REST_AUTH_TOKEN"))
     {
@@ -290,6 +296,11 @@ uint16_t Configuration::GetRestServicePort()
 bool Configuration::GetRestServiceUseHttps()
 {
     return restServiceUseHttps;
+}
+
+std::string Configuration::GetRestServicePathBase()
+{
+    return restServicePathBase;
 }
 
 std::string Configuration::GetRestServiceAuthToken()
