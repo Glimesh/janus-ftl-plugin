@@ -35,9 +35,8 @@ RestServiceConnection::RestServiceConnection(
 #pragma region Public methods
 void RestServiceConnection::Init()
 {
-    std::stringstream baseUri;
-    baseUri << (useHttps ? "https" : "http") << "://" << hostname << ":" << port;
-    spdlog::info("Using REST Service Connection @ {}", baseUri.str());
+    std::string baseUri = createBaseUri(true);
+    spdlog::info("Using REST Service Connection @ {}", baseUri);
 }
 
 Result<std::vector<std::byte>> RestServiceConnection::GetHmacKey(ftl_channel_id_t channelId)
@@ -156,11 +155,58 @@ Result<void> RestServiceConnection::SendJpegPreviewImage(
 #pragma endregion
 
 #pragma region Private methods
-httplib::Client RestServiceConnection::getHttpClient()
+std::string RestServiceConnection::resolvePathBase()
+{
+    if (pathBase == "/")
+    {
+        return "";
+    }
+
+    // Check for leading slash and insert if needed
+    std::stringstream ss;
+    if (pathBase.rfind("/", 0) == std::string::npos)
+    {
+        ss << "/" << pathBase;
+    }
+    else
+    {
+        ss << pathBase;
+    }
+
+    // Trim trailing slash
+    std::string newBase = ss.str();
+    if (newBase.find("/", newBase.size() - 1) != std::string::npos)
+    {
+        newBase.pop_back();
+    }
+
+    return newBase;
+}
+
+std::string RestServiceConnection::createBaseUri(bool includeBase)
 {
     std::stringstream baseUri;
     baseUri << (useHttps ? "https" : "http") << "://" << hostname << ":" << port;
-    httplib::Client client = httplib::Client(baseUri.str().c_str());
+    if (includeBase)
+    {
+        baseUri << resolvePathBase();
+    }
+
+    return baseUri.str();
+}
+
+std::string RestServiceConnection::constructPath(std::string path)
+{
+    std::stringstream ss;
+    ss << resolvePathBase() << path;
+
+    return ss.str();
+}
+
+httplib::Client RestServiceConnection::getHttpClient()
+{
+    std::string baseUri = createBaseUri(false);
+    httplib::Client client = httplib::Client(baseUri.c_str());
 
     if (authToken.length() > 0)
     {
@@ -181,8 +227,9 @@ httplib::Result RestServiceConnection::runGetRequest(std::string url)
     while (true)
     {
         httplib::Client httpClient = getHttpClient();
-        httplib::Result response = httpClient.Get(url.c_str());
+        std::string fullUrl = constructPath(url);
 
+        httplib::Result response = httpClient.Get(fullUrl.c_str());
         if (response && response.error() == httplib::Error::Success && response->status < 500)
         {
             return response;
@@ -231,11 +278,13 @@ httplib::Result RestServiceConnection::runPostRequest(
     while (true)
     {
         httplib::Client httpClient = getHttpClient();
+        std::string fullUrl = constructPath(url);
+
         httplib::Result response = (fileData.size() > 0)
-            ? httpClient.Post(url.c_str(), fileData)
+            ? httpClient.Post(fullUrl.c_str(), fileData)
             : (body)
-            ? httpClient.Post(url.c_str(), bodyString, "application/json")
-            : httpClient.Post(url.c_str(), "", "text/plain");
+            ? httpClient.Post(fullUrl.c_str(), bodyString, "application/json")
+            : httpClient.Post(fullUrl.c_str(), "", "text/plain");
 
         if (response && response.error() == httplib::Error::Success && response->status < 500)
         {
