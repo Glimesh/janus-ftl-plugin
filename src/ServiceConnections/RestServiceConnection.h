@@ -29,6 +29,7 @@ public:
         std::string hostname,
         uint16_t port,
         bool useHttps,
+        std::string pathBase,
         std::string authToken);
 
     // ServiceConnection
@@ -47,11 +48,15 @@ private:
     std::string hostname;
     uint16_t port;
     bool useHttps;
+    std::string pathBase;
     std::string authToken;
 
     /* Private methods */
-    httplib::Client getHttpClient();
+    std::string resolvePathBase();
+    std::string createBaseUri(bool includeBase);
+    std::string constructPath(std::string path);
 
+    httplib::Client getHttpClient();
     httplib::Result runGetRequest(std::string url);
     httplib::Result runPostRequest(std::string url, JsonPtr body = nullptr, httplib::MultipartFormDataItems fileData = httplib::MultipartFormDataItems());
     JsonPtr decodeRestResponse(httplib::Result result);

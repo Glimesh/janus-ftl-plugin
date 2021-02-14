@@ -503,6 +503,7 @@ void JanusFtl::initServiceConnection()
                 configuration->GetRestServiceHostname(),
                 configuration->GetRestServicePort(),
                 configuration->GetRestServiceUseHttps(),
+                configuration->GetRestServicePathBase(),
                 configuration->GetRestServiceAuthToken());
             break;
         case ServiceConnectionKind::DummyServiceConnection:

@@ -60,6 +60,7 @@ public:
     std::string GetRestServiceHostname();
     uint16_t GetRestServicePort();
     bool GetRestServiceUseHttps();
+    std::string GetRestServicePathBase();
     std::string GetRestServiceAuthToken();
 
 private:
@@ -97,6 +98,7 @@ private:
     std::string restServiceHostname = "localhost";
     uint16_t restServicePort = 4000;
     bool restServiceUseHttps = false;
+    std::string restServicePathBase = "/";
     std::string restServiceAuthToken;
 
     /* Private methods */
