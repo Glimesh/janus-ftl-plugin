@@ -45,9 +45,10 @@ public:
     /**
      * @brief
      *  Shuts down the connection.
-     *  This function should block until the underlying transport/socket has been closed.
+     *  This function should block until the underlying transport/socket has been closed, unless
+     *  noBlock has been set.
      */
-    virtual void Stop() = 0;
+    virtual void Stop(bool noBlock = false) = 0;
 
     /**
      * @brief Write a set of bytes to the transport

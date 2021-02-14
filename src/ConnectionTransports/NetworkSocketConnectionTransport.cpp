@@ -93,7 +93,7 @@ Result<void> NetworkSocketConnectionTransport::StartAsync()
     return Result<void>::Success();
 }
 
-void NetworkSocketConnectionTransport::Stop()
+void NetworkSocketConnectionTransport::Stop(bool noBlock)
 {
     if (!isStopping && !isStopped)
     {
@@ -107,7 +107,7 @@ void NetworkSocketConnectionTransport::Stop()
         }
 
         // Wait for the connection thread (only if it has actually started)
-        if (connectionThreadEndedFuture.valid())
+        if (!noBlock && connectionThreadEndedFuture.valid())
         {
             connectionThreadEndedFuture.wait();
         }
@@ -115,7 +115,10 @@ void NetworkSocketConnectionTransport::Stop()
     else if (isStopping && !isStopped)
     {
         // We're already stopping - just wait for the connnection thread to end.
-        connectionThreadEndedFuture.wait();
+        if (!noBlock && connectionThreadEndedFuture.valid())
+        {
+            connectionThreadEndedFuture.wait();
+        }
     }
 }
 

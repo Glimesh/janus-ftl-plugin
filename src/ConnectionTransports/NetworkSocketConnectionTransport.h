@@ -42,7 +42,7 @@ public:
     std::optional<sockaddr_in> GetAddr() override;
     std::optional<sockaddr_in6> GetAddr6() override;
     Result<void> StartAsync() override;
-    void Stop() override;
+    void Stop(bool noBlock = false) override;
     void Write(const std::vector<std::byte>& bytes) override;
     void SetOnConnectionClosed(std::function<void(void)> onConnectionClosed) override;
     void SetOnBytesReceived(
