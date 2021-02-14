@@ -189,10 +189,10 @@ void FtlServer::onNewControlConnection(std::unique_ptr<ConnectionTransport> conn
         }
 
         std::unique_lock streamDataLock(streamDataMutex);
-        spdlog::info("{} didn't authenticate within {}ms, closing",
-            addrString, CONNECTION_AUTH_TIMEOUT_MS);
         if (pendingControlConnections.count(ingestControlConnectionPtr) > 0)
         {
+            spdlog::info("{} didn't authenticate within {}ms, closing",
+                addrString, CONNECTION_AUTH_TIMEOUT_MS);
             pendingControlConnections.at(ingestControlConnectionPtr)->Stop();
             pendingControlConnections.erase(ingestControlConnectionPtr);
         }

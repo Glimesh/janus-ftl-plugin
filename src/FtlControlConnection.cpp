@@ -126,10 +126,13 @@ void FtlControlConnection::writeToTransport(const std::string& str)
 void FtlControlConnection::stopConnection()
 {
     // First, stop the transport
-    // (we will not receive an OnConnectionClosed if we call Stop ourselves)
-    transport->Stop();
+    // The first parameter indicates that the transport shouldn't wait for its read thread
+    // to end - this is important to prevent deadlocks, as we are likely calling from that same
+    // thread.
+    transport->Stop(true);
     
-    // Notify that we've stopped
+    // Notify that we've stopped -  we will not receive an OnConnectionClosed from the transport
+    // if we call Stop ourselves
     if (onConnectionClosed)
     {
         onConnectionClosed(*this);
