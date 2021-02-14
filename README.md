@@ -70,7 +70,7 @@ Configuration is achieved through environment variables.
 | `FTL_ORCHESTRATOR_PORT` | Port number, `1`-`65535`. | The port number to use when connecting to the Orchestrator service. |
 | `FTL_ORCHESTRATOR_PSK` | String of arbitrary hex values (ex. `001122334455ff`) | This is the pre-shared key used to establish a secure TLS1.3 connection to the Orchestrator service. |
 | `FTL_ORCHESTRATOR_REGION_CODE` | String value, default: `global` | This is a string value used by the Orchestrator to group regional nodes together to more effectively distribute video traffic. |
-| `FTL_SERVICE_CONNECTION` | `DUMMY`: (default) Dummy service connection <br />`GLIMESH`: Glimesh service connection | This configuration value determines which service FTL should plug into for operations such as stream key retrieval. |
+| `FTL_SERVICE_CONNECTION` | `DUMMY`: (default) Dummy service connection <br />`GLIMESH`: Glimesh service connection <br />`REST`: REST service connection ([docs](docs/REST_SERVICE.md)) | This configuration value determines which service FTL should plug into for operations such as stream key retrieval. |
 | `FTL_SERVICE_METADATAREPORTINTERVALMS` | Time in milliseconds | Defaults to `4000`, controls how often FTL stream metadata will be reported to the service. |
 | `FTL_SERVICE_DUMMY_HMAC_KEY` | String, default: `aBcDeFgHiJkLmNoPqRsTuVwXyZ123456` | Key all FTL clients must use if service connection is `DUMMY`. The HMAC key is the part after the dash in a stream key.` |
 | `FTL_SERVICE_DUMMY_PREVIEWIMAGEPATH` | `/path/to/directory` | The path where preview images of ingested streams will be stored if service connection is `DUMMY`. Defaults to `~/.ftl/previews` |
@@ -79,6 +79,10 @@ Configuration is achieved through environment variables.
 | `FTL_SERVICE_GLIMESH_HTTPS` | `0`: Use HTTP <br />`1`: Use HTTPS | Determines whether HTTPS is used to communicate with the Glimesh service. |
 | `FTL_SERVICE_GLIMESH_CLIENTID` | String, OAuth Client ID returned by Glimesh app registration. | Used to authenticate to the Glimesh API. |
 | `FTL_SERVICE_GLIMESH_CLIENTSECRET` | String, OAuth Client Secret returned by Glimesh app registration. | Used to authenticate to the Glimesh API. |
+| `FTL_SERVICE_REST_HOSTNAME` | Hostname value (ex. `localhost`) | This is the hostname the REST service connection will attempt to reach. |
+| `FTL_SERVICE_REST_PORT` | Port number, `1`-`65535`. | This is the port used to communicate with the REST service via HTTP/HTTPS. |
+| `FTL_SERVICE_REST_HTTPS` | `0`: Use HTTP <br />`1`: Use HTTPS | Determines whether HTTPS is used to communicate with the REST service. |
+| `FTL_SERVICE_REST_AUTH_TOKEN` | String, default: `""` | Used to authenticate REST service API calls using the `Authorization` header. Leave blank to disable. |
 
 # Dockering
 

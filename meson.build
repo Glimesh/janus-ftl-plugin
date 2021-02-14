@@ -38,6 +38,7 @@ sources = files([
     'src/ServiceConnections/DummyServiceConnection.cpp',
     'src/ServiceConnections/EdgeNodeServiceConnection.cpp',
     'src/ServiceConnections/GlimeshServiceConnection.cpp',
+    'src/ServiceConnections/RestServiceConnection.cpp',
     # Connection Transports
     'src/ConnectionTransports/NetworkSocketConnectionTransport.cpp',
     # Connection Listeners

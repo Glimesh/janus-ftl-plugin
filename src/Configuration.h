@@ -26,6 +26,7 @@ enum class ServiceConnectionKind
 {
     DummyServiceConnection = 0,
     GlimeshServiceConnection = 1,
+    RestServiceConnection = 2,
 };
 
 class Configuration
@@ -54,6 +55,12 @@ public:
     bool GetGlimeshServiceUseHttps();
     std::string GetGlimeshServiceClientId();
     std::string GetGlimeshServiceClientSecret();
+
+    // REST Service Connection Values
+    std::string GetRestServiceHostname();
+    uint16_t GetRestServicePort();
+    bool GetRestServiceUseHttps();
+    std::string GetRestServiceAuthToken();
 
 private:
     /* Backing stores */
@@ -85,6 +92,12 @@ private:
     bool glimeshServiceUseHttps = false;
     std::string glimeshServiceClientId;
     std::string glimeshServiceClientSecret;
+
+    // Rest Service Connection Backing Stores
+    std::string restServiceHostname = "localhost";
+    uint16_t restServicePort = 4000;
+    bool restServiceUseHttps = false;
+    std::string restServiceAuthToken;
 
     /* Private methods */
     /**
