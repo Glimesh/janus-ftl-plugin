@@ -75,7 +75,7 @@ Result<void> FtlStream::StartAsync()
     // Record start time
     startTime = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
     steadyStartTime = std::chrono::steady_clock::now();
-    spdlog::info("FTL media stream started for channel {} / stream {}",
+    spdlog::info("Media stream receiving for Channel {} / Stream {}",
         controlConnection->GetChannelId(), streamId);
     return Result<void>::Success();
 }

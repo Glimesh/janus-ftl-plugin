@@ -12,6 +12,7 @@
 #include "Utilities/FtlTypes.h"
 #include "Utilities/Result.h"
 
+#include <condition_variable>
 #include <functional>
 #include <future>
 #include <list>
@@ -98,6 +99,7 @@ private:
     /* Constants */
     static constexpr uint16_t DEFAULT_MEDIA_MIN_PORT = 9000;
     static constexpr uint16_t DEFAULT_MEDIA_MAX_PORT = 10000;
+    static constexpr uint16_t CONNECTION_AUTH_TIMEOUT_MS = 5000;
 
     /* Private fields */
     // Connection managers
@@ -112,6 +114,9 @@ private:
     const uint16_t minMediaPort;
     const uint16_t maxMediaPort;
     // Misc fields
+    bool isStopping { false };
+    std::mutex stoppingMutex;
+    std::condition_variable stoppingConditionVariable;
     std::thread listenThread;
     std::shared_mutex streamDataMutex;
     std::unordered_map<FtlControlConnection*, std::unique_ptr<FtlControlConnection>>

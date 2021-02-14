@@ -391,7 +391,7 @@ Result<ftl_stream_id_t> JanusFtl::ftlServerStreamStarted(ftl_channel_id_t channe
             });
     }
 
-    spdlog::info("New stream started. Channel {} / Stream {}.", channelId, streamId);
+    spdlog::info("Registered new stream: Channel {} / Stream {}.", channelId, streamId);
 
     return Result<ftl_stream_id_t>::Success(streamId);
 }

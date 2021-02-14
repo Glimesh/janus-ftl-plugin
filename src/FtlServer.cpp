@@ -11,6 +11,7 @@
 #include "ConnectionListeners/ConnectionListener.h"
 #include "FtlControlConnection.h"
 #include "FtlStream.h"
+#include "Utilities/Util.h"
 
 #include <spdlog/spdlog.h>
 
@@ -55,6 +56,25 @@ void FtlServer::StartAsync()
 void FtlServer::Stop()
 {
     spdlog::info("Stopping FtlServer...");
+    // Spin down any active threads
+    {
+        std::lock_guard stopLock(stoppingMutex);
+        isStopping = true;
+    }
+    stoppingConditionVariable.notify_all();
+    // Stop listening for new connections
+    ingestControlListener->StopListening();
+    // Close any open connections
+    std::unique_lock lock(streamDataMutex);
+    for (const auto& pendingPair : pendingControlConnections)
+    {
+        pendingPair.second->Stop();
+    }
+    pendingControlConnections.clear();
+    for (const auto& activePair : activeStreams)
+    {
+        activePair.second.Stream->Stop();
+    }
 }
 
 Result<void> FtlServer::StopStream(ftl_channel_id_t channelId, ftl_stream_id_t streamId)
@@ -143,6 +163,8 @@ void FtlServer::removeStreamRecord(FtlStream* stream,
 void FtlServer::onNewControlConnection(std::unique_ptr<ConnectionTransport> connection)
 {
     std::unique_lock lock(streamDataMutex);
+    std::string addrString = connection->GetAddr().has_value() ? 
+        Util::AddrToString(connection->GetAddr().value().sin_addr) : "UNKNOWN";
     auto ingestControlConnection = std::make_unique<FtlControlConnection>(
         std::move(connection),
         onRequestKey,
@@ -154,7 +176,28 @@ void FtlServer::onNewControlConnection(std::unique_ptr<ConnectionTransport> conn
         std::move(ingestControlConnection));
     ingestControlConnectionPtr->StartAsync();
 
-    spdlog::info("New FTL control connection is pending.");
+    spdlog::info("New FTL control connection is pending from {}", addrString);
+
+    // If this connection doesn't successfully auth in a certain amount of time, close it.
+    auto timeoutThread = std::thread([this, ingestControlConnectionPtr, addrString]() {
+        std::unique_lock threadLock(stoppingMutex);
+        stoppingConditionVariable.wait_for(threadLock,
+            std::chrono::milliseconds(CONNECTION_AUTH_TIMEOUT_MS));
+        if (isStopping)
+        {
+            return;
+        }
+
+        std::unique_lock streamDataLock(streamDataMutex);
+        spdlog::info("{} didn't authenticate within {}ms, closing",
+            addrString, CONNECTION_AUTH_TIMEOUT_MS);
+        if (pendingControlConnections.count(ingestControlConnectionPtr) > 0)
+        {
+            pendingControlConnections.at(ingestControlConnectionPtr)->Stop();
+            pendingControlConnections.erase(ingestControlConnectionPtr);
+        }
+    });
+    timeoutThread.detach();
 }
 
 Result<uint16_t> FtlServer::onControlStartMediaPort(FtlControlConnection& controlConnection,
@@ -216,6 +259,8 @@ Result<uint16_t> FtlServer::onControlStartMediaPort(FtlControlConnection& contro
     activeStreams.try_emplace(stream.get(), std::move(stream), mediaPort);
 
     // Pass the media port back to the control connection
+    spdlog::info("{} started streaming on Channel {} / Stream {}", 
+        Util::AddrToString(targetAddr), channelId, streamId);
     return Result<uint16_t>::Success(mediaPort);
 }
 

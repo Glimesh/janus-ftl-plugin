@@ -239,7 +239,10 @@ void FtlControlConnection::processConnectCommand(const std::string& command)
             isAuthenticated = true;
             channelId = requestedChannelId;
             writeToTransport("200\n");
-            spdlog::info("Channel {} authenticated successfully.", requestedChannelId);
+            std::string addrStr = transport->GetAddr().has_value() ? 
+                Util::AddrToString(transport->GetAddr().value().sin_addr) : "UNKNOWN";
+            spdlog::info("{} authenticated as Channel {} successfully.", addrStr,
+                requestedChannelId);
         }
         else
         {
@@ -430,8 +433,8 @@ void FtlControlConnection::processDotCommand()
         return;
     }
     uint16_t mediaPort = mediaPortResult.Value;
-    spdlog::info("Starting stream for Channel {} on UDP port {}...", channelId, mediaPort);
     isStreaming = true;
+    spdlog::info("Assigned Channel {} media port {}", channelId, mediaPort);
     writeToTransport(fmt::format("200 hi. Use UDP port {}\n", mediaPort));
 }
 
