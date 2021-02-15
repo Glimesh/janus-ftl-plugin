@@ -208,13 +208,9 @@ httplib::Client RestServiceConnection::getHttpClient()
     std::string baseUri = createBaseUri(false);
     httplib::Client client = httplib::Client(baseUri.c_str());
 
-    if (authToken.length() > 0)
+    if (!authToken.empty())
     {
-        httplib::Headers headers
-        {
-            {"Authorization", authToken}
-        };
-        client.set_default_headers(headers);
+        client.set_bearer_token_auth(authToken.c_str());
     }
 
     return client;

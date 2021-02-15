@@ -48,20 +48,22 @@ public:
 private:
     /* Private members */
     const int MAX_RETRIES = 5;
-    const int TIME_BETWEEN_RETRIES_MS = 3000;
+    const std::chrono::milliseconds TIME_BETWEEN_RETRIES = std::chrono::seconds(3);
+    // Account for potential server-to-server clock skew and network delay by considering
+    // an access token as expired well before its actual expiration time.
+    const std::chrono::milliseconds ACCESS_TOKEN_EXPIRATION_DELTA = std::chrono::seconds(10);
     std::string hostname;
     uint16_t port;
     bool useHttps;
     std::string clientId;
     std::string clientSecret;
     std::string accessToken;
-    std::time_t accessTokenExpirationTime;
+    std::chrono::steady_clock::time_point accessTokenExpirationTime;
     std::mutex authMutex;
 
     /* Private methods */
     httplib::Client getHttpClient();
-    void ensureAuth();
-    JsonPtr runGraphQlQuery(std::string query, JsonPtr variables = nullptr, httplib::MultipartFormDataItems fileData = httplib::MultipartFormDataItems());
-    JsonPtr processGraphQlResponse(httplib::Result result);
-    tm parseIso8601DateTime(std::string dateTimeString);
+    std::string getAccessToken();
+    JsonPtr runGraphQLQuery(std::string query, JsonPtr variables = nullptr, httplib::MultipartFormDataItems fileData = httplib::MultipartFormDataItems());
+    JsonPtr processGraphQLResponse(httplib::Result result);
 };

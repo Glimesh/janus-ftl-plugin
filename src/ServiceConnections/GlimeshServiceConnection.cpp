@@ -39,7 +39,7 @@ void GlimeshServiceConnection::Init()
     spdlog::info("Using Glimesh Service Connection @ {}", baseUri.str());
 
     // Try to auth
-    ensureAuth();
+    getAccessToken();
 }
 
 Result<std::vector<std::byte>> GlimeshServiceConnection::GetHmacKey(uint32_t channelId)
@@ -47,7 +47,7 @@ Result<std::vector<std::byte>> GlimeshServiceConnection::GetHmacKey(uint32_t cha
     std::stringstream query;
     query << "query { channel(id: \"" << channelId << "\") { hmacKey } }";
 
-    JsonPtr queryResult = runGraphQlQuery(query.str());
+    JsonPtr queryResult = runGraphQLQuery(query.str());
     json_t* jsonData = json_object_get(queryResult.get(), "data");
     if (jsonData != nullptr)
     {
@@ -75,7 +75,7 @@ Result<ftl_stream_id_t> GlimeshServiceConnection::StartStream(ftl_channel_id_t c
     std::stringstream query;
     query << "mutation { startStream(channelId: " << channelId << ") { id } }";
 
-    JsonPtr queryResult = runGraphQlQuery(query.str());
+    JsonPtr queryResult = runGraphQLQuery(query.str());
     json_t* jsonData = json_object_get(queryResult.get(), "data");
     if (jsonData != nullptr)
     {
@@ -123,7 +123,7 @@ Result<void> GlimeshServiceConnection::UpdateStreamMetadata(ftl_stream_id_t stre
         "videoWidth",        metadata.videoWidth
     ));
 
-    JsonPtr queryResult = runGraphQlQuery(query.str(), std::move(queryVariables));
+    JsonPtr queryResult = runGraphQLQuery(query.str(), std::move(queryVariables));
     json_t* jsonData = json_object_get(queryResult.get(), "data");
     if (jsonData != nullptr)
     {
@@ -148,7 +148,7 @@ Result<void> GlimeshServiceConnection::EndStream(ftl_stream_id_t streamId)
     std::stringstream query;
     query << "mutation { endStream(streamId: " << streamId << ") { id } }";
 
-    JsonPtr queryResult = runGraphQlQuery(query.str());
+    JsonPtr queryResult = runGraphQLQuery(query.str());
     json_t* jsonData = json_object_get(queryResult.get(), "data");
     if (jsonData != nullptr)
     {
@@ -186,7 +186,7 @@ Result<void> GlimeshServiceConnection::SendJpegPreviewImage(
         }
     };
 
-    runGraphQlQuery(query.str(), nullptr, files);
+    runGraphQLQuery(query.str(), nullptr, files);
     // TODO: Handle errors
     return Result<void>::Success();
 }
@@ -197,35 +197,20 @@ httplib::Client GlimeshServiceConnection::getHttpClient()
 {
     std::stringstream baseUri;
     baseUri << (useHttps ? "https" : "http") << "://" << hostname << ":" << port;
-    httplib::Client client = httplib::Client(baseUri.str().c_str());
-
-    if (accessToken.length() > 0)
-    {
-        httplib::Headers headers
-        {
-            {"Authorization", "Bearer " + accessToken}
-        };
-        client.set_default_headers(headers);
-    }
-
-    return client;
+    return httplib::Client(baseUri.str().c_str());
 }
 
-void GlimeshServiceConnection::ensureAuth()
+std::string GlimeshServiceConnection::getAccessToken()
 {
     std::lock_guard<std::mutex> lock(authMutex);
 
     // Do we already have an access token that hasn't expired?
-    // TODO: Check expiration
-    if (accessToken.length() > 0)
+    auto now = std::chrono::steady_clock::now();
+    if (!accessToken.empty() && accessTokenExpirationTime - ACCESS_TOKEN_EXPIRATION_DELTA > now)
     {
-        std::time_t currentTime = std::time(nullptr);
-        if (currentTime < accessTokenExpirationTime)
-        {
-            return;
-        }
+        return accessToken;
     }
-    
+
     // No? Let's fetch one.
     httplib::Params params
     {
@@ -234,14 +219,17 @@ void GlimeshServiceConnection::ensureAuth()
         { "grant_type", "client_credentials" },
         { "scope", "streamkey" }
     };
+    auto requestId = httplib::detail::random_string(20);
+    httplib::Headers headers = {
+        { "x-request-id", requestId }
+    };
 
     httplib::Client httpClient = getHttpClient();
-    if (httplib::Result res = httpClient.Post("/api/oauth/token", params))
+    if (httplib::Result res = httpClient.Post("/api/oauth/token", headers, params))
     {
         if (res->status == 200)
         {
             // Try to parse out the access token
-            // TODO: Parse out expiration time
             json_error_t error;
             JsonPtr jsonBody(json_loads(res->body.c_str(), 0, &error));
             if (jsonBody.get() != nullptr)
@@ -250,40 +238,35 @@ void GlimeshServiceConnection::ensureAuth()
                 json_t* accessTokenJson = json_object_get(jsonBody.get(), "access_token");
                 accessToken = std::string(json_string_value(accessTokenJson));
 
-                // Extract time to expiration
+                // Extract seconds until expiration
                 json_t* expiresInJson = json_object_get(jsonBody.get(), "expires_in");
-                uint32_t expiresIn = json_integer_value(expiresInJson);
+                json_int_t expiresInInt = json_integer_value(expiresInJson);
+                auto expiresIn = std::chrono::seconds(json_integer_value(expiresInJson));
 
                 // Extract creation time
                 json_t* createdAtJson = json_object_get(jsonBody.get(), "created_at");
-                std::string createdAtStr = std::string(json_string_value(createdAtJson));
-                tm createdAtTime = parseIso8601DateTime(createdAtStr);
+                std::string createdAtString = std::string(json_string_value(createdAtJson));
 
-                // Calculate expiration time
-                std::time_t expirationTime = std::mktime(&createdAtTime);
-                expirationTime += expiresIn;
-                accessTokenExpirationTime = expirationTime;
+                // Calculate expiration time point using monotonic clock
+                accessTokenExpirationTime = std::chrono::steady_clock::now() + expiresIn;
 
-                std::time_t currentTime = std::time(nullptr);
-                spdlog::info("Received new access token: {}, expires in {} - {} = {} seconds",
-                    accessToken, expirationTime, currentTime, (expirationTime - currentTime));
-                return;
+                spdlog::info("Received new access token: expires in {} seconds, created at {}, request id {}",
+                    expiresInInt, createdAtString, requestId);
+                return accessToken;
             }
         }
     }
 
     // TODO: Retry logic based on failure/status code
+    spdlog::error("Failed to get new access token, request id: {}", requestId);
     throw std::runtime_error("Access token request failed!");
 }
 
-JsonPtr GlimeshServiceConnection::runGraphQlQuery(
+JsonPtr GlimeshServiceConnection::runGraphQLQuery(
     std::string query,
     JsonPtr variables,
     httplib::MultipartFormDataItems fileData)
 {
-    // Make sure we have a valid access token
-    ensureAuth();
-
     std::string queryString;
 
     // If we're doing a file upload, we pack this all into a multipart request
@@ -312,19 +295,21 @@ JsonPtr GlimeshServiceConnection::runGraphQlQuery(
     while (true)
     {
         httplib::Client httpClient = getHttpClient();
+        httpClient.set_bearer_token_auth(getAccessToken().c_str());
+
         JsonPtr result = nullptr;
 
         // If we're doing files, use a multipart http request
         if (fileData.size() > 0)
         {
             httplib::Result response = httpClient.Post("/api", fileData);
-            result = processGraphQlResponse(response);
+            result = processGraphQLResponse(response);
         }
         // otherwise, stick with post body
         else
         {
             httplib::Result response = httpClient.Post("/api", queryString, "application/json");
-            result = processGraphQlResponse(response);
+            result = processGraphQLResponse(response);
         }
 
         if (result != nullptr)
@@ -335,9 +320,9 @@ JsonPtr GlimeshServiceConnection::runGraphQlQuery(
         if (numRetries < MAX_RETRIES)
         {
             spdlog::warn("Attempt {} / {}: Glimesh file upload GraphQL query failed. "
-                "Retrying in {} ms...", (numRetries + 1), MAX_RETRIES, TIME_BETWEEN_RETRIES_MS);
+                "Retrying in {} ms...", (numRetries + 1), MAX_RETRIES, TIME_BETWEEN_RETRIES.count());
 
-            std::this_thread::sleep_for(std::chrono::milliseconds(TIME_BETWEEN_RETRIES_MS));
+            std::this_thread::sleep_for(TIME_BETWEEN_RETRIES);
             ++numRetries;
         }
         else
@@ -353,7 +338,7 @@ JsonPtr GlimeshServiceConnection::runGraphQlQuery(
     throw ServiceConnectionCommunicationFailedException("Glimesh GraphQL query failed.");
 }
 
-JsonPtr GlimeshServiceConnection::processGraphQlResponse(httplib::Result result)
+JsonPtr GlimeshServiceConnection::processGraphQLResponse(httplib::Result result)
 {
     if (result)
     {
@@ -387,28 +372,4 @@ JsonPtr GlimeshServiceConnection::processGraphQlResponse(httplib::Result result)
     }
 }
 
-// Thanks StackOverflow friends
-// https://stackoverflow.com/a/26896792/2874534
-tm GlimeshServiceConnection::parseIso8601DateTime(std::string dateTimeString)
-{
-    int y, M, d, h, m, tzh, tzm;
-    float s;
-    if (6 < sscanf(dateTimeString.c_str(), "%d-%d-%dT%d:%d:%f%d:%dZ", &y, &M, &d, &h, &m, &s, &tzh, &tzm))
-    {
-        if (tzh < 0)
-        {
-            tzm = -tzm; // Fix the sign on minutes.
-        }
-    }
-
-    tm time { 0 };
-    time.tm_year = y - 1900; // Year since 1900
-    time.tm_mon = M - 1;     // 0-11
-    time.tm_mday = d;        // 1-31
-    time.tm_hour = h;        // 0-23
-    time.tm_min = m;         // 0-59
-    time.tm_sec = (int)s;    // 0-60
-
-    return time;
-}
 #pragma endregion
