@@ -95,6 +95,7 @@ Result<void> NetworkSocketConnectionTransport::StartAsync()
 
 void NetworkSocketConnectionTransport::Stop(bool noBlock)
 {
+    std::unique_lock stoppingLock(stoppingMutex);
     if (!isStopping && !isStopped)
     {
         // Looks like this connection hasn't stopped yet.
@@ -109,6 +110,7 @@ void NetworkSocketConnectionTransport::Stop(bool noBlock)
         // Wait for the connection thread (only if it has actually started)
         if (!noBlock && connectionThreadEndedFuture.valid())
         {
+            stoppingLock.unlock(); // Unlock so the connection thread can finish stopping
             connectionThreadEndedFuture.wait();
         }
     }
@@ -117,6 +119,7 @@ void NetworkSocketConnectionTransport::Stop(bool noBlock)
         // We're already stopping - just wait for the connnection thread to end.
         if (!noBlock && connectionThreadEndedFuture.valid())
         {
+            stoppingLock.unlock(); // Unlock so the connection thread can finish stopping
             connectionThreadEndedFuture.wait();
         }
     }
@@ -124,6 +127,7 @@ void NetworkSocketConnectionTransport::Stop(bool noBlock)
 
 void NetworkSocketConnectionTransport::Write(const std::vector<std::byte>& bytes)
 {
+    std::unique_lock stoppingLock(stoppingMutex);
     if (!isStopping && !isStopped)
     {
         std::lock_guard<std::mutex> lock(writeMutex);
@@ -150,6 +154,7 @@ void NetworkSocketConnectionTransport::Write(const std::vector<std::byte>& bytes
                 "Write returned {} result, expected {} bytes.",
                 writeResult,
                 bytes.size());
+            stoppingLock.unlock(); // Unlock so we can start stopping :)
             closeConnection();
         }
     }
@@ -414,30 +419,35 @@ Result<void> NetworkSocketConnectionTransport::sendData(const std::vector<std::b
 
 void NetworkSocketConnectionTransport::closeConnection()
 {
-    if (!isStopping)
+    bool fireCallback = false;
     {
-        // We haven't been asked to stop, so the connection was closed for another reason.
-        isStopping = true;
-        if (socketHandle != 0)
+        std::lock_guard lock(stoppingMutex);
+        if (!isStopping)
         {
-            shutdown(socketHandle, SHUT_RDWR);
-            close(socketHandle);
+            // We haven't been asked to stop, so the connection was closed for another reason.
+            isStopping = true;
+            if (socketHandle != 0)
+            {
+                shutdown(socketHandle, SHUT_RDWR);
+                close(socketHandle);
+            }
+
+            // We only callback when we haven't been explicitly told to stop (to avoid feedback loops)
+            fireCallback = true;
         }
 
-        // We only callback when we haven't been explicitly told to stop (to avoid feedback loops)
-        if (onConnectionClosed)
+        if (!isStopped)
         {
-            onConnectionClosed();
+            // Once we reach this point, we know the socket has finished closing.
+            // Close our write pipes
+            close(writePipeFds[0]);
+            close(writePipeFds[1]);
+            isStopped = true;
         }
     }
-
-    if (!isStopped)
+    if (fireCallback && onConnectionClosed)
     {
-        // Once we reach this point, we know the socket has finished closing.
-        // Close our write pipes
-        close(writePipeFds[0]);
-        close(writePipeFds[1]);
-        isStopped = true;
+        onConnectionClosed();
     }
 }
 #pragma endregion Private methods

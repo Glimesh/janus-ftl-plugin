@@ -44,6 +44,7 @@ public:
     std::string GetOrchestratorRegionCode();
     ServiceConnectionKind GetServiceConnectionKind();
     uint16_t GetServiceConnectionMetadataReportIntervalMs();
+    uint32_t GetMaxAllowedBitsPerSecond();
 
     // Dummy Service Connection Values
     std::vector<std::byte> GetDummyHmacKey();
@@ -73,6 +74,7 @@ private:
     std::string orchestratorRegionCode = "global";
     ServiceConnectionKind serviceConnectionKind = ServiceConnectionKind::DummyServiceConnection;
     uint16_t serviceConnectionMetadataReportIntervalMs = 4000;
+    uint32_t maxAllowedBitsPerSecond = 0;
 
     // Dummy Service Connection Backing Stores
     // "aBcDeFgHiJkLmNoPqRsTuVwXyZ123456"

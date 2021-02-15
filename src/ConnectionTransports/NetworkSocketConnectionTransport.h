@@ -56,8 +56,9 @@ private:
     const NetworkSocketConnectionKind connectionKind;
     const int socketHandle = 0;
     std::optional<sockaddr_in> targetAddr = std::nullopt;
-    std::atomic<bool> isStopping { false }; // Indicates that the socket has been requested to close
-    std::atomic<bool> isStopped { false };  // Indicates that the socket has finished closing
+    std::mutex stoppingMutex;
+    bool isStopping = false; // Indicates that the socket has been requested to close
+    bool isStopped = false;  // Indicates that the socket has finished closing
     std::thread connectionThread;
     std::future<void> connectionThreadEndedFuture;
     std::mutex writeMutex;

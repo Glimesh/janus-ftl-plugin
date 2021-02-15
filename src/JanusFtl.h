@@ -113,6 +113,7 @@ private:
     std::shared_ptr<FtlConnection> orchestrationClient;
     std::shared_ptr<ServiceConnection> serviceConnection;
     std::unordered_map<VideoCodecKind, std::unique_ptr<PreviewGenerator>> previewGenerators;
+    uint32_t maxAllowedBitsPerSecond = 0;
     uint32_t metadataReportIntervalMs = 0;
     uint16_t minMediaPort = 9000; // TODO: Migrate to Configuration
     uint16_t maxMediaPort = 10000; // TODO: Migrate to Configuration
