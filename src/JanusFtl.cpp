@@ -64,6 +64,7 @@ int JanusFtl::Init(janus_callbacks* callback, const char* config_path)
 
     configuration = std::make_unique<Configuration>();
     configuration->Load();
+    maxAllowedBitsPerSecond = configuration->GetMaxAllowedBitsPerSecond();
     metadataReportIntervalMs = configuration->GetServiceConnectionMetadataReportIntervalMs();
 
     initPreviewGenerators();
@@ -353,7 +354,15 @@ Result<ftl_stream_id_t> JanusFtl::ftlServerStreamStarted(ftl_channel_id_t channe
     if (streams.count(channelId) > 0)
     {
         const ActiveStream& activeStream = streams[channelId];
-        ftlServer->StopStream(activeStream.ChannelId, activeStream.StreamId);
+        spdlog::info("Existing Stream {} exists for Channel {} - stopping...",
+            activeStream.StreamId, channelId);
+        Result<void> stopResult = ftlServer->StopStream(activeStream.ChannelId,
+            activeStream.StreamId);
+        if (stopResult.IsError)
+        {
+            spdlog::error("Received error attempting to stop Channel {} / Stream {}: {}",
+                activeStream.ChannelId, activeStream.StreamId, stopResult.ErrorMessage);
+        }
         endStream(activeStream.ChannelId, activeStream.StreamId, lock);
     }
 
@@ -544,7 +553,7 @@ void JanusFtl::serviceReportThreadBody(std::promise<void>&& threadEndedPromise)
 
         // Quickly gather data from active streams while under lock (defer reporting to avoid
         // holding up other threads)
-        std::shared_lock lock(streamDataMutex);
+        std::unique_lock lock(streamDataMutex);
         std::list<std::pair<std::pair<ftl_channel_id_t, ftl_stream_id_t>,
             std::pair<FtlStream::FtlStreamStats, FtlStream::FtlKeyframe>>> statsAndKeyframes = 
                 ftlServer->GetAllStatsAndKeyframes();
@@ -553,15 +562,36 @@ void JanusFtl::serviceReportThreadBody(std::promise<void>&& threadEndedPromise)
         for (const auto& streamInfo : statsAndKeyframes)
         {
             const ftl_channel_id_t& channelId = streamInfo.first.first;
+            const ftl_stream_id_t& streamId = streamInfo.first.second;
+            const FtlStream::FtlStreamStats& stats = streamInfo.second.first;
             if (streams.count(channelId) <= 0)
             {
                 continue;
             }
+
+            // Has this stream exceeded the maximum allowed bandwidth?
+            if ((maxAllowedBitsPerSecond > 0) && 
+                (stats.RollingAverageBitrateBps > maxAllowedBitsPerSecond))
+            {
+                spdlog::info("Channel {} / Stream {} is averaging {}bps, exceeding the limit of "
+                    "{}bps. Stopping the stream...", channelId, streamId,
+                    stats.RollingAverageBitrateBps, maxAllowedBitsPerSecond);
+                Result<void> stopResult = ftlServer->StopStream(channelId, streamId);
+                if (stopResult.IsError)
+                {
+                    spdlog::error("Received error attempting to stop Channel {} / Stream {}: {}",
+                        channelId, streamId, stopResult.ErrorMessage);
+                }
+                endStream(channelId, streamId, lock);
+                continue;
+            }
+
             metadataByChannel.try_emplace(channelId, streams.at(channelId).Metadata);
             viewersByChannel.try_emplace(channelId, streams.at(channelId).ViewerSessions.size());
         }
         lock.unlock();
 
+        // Now coalesce all of the stream data and report it to the ServiceConnection
         for (const auto& streamInfo : statsAndKeyframes)
         {
             const ftl_channel_id_t& channelId = streamInfo.first.first;

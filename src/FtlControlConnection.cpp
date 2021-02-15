@@ -53,8 +53,13 @@ Result<void> FtlControlConnection::StartAsync()
     return transport->StartAsync();
 }
 
-void FtlControlConnection::Stop()
+void FtlControlConnection::Stop(FtlResponseCode responseCode)
 {
+    // BUG: Right now, the transport will halt the connection before these bytes
+    // can make it out the door.
+    // https://github.com/Glimesh/janus-ftl-plugin/issues/79
+    writeToTransport(fmt::format("{}\n", responseCode));
+
     // Stop the transport, but don't fire OnConnectionClosed
     transport->Stop();
 }
@@ -174,7 +179,7 @@ void FtlControlConnection::processHmacCommand()
     hmacPayload = Util::GenerateRandomBinaryPayload(HMAC_PAYLOAD_SIZE);
     std::string hmacString = Util::ByteArrayToHexString(
         reinterpret_cast<std::byte*>(&hmacPayload[0]), hmacPayload.size());
-    writeToTransport(fmt::format("200 {}\n", hmacString));
+    writeToTransport(fmt::format("{} {}\n", FtlResponseCode::FTL_INGEST_RESP_OK, hmacString));
 }
 
 void FtlControlConnection::processConnectCommand(const std::string& command)
@@ -241,7 +246,7 @@ void FtlControlConnection::processConnectCommand(const std::string& command)
         {
             isAuthenticated = true;
             channelId = requestedChannelId;
-            writeToTransport("200\n");
+            writeToTransport(fmt::format("{}\n", FtlResponseCode::FTL_INGEST_RESP_OK));
             std::string addrStr = transport->GetAddr().has_value() ? 
                 Util::AddrToString(transport->GetAddr().value().sin_addr) : "UNKNOWN";
             spdlog::info("{} authenticated as Channel {} successfully.", addrStr,
@@ -438,12 +443,13 @@ void FtlControlConnection::processDotCommand()
     uint16_t mediaPort = mediaPortResult.Value;
     isStreaming = true;
     spdlog::info("Assigned Channel {} media port {}", channelId, mediaPort);
-    writeToTransport(fmt::format("200 hi. Use UDP port {}\n", mediaPort));
+    writeToTransport(fmt::format("{} hi. Use UDP port {}\n", FtlResponseCode::FTL_INGEST_RESP_OK,
+        mediaPort));
 }
 
 void FtlControlConnection::processPingCommand()
 {
     // TODO: Rate limit this.
-    writeToTransport("201\n");
+    writeToTransport(fmt::format("{}\n", FtlResponseCode::FTL_INGEST_RESP_PING));
 }
 #pragma endregion Private functions

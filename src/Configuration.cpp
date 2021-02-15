@@ -123,6 +123,12 @@ void Configuration::Load()
         serviceConnectionMetadataReportIntervalMs = std::stoi(varVal);
     }
 
+    // FTL_MAX_ALLOWED_BITS_PER_SECOND -> MaxAllowedBitsPerSecond
+    if (char* varVal = std::getenv("FTL_MAX_ALLOWED_BITS_PER_SECOND"))
+    {
+        maxAllowedBitsPerSecond = std::stoi(varVal);
+    }
+
     // FTL_SERVICE_DUMMY_HMAC_KEY -> DummyHmacKey
     if (char* varVal = std::getenv("FTL_SERVICE_DUMMY_HMAC_KEY"))
     {
@@ -256,6 +262,11 @@ std::string Configuration::GetDummyPreviewImagePath()
 uint16_t Configuration::GetServiceConnectionMetadataReportIntervalMs()
 {
     return serviceConnectionMetadataReportIntervalMs;
+}
+
+uint32_t Configuration::GetMaxAllowedBitsPerSecond()
+{
+    return maxAllowedBitsPerSecond;
 }
 
 std::string Configuration::GetGlimeshServiceHostname()
