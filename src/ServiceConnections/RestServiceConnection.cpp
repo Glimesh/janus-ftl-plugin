@@ -24,12 +24,22 @@ RestServiceConnection::RestServiceConnection(
     std::string pathBase,
     std::string authToken)
 :
+    httpClient(createBaseUri(false).c_str()),
     hostname(hostname),
     port(port),
     useHttps(useHttps),
     pathBase(pathBase),
     authToken(authToken)
-{ }
+{
+    if (authToken.length() > 0)
+    {
+        httplib::Headers headers
+        {
+            {"Authorization", authToken}
+        };
+        httpClient.set_default_headers(headers);
+    }
+}
 #pragma endregion
 
 #pragma region Public methods
@@ -203,30 +213,12 @@ std::string RestServiceConnection::constructPath(std::string path)
     return ss.str();
 }
 
-httplib::Client RestServiceConnection::getHttpClient()
-{
-    std::string baseUri = createBaseUri(false);
-    httplib::Client client = httplib::Client(baseUri.c_str());
-
-    if (authToken.length() > 0)
-    {
-        httplib::Headers headers
-        {
-            {"Authorization", authToken}
-        };
-        client.set_default_headers(headers);
-    }
-
-    return client;
-}
-
 httplib::Result RestServiceConnection::runGetRequest(std::string url)
 {
     // Make the request, and retry if necessary
     int numRetries = 0;
     while (true)
     {
-        httplib::Client httpClient = getHttpClient();
         std::string fullUrl = constructPath(url);
 
         httplib::Result response = httpClient.Get(fullUrl.c_str());
@@ -277,7 +269,6 @@ httplib::Result RestServiceConnection::runPostRequest(
     int numRetries = 0;
     while (true)
     {
-        httplib::Client httpClient = getHttpClient();
         std::string fullUrl = constructPath(url);
 
         httplib::Result response = (fileData.size() > 0)
@@ -312,7 +303,7 @@ httplib::Result RestServiceConnection::runPostRequest(
     throw ServiceConnectionCommunicationFailedException("REST POST request failed.");
 }
 
-JsonPtr RestServiceConnection::decodeRestResponse(httplib::Result result)
+JsonPtr RestServiceConnection::decodeRestResponse(const httplib::Result& result)
 {
     if (result)
     {

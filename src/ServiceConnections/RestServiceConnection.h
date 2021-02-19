@@ -45,6 +45,7 @@ private:
     /* Private members */
     const int MAX_RETRIES = 5;
     const int TIME_BETWEEN_RETRIES_MS = 3000;
+    httplib::Client httpClient;
     std::string hostname;
     uint16_t port;
     bool useHttps;
@@ -56,8 +57,8 @@ private:
     std::string createBaseUri(bool includeBase);
     std::string constructPath(std::string path);
 
-    httplib::Client getHttpClient();
     httplib::Result runGetRequest(std::string url);
-    httplib::Result runPostRequest(std::string url, JsonPtr body = nullptr, httplib::MultipartFormDataItems fileData = httplib::MultipartFormDataItems());
-    JsonPtr decodeRestResponse(httplib::Result result);
+    httplib::Result runPostRequest(std::string url, JsonPtr body = nullptr,
+        httplib::MultipartFormDataItems fileData = httplib::MultipartFormDataItems());
+    JsonPtr decodeRestResponse(const httplib::Result& result);
 };
