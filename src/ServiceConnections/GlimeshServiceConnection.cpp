@@ -12,6 +12,7 @@
 
 #include "../Utilities/FtlTypes.h"
 
+#include <fmt/core.h>
 #include <jansson.h>
 #include <string.h>
 #include <spdlog/spdlog.h>
@@ -23,6 +24,7 @@ GlimeshServiceConnection::GlimeshServiceConnection(
     bool useHttps,
     std::string clientId,
     std::string clientSecret) : 
+    httpClient(fmt::format("{}://{}:{}", (useHttps ? "https" : "http"), hostname, port).c_str()),
     hostname(hostname),
     port(port),
     useHttps(useHttps),
@@ -193,30 +195,11 @@ Result<void> GlimeshServiceConnection::SendJpegPreviewImage(
 #pragma endregion
 
 #pragma region Private methods
-httplib::Client GlimeshServiceConnection::getHttpClient()
-{
-    std::stringstream baseUri;
-    baseUri << (useHttps ? "https" : "http") << "://" << hostname << ":" << port;
-    httplib::Client client = httplib::Client(baseUri.str().c_str());
-
-    if (accessToken.length() > 0)
-    {
-        httplib::Headers headers
-        {
-            {"Authorization", "Bearer " + accessToken}
-        };
-        client.set_default_headers(headers);
-    }
-
-    return client;
-}
-
 void GlimeshServiceConnection::ensureAuth()
 {
     std::lock_guard<std::mutex> lock(authMutex);
 
     // Do we already have an access token that hasn't expired?
-    // TODO: Check expiration
     if (accessToken.length() > 0)
     {
         std::time_t currentTime = std::time(nullptr);
@@ -235,7 +218,6 @@ void GlimeshServiceConnection::ensureAuth()
         { "scope", "streamkey" }
     };
 
-    httplib::Client httpClient = getHttpClient();
     if (httplib::Result res = httpClient.Post("/api/oauth/token", params))
     {
         if (res->status == 200)
@@ -267,6 +249,13 @@ void GlimeshServiceConnection::ensureAuth()
                 std::time_t currentTime = std::time(nullptr);
                 spdlog::info("Received new access token: {}, expires in {} - {} = {} seconds",
                     accessToken, expirationTime, currentTime, (expirationTime - currentTime));
+
+                // Update HTTP client Authorization header
+                httplib::Headers headers
+                {
+                    {"Authorization", "Bearer " + accessToken}
+                };
+                httpClient.set_default_headers(headers);
                 return;
             }
         }
@@ -311,7 +300,6 @@ JsonPtr GlimeshServiceConnection::runGraphQlQuery(
     int numRetries = 0;
     while (true)
     {
-        httplib::Client httpClient = getHttpClient();
         JsonPtr result = nullptr;
 
         // If we're doing files, use a multipart http request
@@ -334,7 +322,7 @@ JsonPtr GlimeshServiceConnection::runGraphQlQuery(
 
         if (numRetries < MAX_RETRIES)
         {
-            spdlog::warn("Attempt {} / {}: Glimesh file upload GraphQL query failed. "
+            spdlog::warn("Attempt {} / {}: Glimesh GraphQL query failed. "
                 "Retrying in {} ms...", (numRetries + 1), MAX_RETRIES, TIME_BETWEEN_RETRIES_MS);
 
             std::this_thread::sleep_for(std::chrono::milliseconds(TIME_BETWEEN_RETRIES_MS));
@@ -347,13 +335,13 @@ JsonPtr GlimeshServiceConnection::runGraphQlQuery(
     }
     
     // We've exceeded our retry limit
-    spdlog::error("Aborting Glimesh file upload GraphQL query after {} failed attempts.",
+    spdlog::error("Aborting Glimesh GraphQL query after {} failed attempts.",
         MAX_RETRIES);
 
     throw ServiceConnectionCommunicationFailedException("Glimesh GraphQL query failed.");
 }
 
-JsonPtr GlimeshServiceConnection::processGraphQlResponse(httplib::Result result)
+JsonPtr GlimeshServiceConnection::processGraphQlResponse(const httplib::Result& result)
 {
     if (result)
     {
@@ -382,7 +370,8 @@ JsonPtr GlimeshServiceConnection::processGraphQlResponse(httplib::Result result)
     }
     else
     {
-        spdlog::warn("Glimesh service connection HTTP request failed.");
+        spdlog::warn("Glimesh service connection HTTP request failed with error {}",
+            result.error());
         return nullptr;
     }
 }
