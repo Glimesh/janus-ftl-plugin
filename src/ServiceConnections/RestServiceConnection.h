@@ -53,12 +53,10 @@ private:
     std::string authToken;
 
     /* Private methods */
-    std::string resolvePathBase();
-    std::string createBaseUri(bool includeBase);
-    std::string constructPath(std::string path);
-
-    httplib::Result runGetRequest(std::string url);
-    httplib::Result runPostRequest(std::string url, JsonPtr body = nullptr,
+    std::string getHostUrl(bool https, std::string hostname, uint16_t port);
+    std::string relativeToAbsolutePath(std::string relativePath);
+    httplib::Result runGetRequest(std::string path);
+    httplib::Result runPostRequest(std::string path, JsonPtr body = nullptr,
         httplib::MultipartFormDataItems fileData = httplib::MultipartFormDataItems());
     JsonPtr decodeRestResponse(const httplib::Result& result);
 };
