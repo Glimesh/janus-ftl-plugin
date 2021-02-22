@@ -12,6 +12,8 @@
 
 #include "../Utilities/FtlTypes.h"
 
+#include <cassert>
+#include <fmt/core.h>
 #include <jansson.h>
 #include <spdlog/spdlog.h>
 #include <sstream>
@@ -24,14 +26,27 @@ RestServiceConnection::RestServiceConnection(
     std::string pathBase,
     std::string authToken)
 :
-    httpClient(createBaseUri(false).c_str()),
+    httpClient(getHostUrl(useHttps, hostname, port).c_str()),
     hostname(hostname),
     port(port),
     useHttps(useHttps),
     pathBase(pathBase),
     authToken(authToken)
 {
-    if (authToken.length() > 0)
+    // Ensure our path base has a starting slash and ending slash
+    if (this->pathBase.size() > 0)
+    {
+        if (this->pathBase.front() != '/')
+        {
+            this->pathBase.insert(this->pathBase.begin(), '/');
+        }
+        if (this->pathBase.back() != '/')
+        {
+            this->pathBase.push_back('/');
+        }
+    }
+
+    if (this->authToken.length() > 0)
     {
         httplib::Headers headers
         {
@@ -45,16 +60,13 @@ RestServiceConnection::RestServiceConnection(
 #pragma region Public methods
 void RestServiceConnection::Init()
 {
-    std::string baseUri = createBaseUri(true);
-    spdlog::info("Using REST Service Connection @ {}", baseUri);
+    spdlog::info("Using REST Service Connection @ {}{}", getHostUrl(useHttps, hostname, port),
+        pathBase);
 }
 
 Result<std::vector<std::byte>> RestServiceConnection::GetHmacKey(ftl_channel_id_t channelId)
 {
-    std::stringstream url;
-    url << "/hmac/" << channelId;
-
-    httplib::Result response = runGetRequest(url.str());
+    httplib::Result response = runGetRequest(fmt::format("hmac/{}", channelId));
     if (response->status >= 400)
     {
         return Result<std::vector<std::byte>>::Error(
@@ -78,16 +90,11 @@ Result<std::vector<std::byte>> RestServiceConnection::GetHmacKey(ftl_channel_id_
 
 Result<ftl_stream_id_t> RestServiceConnection::StartStream(ftl_channel_id_t channelId)
 {
-    std::stringstream url;
-    url << "/start/" << channelId;
-
-    httplib::Result response = runPostRequest(url.str());
+    httplib::Result response = runPostRequest(fmt::format("start/{}", channelId));
     if (response->status >= 400)
     {
-        std::stringstream errMsg;
-        errMsg << "Channel " << channelId << " is not allowed to stream.";
-
-        return Result<ftl_stream_id_t>::Error(errMsg.str().c_str());
+        return Result<ftl_stream_id_t>::Error(
+            fmt::format("Channel {} is not allowed to stream.", channelId));
     }
 
     JsonPtr result = decodeRestResponse(response);
@@ -124,19 +131,14 @@ Result<void> RestServiceConnection::UpdateStreamMetadata(ftl_stream_id_t streamI
         "videoWidth",        metadata.videoWidth
     ));
 
-    std::stringstream url;
-    url << "/metadata/" << streamId;
-
-    runPostRequest(url.str(), std::move(streamMetadata));
+    runPostRequest(fmt::format("metadata/{}", streamId), std::move(streamMetadata));
     return Result<void>::Success();
 }
 
 Result<void> RestServiceConnection::EndStream(ftl_stream_id_t streamId)
 {
-    std::stringstream url;
-    url << "/end/" << streamId;
-    runPostRequest(url.str());
-
+    runPostRequest(fmt::format("end/{}", streamId));
+    // TOOD: Handle errors
     return Result<void>::Success();
 }
 
@@ -154,10 +156,7 @@ Result<void> RestServiceConnection::SendJpegPreviewImage(
             .content_type = "image/jpeg"
         }
     };
-
-    std::stringstream url;
-    url << "/preview/" << streamId;
-    runPostRequest(url.str(), nullptr, files);
+    runPostRequest(fmt::format("preview/{}", streamId), nullptr, files);
 
     // TODO: Handle errors
     return Result<void>::Success();
@@ -165,63 +164,26 @@ Result<void> RestServiceConnection::SendJpegPreviewImage(
 #pragma endregion
 
 #pragma region Private methods
-std::string RestServiceConnection::resolvePathBase()
+std::string RestServiceConnection::getHostUrl(bool https, std::string hostname, uint16_t port)
 {
-    if (pathBase == "/")
-    {
-        return "";
-    }
-
-    // Check for leading slash and insert if needed
-    std::stringstream ss;
-    if (pathBase.rfind("/", 0) == std::string::npos)
-    {
-        ss << "/" << pathBase;
-    }
-    else
-    {
-        ss << pathBase;
-    }
-
-    // Trim trailing slash
-    std::string newBase = ss.str();
-    if (newBase.find("/", newBase.size() - 1) != std::string::npos)
-    {
-        newBase.pop_back();
-    }
-
-    return newBase;
+    return fmt::format("{}://{}:{}", (https ? "https" : "http"), hostname, port);
 }
 
-std::string RestServiceConnection::createBaseUri(bool includeBase)
+std::string RestServiceConnection::relativeToAbsolutePath(std::string relativePath)
 {
-    std::stringstream baseUri;
-    baseUri << (useHttps ? "https" : "http") << "://" << hostname << ":" << port;
-    if (includeBase)
-    {
-        baseUri << resolvePathBase();
-    }
-
-    return baseUri.str();
+    // Relative path must not be prefixed with a slash
+    assert((relativePath.size() > 0) && (relativePath.front() != '/'));
+    return fmt::format("{}{}", pathBase, relativePath);
 }
 
-std::string RestServiceConnection::constructPath(std::string path)
-{
-    std::stringstream ss;
-    ss << resolvePathBase() << path;
-
-    return ss.str();
-}
-
-httplib::Result RestServiceConnection::runGetRequest(std::string url)
+httplib::Result RestServiceConnection::runGetRequest(std::string path)
 {
     // Make the request, and retry if necessary
     int numRetries = 0;
     while (true)
     {
-        std::string fullUrl = constructPath(url);
-
-        httplib::Result response = httpClient.Get(fullUrl.c_str());
+        std::string absolutePath = relativeToAbsolutePath(path);
+        httplib::Result response = httpClient.Get(absolutePath.c_str());
         if (response && response.error() == httplib::Error::Success && response->status < 500)
         {
             return response;
@@ -248,34 +210,32 @@ httplib::Result RestServiceConnection::runGetRequest(std::string url)
     throw ServiceConnectionCommunicationFailedException("REST GET request failed.");
 }
 
-httplib::Result RestServiceConnection::runPostRequest(
-    std::string url,
-    JsonPtr body,
+httplib::Result RestServiceConnection::runPostRequest(std::string path, JsonPtr body,
     httplib::MultipartFormDataItems fileData)
 {
-    std::string bodyString;
-    if (body)
-    {
-        char* bodyStr = json_dumps(body.get(), 0);
-        bodyString = std::string(bodyStr);
-        free(bodyStr);
-    }
-    else
-    {
-        bodyString = "";
-    }
-
     // Make the request, and retry if necessary
     int numRetries = 0;
     while (true)
     {
-        std::string fullUrl = constructPath(url);
-
-        httplib::Result response = (fileData.size() > 0)
-            ? httpClient.Post(fullUrl.c_str(), fileData)
-            : (body)
-            ? httpClient.Post(fullUrl.c_str(), bodyString, "application/json")
-            : httpClient.Post(fullUrl.c_str(), "", "text/plain");
+        std::string absolutePath = relativeToAbsolutePath(path);
+        httplib::Result response = [&]
+        {
+            if (fileData.size() > 0)
+            {
+                return httpClient.Post(absolutePath.c_str(), fileData);
+            }
+            else if (body)
+            {
+                char* bodyStr = json_dumps(body.get(), 0);
+                auto bodyString = std::string(bodyStr);
+                free(bodyStr);
+                return httpClient.Post(absolutePath.c_str(), bodyString, "application/json");
+            }
+            else
+            {
+                return httpClient.Post(absolutePath.c_str(), "", "text/plain");
+            }
+        }();
 
         if (response && response.error() == httplib::Error::Success && response->status < 500)
         {
@@ -316,10 +276,9 @@ JsonPtr RestServiceConnection::decodeRestResponse(const httplib::Result& result)
             {
                 // If we can't parse the JSON of a successful request, retrying won't help,
                 // so we throw here.
-                std::stringstream errStr;
-                errStr << "Could not parse JSON response from REST Service Connection: \n"
-                    << result->body.c_str();
-                throw ServiceConnectionCommunicationFailedException(errStr.str().c_str());
+                throw ServiceConnectionCommunicationFailedException(
+                    fmt::format("Could not parse JSON response from REST Service Connection: \n{}",
+                        result->body).c_str());
             }
             return jsonBody;
         }
