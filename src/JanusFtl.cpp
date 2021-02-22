@@ -553,21 +553,32 @@ void JanusFtl::serviceReportThreadBody(std::promise<void>&& threadEndedPromise)
 
         // Quickly gather data from active streams while under lock (defer reporting to avoid
         // holding up other threads)
-        std::unique_lock lock(streamDataMutex);
         std::list<std::pair<std::pair<ftl_channel_id_t, ftl_stream_id_t>,
             std::pair<FtlStream::FtlStreamStats, FtlStream::FtlKeyframe>>> statsAndKeyframes = 
                 ftlServer->GetAllStatsAndKeyframes();
         std::unordered_map<ftl_channel_id_t, MediaMetadata> metadataByChannel;
         std::unordered_map<ftl_channel_id_t, uint32_t> viewersByChannel;
+        std::unique_lock lock(streamDataMutex);
+        for (const auto& streamInfo : statsAndKeyframes)
+        {
+            const ftl_channel_id_t& channelId = streamInfo.first.first;
+            if (streams.count(channelId) <= 0)
+            {
+                continue;
+            }
+            metadataByChannel.try_emplace(channelId, streams.at(channelId).Metadata);
+            viewersByChannel.try_emplace(channelId, streams.at(channelId).ViewerSessions.size());
+        }
+        lock.unlock();
+
+        // Now coalesce all of the stream data and report it to the ServiceConnection
+        std::list<std::pair<ftl_channel_id_t, ftl_stream_id_t>> streamsStopped;
         for (const auto& streamInfo : statsAndKeyframes)
         {
             const ftl_channel_id_t& channelId = streamInfo.first.first;
             const ftl_stream_id_t& streamId = streamInfo.first.second;
             const FtlStream::FtlStreamStats& stats = streamInfo.second.first;
-            if (streams.count(channelId) <= 0)
-            {
-                continue;
-            }
+            const FtlStream::FtlKeyframe& keyframe = streamInfo.second.second;
 
             // Has this stream exceeded the maximum allowed bandwidth?
             if ((maxAllowedBitsPerSecond > 0) && 
@@ -582,22 +593,10 @@ void JanusFtl::serviceReportThreadBody(std::promise<void>&& threadEndedPromise)
                     spdlog::error("Received error attempting to stop Channel {} / Stream {}: {}",
                         channelId, streamId, stopResult.ErrorMessage);
                 }
-                endStream(channelId, streamId, lock);
+                streamsStopped.emplace_back(channelId, streamId);
                 continue;
             }
 
-            metadataByChannel.try_emplace(channelId, streams.at(channelId).Metadata);
-            viewersByChannel.try_emplace(channelId, streams.at(channelId).ViewerSessions.size());
-        }
-        lock.unlock();
-
-        // Now coalesce all of the stream data and report it to the ServiceConnection
-        for (const auto& streamInfo : statsAndKeyframes)
-        {
-            const ftl_channel_id_t& channelId = streamInfo.first.first;
-            const ftl_stream_id_t& streamId = streamInfo.first.second;
-            const FtlStream::FtlStreamStats& stats = streamInfo.second.first;
-            const FtlStream::FtlKeyframe& keyframe = streamInfo.second.second;
             if ((viewersByChannel.count(channelId) <= 0) ||
                 (metadataByChannel.count(channelId) <= 0))
             {
@@ -639,6 +638,16 @@ void JanusFtl::serviceReportThreadBody(std::promise<void>&& threadEndedPromise)
                         channelId, streamId, e.what());
                 }
             }
+        }
+
+        // Acquire lock and clean up any streams that were stopped
+        // We do this last to avoid locking while calling FtlStream::Stop(), since this call could
+        // wind up waiting forever on the connection thread due to it taking a lock in the
+        // JanusFtl::ftlServerRtpPacket callback
+        lock.lock();
+        for (const auto channelStreamPair : streamsStopped)
+        {
+            endStream(channelStreamPair.first, channelStreamPair.second, lock);
         }
     }
 }
