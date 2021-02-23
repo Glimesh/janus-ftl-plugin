@@ -31,7 +31,10 @@ public:
     /* PreviewGenerator */
     std::vector<uint8_t> GenerateJpegImage(
         const std::list<std::vector<std::byte>>& keyframePackets) override;
+    std::pair<uint16_t, uint16_t> ReadStreamDimensions(
+        const std::list<std::vector<std::byte>>& keyframePackets) override;
 
 private:
+    AVFramePtr readFramePtr(const std::list<std::vector<std::byte>>& keyframePackets);
     std::vector<uint8_t> encodeToJpeg(AVFramePtr frame);
 };

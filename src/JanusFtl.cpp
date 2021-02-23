@@ -562,6 +562,30 @@ void JanusFtl::serviceReportThreadBody(std::promise<void>&& threadEndedPromise)
             }
             const MediaMetadata& mediaMetadata = metadataByChannel.at(channelId);
             const uint32_t& numActiveViewers = viewersByChannel.at(channelId);
+
+            // Fallback width/height values, usually wrong
+            uint16_t videoWidth = mediaMetadata.VideoWidth;
+            uint16_t videoHeight = mediaMetadata.VideoHeight;
+
+            // Do we have a previewgenerator available for this stream's codec?
+            if ((keyframe.Packets.size() > 0) && (previewGenerators.count(keyframe.Codec) > 0))
+            {
+                try
+                {
+                    // Read correct video dimensions
+                    std::pair<uint16_t, uint16_t> widthHeight =
+                        previewGenerators.at(keyframe.Codec)->ReadStreamDimensions(keyframe.Packets);
+
+                    videoWidth = widthHeight.first;
+                    videoHeight = widthHeight.second;
+                }
+                catch (const PreviewGenerationFailedException& e)
+                {
+                    spdlog::warn("Couldn't read stream video size for channel {} / stream {}: {}",
+                        channelId, streamId, e.what());
+                }
+            }
+
             StreamMetadata metadata
             {
                 .ingestServerHostname = configuration->GetMyHostname(),
@@ -576,8 +600,8 @@ void JanusFtl::serviceReportThreadBody(std::promise<void>&& threadEndedPromise)
                 .streamerClientVendorVersion = mediaMetadata.VendorVersion,
                 .videoCodec = SupportedVideoCodecs::VideoCodecString(mediaMetadata.VideoCodec),
                 .audioCodec = SupportedAudioCodecs::AudioCodecString(mediaMetadata.AudioCodec),
-                .videoWidth = mediaMetadata.VideoWidth,
-                .videoHeight = mediaMetadata.VideoHeight,
+                .videoWidth = videoWidth,
+                .videoHeight = videoHeight,
             };
             Result<ServiceConnection::ServiceResponse> updateResult =
                 serviceConnection->UpdateStreamMetadata(streamId, metadata);

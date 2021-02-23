@@ -29,4 +29,7 @@ public:
 
     virtual std::vector<uint8_t> GenerateJpegImage(
         const std::list<std::vector<std::byte>>& keyframePackets) = 0;
+
+    virtual std::pair<uint16_t, uint16_t> ReadStreamDimensions(
+        const std::list<std::vector<std::byte>>& keyframePackets) = 0;
 };

@@ -16,6 +16,25 @@
 std::vector<uint8_t> H264PreviewGenerator::GenerateJpegImage(
     const std::list<std::vector<std::byte>>& keyframePackets)
 {
+    AVFramePtr frame = readFramePtr(keyframePackets);
+
+    // Now encode it to a JPEG
+    std::vector<uint8_t> returnVal = encodeToJpeg(std::move(frame));
+    return returnVal;
+}
+
+std::pair<uint16_t, uint16_t> H264PreviewGenerator::ReadStreamDimensions(
+    const std::list<std::vector<std::byte>>& keyframePackets)
+{
+    AVFramePtr frame = readFramePtr(keyframePackets);
+    return std::make_pair(frame->width, frame->height);
+}
+#pragma endregion
+
+#pragma region Private methods
+AVFramePtr H264PreviewGenerator::readFramePtr(
+    const std::list<std::vector<std::byte>>& keyframePackets)
+{
     std::vector<char> keyframeDataBuffer;
 
     // We need to shove all of the keyframe NAL units into a buffer to feed into libav
@@ -116,14 +135,9 @@ std::vector<uint8_t> H264PreviewGenerator::GenerateJpegImage(
         throw PreviewGenerationFailedException("Error receiving decoded frame.");
     }
 
-    // Now encode it to a JPEG
-    std::vector<uint8_t> returnVal = encodeToJpeg(std::move(frame));
-
-    return returnVal;
+    return frame;
 }
-#pragma endregion
 
-#pragma region Private methods
 std::vector<uint8_t> H264PreviewGenerator::encodeToJpeg(AVFramePtr frame)
 {
     int ret;
