@@ -13,7 +13,6 @@
 #include "ServiceConnection.h"
 #include "../Utilities/JanssonPtr.h"
 
-#include <httplib.h>
 #include <string>
 
 /**
