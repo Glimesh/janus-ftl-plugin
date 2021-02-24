@@ -9,7 +9,6 @@
 
 #include "Utilities/Util.h"
 
-//#include <fmt/core.h>
 #include <netdb.h>
 #include <openssl/hmac.h>
 #include <regex>

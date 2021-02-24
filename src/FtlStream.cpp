@@ -21,8 +21,6 @@
 #include <memory>
 #include <mutex>
 #include <poll.h>
-// #include <spdlog/spdlog.h>
-
 #include <spdlog/fmt/bin_to_hex.h>
 
 #pragma region Constructor/Destructor

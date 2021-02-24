@@ -2,7 +2,7 @@ project(
     'janus_ftl',
     'cpp',
     default_options: [
-        'cpp_std=c++20', # C++20 standard
+        'cpp_std=c++2a', # C++20 standard
         'b_lundef=false', # Don't fail over undefined references, since we refer to some Janus code
         'werror=true', # treat warnings as errors
     ],
@@ -52,8 +52,9 @@ sources = files([
     'src/entrypoint.cpp',
 ])
 
+# Pull in subprojects
 fmt_wrap = subproject('fmt', default_options: 'default_library=static')
-meson.override_dependency('fmt', fmt_wrap.get_variable('fmt_dep'))
+meson.override_dependency('fmt', fmt_wrap.get_variable('fmt_dep')) # Use our copy of fmt for spdlog
 spdlog_wrap = subproject('spdlog', default_options: ['default_library=static', 'compile_library=true', 'external_fmt=true'] )
 
 deps = [

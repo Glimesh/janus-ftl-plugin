@@ -13,8 +13,6 @@
 #include "FtlStream.h"
 #include "Utilities/Util.h"
 
-// #include <spdlog/spdlog.h>
-
 #pragma region Constructor/Destructor
 FtlServer::FtlServer(
     std::unique_ptr<ConnectionListener> ingestControlListener,
