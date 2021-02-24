@@ -16,9 +16,6 @@ add_project_arguments('-Wno-unknown-pragmas', language: 'cpp')
 # Tell cpp-httplib that we want HTTPS support
 add_project_arguments('-DCPPHTTPLIB_OPENSSL_SUPPORT', language: 'cpp') 
 
-# Tell spdlog that we're including our own copy of fmt
-add_project_arguments('-DSPDLOG_FMT_EXTERNAL', language: 'cpp')
-
 # REMOVEME
 add_project_arguments('-ftime-report', language : 'cpp')
 # /REMOVEME

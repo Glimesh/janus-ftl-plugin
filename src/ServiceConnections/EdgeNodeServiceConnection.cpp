@@ -9,7 +9,7 @@
 
 #include "../Utilities/Util.h"
 
-#include <algorithm>
+// #include <algorithm>
 
 #pragma region Constructor/Destructor
 EdgeNodeServiceConnection::EdgeNodeServiceConnection()

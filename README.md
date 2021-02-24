@@ -29,6 +29,41 @@ cd build
 ninja
 ```
 
+### Use GCC 10 compiler
+
+This project utilizes some C++20 features available only in GCC 10 or newer.
+
+If you are building on a recent Ubuntu distribution, you can install the `gcc-10` and `g++-10` packages and configure meson to use them for compilation:
+
+```sh
+CC=gcc-10 CXX=g++-10 meson build/
+```
+
+### Building for production
+
+To enable optimizations, set meson to build in `debugoptimized` mode (recommended instead of `release` so you can use the debug information diagnose issues).
+
+```sh
+meson --buildtype=debugoptimized build/
+```
+
+If you've already previously configured meson, you can reconfigure it:
+
+```sh
+meson --reconfigure --buildtype=debugoptimized build/
+```
+
+### Building on resource-constrained machines
+
+Some machines (like the teensy tiny DigitalOcean droplet) will fail to finish building with the default configuration.
+
+Consider configuring ninja to disable parallel builds to allow the build to finish successfully:
+
+```sh
+cd build
+ninja -j 1
+```
+
 ## Installing
 
 _(from `build/` directory)_

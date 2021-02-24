@@ -7,8 +7,8 @@
 
 #pragma once
 
-#include <future>
-#include <memory>
+// #include <future>
+// #include <memory>
 
 // Forward declarations
 class ConnectionTransport;

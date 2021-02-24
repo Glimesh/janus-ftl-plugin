@@ -10,11 +10,11 @@
 
 #include "Configuration.h"
 
-#include <algorithm>
+// #include <algorithm>
 #include <cstdlib>
 #include <limits.h>
 #include <sstream>
-#include <string>
+// #include <string>
 #include <string.h>
 #include <unistd.h>
 #include <wordexp.h>

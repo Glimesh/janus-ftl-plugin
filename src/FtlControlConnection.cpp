@@ -10,7 +10,7 @@
 #include "ConnectionTransports/ConnectionTransport.h"
 #include "Utilities/Util.h"
 
-#include <algorithm>
+// #include <algorithm>
 //#include <fmt/core.h>
 #include <openssl/hmac.h>
 // #include <spdlog/spdlog.h>

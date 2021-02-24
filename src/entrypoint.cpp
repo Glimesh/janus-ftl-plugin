@@ -15,7 +15,7 @@
 #include "ConnectionListeners/TcpConnectionListener.h"
 #include "JanusFtl.h"
 
-#include <memory>
+// #include <memory>
 extern "C" 
 {
     #include <plugins/plugin.h>
