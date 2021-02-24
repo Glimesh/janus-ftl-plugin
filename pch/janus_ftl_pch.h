@@ -9,6 +9,8 @@
  */
 
 #include <fmt/core.h>
+#include <httplib.h>
 #include <spdlog/spdlog.h>
 
-#include <httplib.h>
+#include "../src/Utilities/FtlTypes.h"
+#include "../src/Utilities/Result.h"

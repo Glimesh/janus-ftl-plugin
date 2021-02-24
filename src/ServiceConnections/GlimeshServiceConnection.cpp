@@ -10,7 +10,7 @@
 
 #include "GlimeshServiceConnection.h"
 
-#include "../Utilities/FtlTypes.h"
+//#include "../Utilities/FtlTypes.h"
 
 //#include <fmt/core.h>
 #include <jansson.h>

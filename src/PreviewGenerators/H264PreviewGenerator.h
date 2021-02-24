@@ -11,7 +11,7 @@
 #pragma once
 
 #include "PreviewGenerator.h"
-#include "../Utilities/FtlTypes.h"
+//#include "../Utilities/FtlTypes.h"
 #include "../Utilities/LibAvCodecPtr.h"
 
 extern "C"

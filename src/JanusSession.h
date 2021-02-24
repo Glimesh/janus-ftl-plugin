@@ -11,7 +11,7 @@
 #pragma once
 
 #include "FtlStream.h"
-#include "Utilities/FtlTypes.h"
+//#include "Utilities/FtlTypes.h"
 
 #include <vector>
 
