@@ -46,7 +46,7 @@ jobs:
         path: janus-ftl-plugin
         submodules: true
     - name: Build FTL
-      run: cd janus-ftl-plugin && CC=gcc-10 CXX=g++-10 meson build/ && cd build/ && ninja
+      run: cd janus-ftl-plugin && CC=gcc-10 CXX=g++-10 meson --buildtype=debugoptimized build/ && cd build/ && ninja
     - name: Upload Build Artifact
       uses: actions/upload-artifact@v2
       with:
