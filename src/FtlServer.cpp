@@ -13,7 +13,7 @@
 #include "FtlStream.h"
 #include "Utilities/Util.h"
 
-#include <spdlog/spdlog.h>
+// #include <spdlog/spdlog.h>
 
 #pragma region Constructor/Destructor
 FtlServer::FtlServer(

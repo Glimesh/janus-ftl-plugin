@@ -19,6 +19,10 @@ add_project_arguments('-DCPPHTTPLIB_OPENSSL_SUPPORT', language: 'cpp')
 # Tell spdlog that we're including our own copy of fmt
 add_project_arguments('-DSPDLOG_FMT_EXTERNAL', language: 'cpp')
 
+# REMOVEME
+add_project_arguments('-ftime-report', language : 'cpp')
+# /REMOVEME
+
 # Set the DEBUG define if we're a debug build
 if get_option('buildtype').to_lower() == 'debug'
     add_project_arguments('-DDEBUG', language : 'cpp')
@@ -57,6 +61,10 @@ sources = files([
     'src/entrypoint.cpp',
 ])
 
+fmt_wrap = subproject('fmt', default_options: 'default_library=static')
+meson.override_dependency('fmt', fmt_wrap.get_variable('fmt_dep'))
+spdlog_wrap = subproject('spdlog', default_options: ['default_library=static', 'compile_library=true', 'external_fmt=true'] )
+
 deps = [
     dependency('glib-2.0'),
     dependency('libsrtp2'),
@@ -65,8 +73,8 @@ deps = [
     dependency('libcrypto'),
     dependency('libavcodec'),
     # Meson wrapped dependencies
-    subproject('fmt', default_options: 'default_library=static').get_variable('fmt_dep'),
-    subproject('spdlog').get_variable('spdlog_dep'),
+    fmt_wrap.get_variable('fmt_dep'),
+    spdlog_wrap.get_variable('spdlog_dep'),
 ]
 
 incdir = include_directories(
@@ -79,6 +87,7 @@ incdir = include_directories(
 shared_library(
     'janus_ftl',
     sources,
+    cpp_pch: 'pch/janus_ftl_pch.h',
     dependencies: deps,
     include_directories: incdir,
     install: true,
