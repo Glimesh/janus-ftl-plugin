@@ -41,7 +41,7 @@ CC=gcc-10 CXX=g++-10 meson build/
 
 ### Building for production
 
-To enable optimizations, set meson to build in `debugoptimized` mode (recommended instead of `release` so you can use the debug information diagnose issues).
+To enable optimizations, set meson to build in `debugoptimized` mode (recommended over `release` mode so you can use the debug information to diagnose issues).
 
 ```sh
 meson --buildtype=debugoptimized build/
@@ -55,9 +55,9 @@ meson --reconfigure --buildtype=debugoptimized build/
 
 ### Building on resource-constrained machines
 
-Some machines (like the teensy tiny DigitalOcean droplet) will fail to finish building with the default configuration.
+Some machines (like the teensy tiny DigitalOcean droplet) will fail to finish building with the default Ninja build configuration.
 
-Consider configuring ninja to disable parallel builds to allow the build to finish successfully:
+Consider configuring Ninja to disable parallel builds to allow the build to finish successfully:
 
 ```sh
 cd build
