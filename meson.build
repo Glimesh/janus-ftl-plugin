@@ -2,11 +2,9 @@ project(
     'janus_ftl',
     'cpp',
     default_options: [
-        'cpp_std=c++2a', # C++20 standard
+        'cpp_std=c++20', # C++20 standard
         'b_lundef=false', # Don't fail over undefined references, since we refer to some Janus code
-        'b_asneeded=false', # Don't exclude libraries if we don't reference them directly
         'werror=true', # treat warnings as errors
-        'default_library=static',
     ],
 )
 
@@ -65,6 +63,7 @@ deps = [
     dependency('libssl'),
     dependency('libcrypto'),
     dependency('libavcodec'),
+    dependency('libavutil'),
     # Meson wrapped dependencies
     fmt_wrap.get_variable('fmt_dep'),
     spdlog_wrap.get_variable('spdlog_dep'),
