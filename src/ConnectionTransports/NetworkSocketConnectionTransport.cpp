@@ -249,8 +249,12 @@ void NetworkSocketConnectionTransport::connectionThreadBody(
             else if (bytesRead == 0)
             {
                 // Our peer has closed the connection.
-                closeConnection();
-                return;
+                // Unless we're a UDP connection, in which case 0 length is a-okay.
+                if (connectionKind != NetworkSocketConnectionKind::Udp)
+                {
+                    closeConnection();
+                    return;
+                }
             }
             else if (bytesRead > 0)
             {
