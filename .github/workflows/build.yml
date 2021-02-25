@@ -20,7 +20,7 @@ jobs:
       uses: actions/checkout@v2
       with:
         repository: libnice/libnice
-        ref: 0.1.17
+        ref: 0.1.18
         path: libnice
     - name: Build and Install libnice
       run: cd libnice && meson --prefix=/usr build/ && ninja -C build && sudo ninja -C build install
@@ -36,7 +36,7 @@ jobs:
       uses: actions/checkout@v2
       with:
         repository: meetecho/janus-gateway
-        ref: v0.10.4
+        ref: v0.10.10
         path: janus
     - name: Build and Install Janus
       run: cd janus && sh autogen.sh && ./configure --prefix=/opt/janus && make && sudo make install

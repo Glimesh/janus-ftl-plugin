@@ -12,3 +12,6 @@ subprojects/*
 
 # Any local utility scripts
 *.sh
+
+# Any local .env files
+*.env
