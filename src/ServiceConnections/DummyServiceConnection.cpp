@@ -15,7 +15,6 @@
 #include <fstream>
 #include <iostream>
 #include <linux/limits.h>
-#include <spdlog/spdlog.h>
 #include <sstream>
 #include <stdexcept>
 #include <sys/stat.h>

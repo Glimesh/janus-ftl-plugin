@@ -10,9 +10,7 @@
 #include "../Utilities/Util.h"
 
 #include <fcntl.h>
-#include <fmt/core.h>
 #include <poll.h>
-#include <spdlog/spdlog.h>
 #include <stdexcept>
 #include <sys/socket.h>
 #include <unistd.h>

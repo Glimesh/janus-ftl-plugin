@@ -21,8 +21,6 @@
 #include "ServiceConnections/RestServiceConnection.h"
 #include "Utilities/JanssonPtr.h"
 
-#include <fmt/core.h>
-#include <spdlog/spdlog.h>
 #include <stdexcept>
 
 extern "C"

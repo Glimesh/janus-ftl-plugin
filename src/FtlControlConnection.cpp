@@ -11,9 +11,7 @@
 #include "Utilities/Util.h"
 
 #include <algorithm>
-#include <fmt/core.h>
 #include <openssl/hmac.h>
-#include <spdlog/spdlog.h>
 
 #pragma region Constructor/Destructor
 FtlControlConnection::FtlControlConnection(

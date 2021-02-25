@@ -12,10 +12,8 @@
 
 #include "../Utilities/FtlTypes.h"
 
-#include <fmt/core.h>
 #include <jansson.h>
 #include <string.h>
-#include <spdlog/spdlog.h>
 
 #pragma region Constructor/Destructor
 GlimeshServiceConnection::GlimeshServiceConnection(

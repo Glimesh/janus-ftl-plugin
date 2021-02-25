@@ -4,9 +4,7 @@ project(
     default_options: [
         'cpp_std=c++2a', # C++20 standard
         'b_lundef=false', # Don't fail over undefined references, since we refer to some Janus code
-        'b_asneeded=false', # Don't exclude libraries if we don't reference them directly
         'werror=true', # treat warnings as errors
-        'default_library=static',
     ],
 )
 
@@ -15,9 +13,6 @@ add_project_arguments('-Wno-unknown-pragmas', language: 'cpp')
 
 # Tell cpp-httplib that we want HTTPS support
 add_project_arguments('-DCPPHTTPLIB_OPENSSL_SUPPORT', language: 'cpp') 
-
-# Tell spdlog that we're including our own copy of fmt
-add_project_arguments('-DSPDLOG_FMT_EXTERNAL', language: 'cpp')
 
 # Set the DEBUG define if we're a debug build
 if get_option('buildtype').to_lower() == 'debug'
@@ -57,6 +52,11 @@ sources = files([
     'src/entrypoint.cpp',
 ])
 
+# Pull in subprojects
+fmt_wrap = subproject('fmt', default_options: 'default_library=static')
+meson.override_dependency('fmt', fmt_wrap.get_variable('fmt_dep')) # Use our copy of fmt for spdlog
+spdlog_wrap = subproject('spdlog', default_options: ['default_library=static', 'compile_library=true', 'external_fmt=true'] )
+
 deps = [
     dependency('glib-2.0'),
     dependency('libsrtp2'),
@@ -64,9 +64,10 @@ deps = [
     dependency('libssl'),
     dependency('libcrypto'),
     dependency('libavcodec'),
+    dependency('libavutil'),
     # Meson wrapped dependencies
-    subproject('fmt', default_options: 'default_library=static').get_variable('fmt_dep'),
-    subproject('spdlog').get_variable('spdlog_dep'),
+    fmt_wrap.get_variable('fmt_dep'),
+    spdlog_wrap.get_variable('spdlog_dep'),
 ]
 
 incdir = include_directories(
@@ -79,6 +80,7 @@ incdir = include_directories(
 shared_library(
     'janus_ftl',
     sources,
+    cpp_pch: 'pch/janus_ftl_pch.h',
     dependencies: deps,
     include_directories: incdir,
     install: true,
