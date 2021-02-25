@@ -38,7 +38,7 @@ RUN \
     mkdir -p ${DIR} && \
     cd ${DIR} && \
     curl -sLf https://github.com/meetecho/janus-gateway/archive/${JANUSGATEWAY_VERSION}.tar.gz | tar -zx --strip-components=1 && \
-    sh autogen.sh && \ 
+    sh autogen.sh && \
     ./configure --prefix=/opt/janus \
                 --disable-rabbitmq \
                 --disable-mqtt \
@@ -55,9 +55,9 @@ WORKDIR /app
 
 COPY . /app
 
-RUN \ 
+RUN \
     DIR=/app && \
-    meson build/ && \
+    CC=gcc-10 CXX=g++-10 meson --buildtype=debugoptimized build/ && \
     cd build/ && \
     ninja && \
     ninja install
