@@ -108,8 +108,8 @@ Result<ftl_stream_id_t> RestServiceConnection::StartStream(ftl_channel_id_t chan
     return Result<ftl_stream_id_t>::Error("Could not start stream.");
 }
 
-Result<void> RestServiceConnection::UpdateStreamMetadata(ftl_stream_id_t streamId,
-    StreamMetadata metadata)
+Result<ServiceConnection::ServiceResponse> RestServiceConnection::UpdateStreamMetadata(
+    ftl_stream_id_t streamId, StreamMetadata metadata)
 {
     JsonPtr streamMetadata(json_pack(
         "{s:s, s:s, s:i, s:i, s:i, s:i, s:i, s:i, s:i, s:s, s:s, s:s, s:i, s:i}",
@@ -130,7 +130,8 @@ Result<void> RestServiceConnection::UpdateStreamMetadata(ftl_stream_id_t streamI
     ));
 
     runPostRequest(fmt::format("metadata/{}", streamId), std::move(streamMetadata));
-    return Result<void>::Success();
+    return Result<ServiceConnection::ServiceResponse>::Success(
+        ServiceConnection::ServiceResponse::Ok);
 }
 
 Result<void> RestServiceConnection::EndStream(ftl_stream_id_t streamId)

@@ -619,7 +619,32 @@ void JanusFtl::serviceReportThreadBody(std::promise<void>&& threadEndedPromise)
                 .videoWidth = mediaMetadata.VideoWidth,
                 .videoHeight = mediaMetadata.VideoHeight,
             };
-            serviceConnection->UpdateStreamMetadata(streamId, metadata);
+            Result<ServiceConnection::ServiceResponse> updateResult =
+                serviceConnection->UpdateStreamMetadata(streamId, metadata);
+            // Check if the request failed, or the service wants to end this stream
+            if (updateResult.IsError || 
+                (updateResult.Value == ServiceConnection::ServiceResponse::EndStream))
+            {
+                if (updateResult.IsError)
+                {
+                    spdlog::info("Service metadata update for Channel {} / Stream {} failed, "
+                        "ending stream: {}", channelId, streamId, updateResult.ErrorMessage);
+                }
+                else
+                {
+                    spdlog::info("Service requested to end Channel {} / Stream {}. "
+                        "Stopping the stream...", channelId, streamId);
+                }
+
+                Result<void> stopResult = ftlServer->StopStream(channelId, streamId);
+                if (stopResult.IsError)
+                {
+                    spdlog::error("Received error attempting to stop Channel {} / Stream {}: {}",
+                        channelId, streamId, stopResult.ErrorMessage);
+                }
+                streamsStopped.emplace_back(channelId, streamId);
+                continue;
+            }
 
             // Do we have a previewgenerator available for this stream's codec?
             if ((keyframe.Packets.size() > 0) && (previewGenerators.count(keyframe.Codec) > 0))

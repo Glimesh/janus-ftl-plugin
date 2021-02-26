@@ -24,6 +24,15 @@
 class ServiceConnection
 {
 public:
+    /**
+     * @brief Describes a set of responses that can be returned by a ServiceConnection
+     */
+    enum class ServiceResponse
+    {
+        Ok = 0,
+        EndStream
+    };
+
     virtual ~ServiceConnection()
     { }
 
@@ -54,7 +63,7 @@ public:
      * @param streamId ID of stream to update
      * @param metadata metadata of stream
      */
-    virtual Result<void> UpdateStreamMetadata(ftl_stream_id_t streamId,
+    virtual Result<ServiceResponse> UpdateStreamMetadata(ftl_stream_id_t streamId,
         StreamMetadata metadata) = 0;
 
     /**

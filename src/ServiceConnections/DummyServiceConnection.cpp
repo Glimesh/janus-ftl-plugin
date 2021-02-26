@@ -50,8 +50,8 @@ Result<ftl_stream_id_t> DummyServiceConnection::StartStream(ftl_channel_id_t cha
     return Result<ftl_stream_id_t>::Success(currentStreamId++);
 }
 
-Result<void> DummyServiceConnection::UpdateStreamMetadata(ftl_stream_id_t streamId,
-    StreamMetadata metadata)
+Result<ServiceConnection::ServiceResponse> DummyServiceConnection::UpdateStreamMetadata(
+    ftl_stream_id_t streamId, StreamMetadata metadata)
 {
     spdlog::debug("Stats received for stream {}:"
         "\n\tStreamTimeSeconds: {}"
@@ -81,7 +81,7 @@ Result<void> DummyServiceConnection::UpdateStreamMetadata(ftl_stream_id_t stream
         metadata.audioCodec,
         metadata.videoWidth,
         metadata.videoHeight);
-    return Result<void>::Success();
+    return Result<ServiceResponse>::Success(ServiceResponse::Ok);
 }
 
 Result<void> DummyServiceConnection::EndStream(ftl_stream_id_t streamId)
