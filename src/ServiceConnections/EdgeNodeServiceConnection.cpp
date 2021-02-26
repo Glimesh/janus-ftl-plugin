@@ -54,10 +54,10 @@ Result<ftl_stream_id_t> EdgeNodeServiceConnection::StartStream(ftl_channel_id_t 
     return Result<ftl_stream_id_t>::Success(lastAssignedStreamId++);
 }
 
-Result<void> EdgeNodeServiceConnection::UpdateStreamMetadata(ftl_stream_id_t streamId,
-    StreamMetadata metadata)
+Result<ServiceConnection::ServiceResponse> EdgeNodeServiceConnection::UpdateStreamMetadata(
+    ftl_stream_id_t streamId, StreamMetadata metadata)
 {
-    return Result<void>::Success();
+    return Result<ServiceResponse>::Success(ServiceResponse::Ok);
 }
 
 Result<void> EdgeNodeServiceConnection::EndStream(ftl_stream_id_t streamId)

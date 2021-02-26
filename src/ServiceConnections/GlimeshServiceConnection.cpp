@@ -94,8 +94,8 @@ Result<ftl_stream_id_t> GlimeshServiceConnection::StartStream(ftl_channel_id_t c
     return Result<ftl_stream_id_t>::Error("Could not start stream.");
 }
 
-Result<void> GlimeshServiceConnection::UpdateStreamMetadata(ftl_stream_id_t streamId,
-    StreamMetadata metadata)
+Result<ServiceConnection::ServiceResponse> GlimeshServiceConnection::UpdateStreamMetadata(
+    ftl_stream_id_t streamId, StreamMetadata metadata)
 {
     // TODO: channelId -> streamId
     std::stringstream query;
@@ -124,6 +124,32 @@ Result<void> GlimeshServiceConnection::UpdateStreamMetadata(ftl_stream_id_t stre
     ));
 
     JsonPtr queryResult = runGraphQlQuery(query.str(), std::move(queryVariables));
+
+    // Check for GraphQL errors.
+    json_t* errorsData = json_object_get(queryResult.get(), "errors");
+    if (errorsData != nullptr)
+    {
+        // Try to extract the error message(s) so we can at least log it(them)
+        if (!json_is_array(errorsData))
+        {
+            return Result<ServiceResponse>::Error(
+                "Received GraphQL error of an unexpected format.");
+        }
+        size_t errorCount = json_array_size(errorsData);
+        for (size_t i = 0; i < errorCount; ++i)
+        {
+            json_t* errorData = json_array_get(errorsData, i);
+            json_t* errorMessageData = json_object_get(errorData, "message");
+            if ((errorMessageData != nullptr) && json_is_string(errorMessageData))
+            {
+                spdlog::info("UpdateStreamMetadata received GraphQL error: {}",
+                    json_string_value(errorMessageData));
+            }
+        }
+        // Right now, we assume that an error means the stream has been shut down by the service.
+        return Result<ServiceResponse>::Success(ServiceResponse::EndStream);
+    }
+
     json_t* jsonData = json_object_get(queryResult.get(), "data");
     if (jsonData != nullptr)
     {
@@ -135,12 +161,12 @@ Result<void> GlimeshServiceConnection::UpdateStreamMetadata(ftl_stream_id_t stre
             {
                 // uint32_t updatedStreamId = json_integer_value(jsonStreamId);
                 // TOTO: Handle error case
-                return Result<void>::Success();
+                return Result<ServiceResponse>::Success(ServiceResponse::Ok);
             }
         }
     }
 
-    return Result<void>::Error("Error updating stream metadata.");
+    return Result<ServiceResponse>::Error("Error updating stream metadata.");
 }
 
 Result<void> GlimeshServiceConnection::EndStream(ftl_stream_id_t streamId)
@@ -245,7 +271,7 @@ void GlimeshServiceConnection::ensureAuth()
                 accessTokenExpirationTime = expirationTime;
 
                 std::time_t currentTime = std::time(nullptr);
-                spdlog::info("Received new access token: {}, expires in {} - {} = {} seconds",
+                spdlog::info("Received new access token, expires in {} - {} = {} seconds",
                     accessToken, expirationTime, currentTime, (expirationTime - currentTime));
 
                 // Update HTTP client Authorization header
