@@ -272,7 +272,7 @@ void GlimeshServiceConnection::ensureAuth()
 
                 std::time_t currentTime = std::time(nullptr);
                 spdlog::info("Received new access token, expires in {} - {} = {} seconds",
-                    accessToken, expirationTime, currentTime, (expirationTime - currentTime));
+                    expirationTime, currentTime, (expirationTime - currentTime));
 
                 // Update HTTP client Authorization header
                 httplib::Headers headers
