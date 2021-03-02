@@ -178,12 +178,9 @@ void FtlServer::onNewControlConnection(std::unique_ptr<ConnectionTransport> conn
 
     // If this connection doesn't successfully auth in a certain amount of time, close it.
     auto timeoutThread = std::thread([this, ingestControlConnectionPtr, addrString]() {
-        // HACK - maybe we're seeing some contention here..? Don't lock, just wait.
-        // std::unique_lock threadLock(stoppingMutex);
-        // stoppingConditionVariable.wait_for(threadLock,
-        //     std::chrono::milliseconds(CONNECTION_AUTH_TIMEOUT_MS));
-        std::this_thread::sleep_for(std::chrono::milliseconds(CONNECTION_AUTH_TIMEOUT_MS));
-        // /HACK
+        std::unique_lock threadLock(stoppingMutex);
+        stoppingConditionVariable.wait_for(threadLock,
+            std::chrono::milliseconds(CONNECTION_AUTH_TIMEOUT_MS));
         if (isStopping)
         {
             return;
