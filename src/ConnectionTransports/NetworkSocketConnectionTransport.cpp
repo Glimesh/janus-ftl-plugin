@@ -345,6 +345,15 @@ void NetworkSocketConnectionTransport::connectionThreadBody(
                 }
             }
         }
+
+        // HACK
+        if ((connectionKind == NetworkSocketConnectionKind::Udp) && isStopping)
+        {
+            spdlog::warn("HACK: UDP socket should've stopped, but didn't, so we're doing it now.");
+            closeConnection();
+            return;
+        }
+        // /HACK
     }
 
     if (onConnectionClosed != nullptr)
