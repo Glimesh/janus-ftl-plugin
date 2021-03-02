@@ -211,7 +211,10 @@ Result<uint16_t> FtlServer::onControlStartMediaPort(FtlControlConnection& contro
     // Locate the control connection in our pending store and pull it out
     if (pendingControlConnections.count(&controlConnection) <= 0)
     {
-        throw std::runtime_error("Unknown control connection requested a media port assignment");
+        // HACK - replace with debug assert
+        spdlog::error("Unknown control connection requested a media port assignment");
+        // throw std::runtime_error("Unknown control connection requested a media port assignment");
+        // /HACK
     }
 
     // Don't erase the connection from the pending store just yet -
@@ -275,7 +278,10 @@ void FtlServer::onControlConnectionClosed(FtlControlConnection& controlConnectio
     // We should only receive this event if the stream is still pending.
     if (pendingControlConnections.count(&controlConnection) <= 0)
     {
-        throw std::runtime_error("Unknown control connection closed.");
+        // HACK - replace with debug assert
+        spdlog::error("Unknown control connection closed (leftover from old process?)");
+        // throw std::runtime_error("Unknown control connection closed.");
+        // /HACK
     }
     // Just remove the control connection - the stream hasn't started yet, so we don't
     // need to take care of anything else.
