@@ -189,16 +189,16 @@ void FtlServer::onNewControlConnection(std::unique_ptr<ConnectionTransport> conn
             return;
         }
 
-        // HACK - We can deadlock here if a connection is stopped while it's timing out.
-        // just don't lock for now.
-        // std::unique_lock streamDataLock(streamDataMutex);
-        // /HACK
+        std::unique_lock streamDataLock(streamDataMutex);
         if (pendingControlConnections.count(ingestControlConnectionPtr) > 0)
         {
             spdlog::info("{} didn't authenticate within {}ms, closing",
                 addrString, CONNECTION_AUTH_TIMEOUT_MS);
-            pendingControlConnections.at(ingestControlConnectionPtr)->Stop();
+            std::unique_ptr<FtlControlConnection> pendingControlConnection = 
+                std::move(pendingControlConnections.at(ingestControlConnectionPtr));
             pendingControlConnections.erase(ingestControlConnectionPtr);
+            streamDataLock.unlock(); // Unlock before we call out!
+            pendingControlConnection->Stop();
         }
     });
     timeoutThread.detach();
