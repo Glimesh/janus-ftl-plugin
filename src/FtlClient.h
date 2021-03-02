@@ -121,5 +121,5 @@ private:
     void endConnection();
     void sendControlMessage(std::string message);
     Result<FtlClient::FtlResponse> waitForResponse(
-        std::chrono::milliseconds timeout = std::chrono::milliseconds(500000));
+        std::chrono::milliseconds timeout = std::chrono::milliseconds(1000));
 };
