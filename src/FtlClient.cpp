@@ -313,7 +313,7 @@ void FtlClient::connectionThreadBody()
     {
         readBytes = read(controlSocketHandle, recvBuffer, sizeof(recvBuffer));
 
-        if (readBytes < 0)
+        if (readBytes <= 0)
         {
             // TODO: We're closing or something went wrong
             break;
