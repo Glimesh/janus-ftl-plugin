@@ -228,9 +228,7 @@ Result<uint16_t> FtlServer::onControlStartMediaPort(FtlControlConnection& contro
     uint16_t mediaPort = portResult.Value;
 
     // Try to start the stream and get a stream ID
-    lock.unlock(); // Release lock temporarily to prevent deadlocks during callback
     Result<ftl_stream_id_t> streamIdResult = onStreamStarted(channelId, mediaMetadata);
-    lock.lock();
     if (streamIdResult.IsError)
     {
         usedMediaPorts.erase(mediaPort);
