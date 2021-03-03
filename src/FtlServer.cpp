@@ -204,6 +204,15 @@ void FtlServer::onNewControlConnection(std::unique_ptr<ConnectionTransport> conn
 Result<uint16_t> FtlServer::onControlStartMediaPort(FtlControlConnection& controlConnection,
     ftl_channel_id_t channelId, MediaMetadata mediaMetadata, in_addr targetAddr)
 {
+    // Try to start the stream and get a stream ID
+    // Do this before we lock to avoid deadlocking!
+    Result<ftl_stream_id_t> streamIdResult = onStreamStarted(channelId, mediaMetadata);
+    if (streamIdResult.IsError)
+    {
+        return Result<uint16_t>::Error(streamIdResult.ErrorMessage);
+    }
+    ftl_stream_id_t streamId = streamIdResult.Value;
+
     std::unique_lock lock(streamDataMutex);
     // Locate the control connection in our pending store and pull it out
     if (pendingControlConnections.count(&controlConnection) <= 0)
@@ -223,47 +232,43 @@ Result<uint16_t> FtlServer::onControlStartMediaPort(FtlControlConnection& contro
     Result<uint16_t> portResult = reserveMediaPort(lock);
     if (portResult.IsError)
     {
+        // Whoops - this stream ended prematurely
+        lock.unlock(); // Release lock to prevent deadlocks during callback
+        onStreamEnded(channelId, streamId);
         return portResult;
     }
-    uint16_t mediaPort = portResult.Value;
-
-    // Try to start the stream and get a stream ID
-    Result<ftl_stream_id_t> streamIdResult = onStreamStarted(channelId, mediaMetadata);
-    if (streamIdResult.IsError)
+    else
     {
-        usedMediaPorts.erase(mediaPort);
-        return Result<uint16_t>::Error(streamIdResult.ErrorMessage);
+        uint16_t mediaPort = portResult.Value;
+
+        // Start a new media connection transport on that port
+        std::unique_ptr<ConnectionTransport> mediaTransport = 
+            mediaConnectionCreator->CreateConnection(mediaPort, targetAddr);
+
+        // Fire up a new FtlStream and hand over our control connection
+        auto stream = std::make_unique<FtlStream>(
+            std::move(control), std::move(mediaTransport), mediaMetadata, streamId,
+            std::bind(&FtlServer::onStreamClosed, this, std::placeholders::_1),
+            std::bind(&FtlServer::onStreamRtpPacket, this, std::placeholders::_1, std::placeholders::_2,
+                std::placeholders::_3));
+        pendingControlConnections.erase(&controlConnection);
+
+        Result<void> streamStartResult = stream->StartAsync();
+        if (streamStartResult.IsError)
+        {
+            // Whoops - indicate that the stream we just indicated has started has abruptly ended
+            usedMediaPorts.erase(mediaPort);
+            lock.unlock(); // Release lock to prevent deadlocks during callback
+            onStreamEnded(channelId, streamId);
+            return Result<uint16_t>::Error(streamStartResult.ErrorMessage);
+        }
+        activeStreams.try_emplace(stream.get(), std::move(stream), mediaPort);
+
+        // Pass the media port back to the control connection
+        spdlog::info("{} started streaming on Channel {} / Stream {}", 
+            Util::AddrToString(targetAddr), channelId, streamId);
+        return Result<uint16_t>::Success(mediaPort);
     }
-    ftl_stream_id_t streamId = streamIdResult.Value;
-
-    // Start a new media connection transport on that port
-    std::unique_ptr<ConnectionTransport> mediaTransport = 
-        mediaConnectionCreator->CreateConnection(mediaPort, targetAddr);
-
-    // Fire up a new FtlStream and hand over our control connection
-    auto stream = std::make_unique<FtlStream>(
-        std::move(control), std::move(mediaTransport), mediaMetadata, streamId,
-        std::bind(&FtlServer::onStreamClosed, this, std::placeholders::_1),
-        std::bind(&FtlServer::onStreamRtpPacket, this, std::placeholders::_1, std::placeholders::_2,
-            std::placeholders::_3));
-    pendingControlConnections.erase(&controlConnection);
-
-    Result<void> streamStartResult = stream->StartAsync();
-    if (streamStartResult.IsError)
-    {
-        // Whoops - indicate that the stream we just indicated has started has abruptly ended
-        lock.unlock(); // Release lock temporarily to prevent deadlocks during callback
-        onStreamEnded(channelId, streamId);
-        lock.lock();
-        usedMediaPorts.erase(mediaPort);
-        return Result<uint16_t>::Error(streamStartResult.ErrorMessage);
-    }
-    activeStreams.try_emplace(stream.get(), std::move(stream), mediaPort);
-
-    // Pass the media port back to the control connection
-    spdlog::info("{} started streaming on Channel {} / Stream {}", 
-        Util::AddrToString(targetAddr), channelId, streamId);
-    return Result<uint16_t>::Success(mediaPort);
 }
 
 void FtlServer::onControlConnectionClosed(FtlControlConnection& controlConnection)
