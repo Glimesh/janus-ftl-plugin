@@ -78,7 +78,14 @@ public:
     static std::string AddrToString(in_addr addr)
     {
         char str[INET_ADDRSTRLEN];
-        inet_ntop(AF_INET, &(addr), str, INET_ADDRSTRLEN);
+        const char* returnVal = inet_ntop(AF_INET, &(addr), str, INET_ADDRSTRLEN);
+        if (returnVal == nullptr)
+        {
+            int error = errno;
+            spdlog::error("Could not convert IP address to string: {}: {}", error,
+                Util::ErrnoToString(error));
+            return std::string("UNKNOWN");
+        }
         return std::string(str);
     }
 
