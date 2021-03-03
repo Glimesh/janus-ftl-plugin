@@ -355,7 +355,7 @@ Result<ftl_stream_id_t> JanusFtl::ftlServerStreamStarted(ftl_channel_id_t channe
         spdlog::info("Existing Stream {} exists for Channel {} - stopping...",
             activeStream.StreamId, channelId);
         Result<void> stopResult = ftlServer->StopStream(activeStream.ChannelId,
-            activeStream.StreamId);
+            activeStream.StreamId, true);
         if (stopResult.IsError)
         {
             spdlog::error("Received error attempting to stop Channel {} / Stream {}: {}",
