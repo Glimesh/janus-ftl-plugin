@@ -39,10 +39,10 @@ class FtlServer
 public:
     /* Callback types */
     using RequestKeyCallback = std::function<Result<std::vector<std::byte>>(ftl_channel_id_t)>;
-    using StreamStartedCallback = 
-        std::function<Result<ftl_stream_id_t>(ftl_channel_id_t, MediaMetadata)>;
-    using StreamEndedCallback = std::function<void(ftl_channel_id_t, ftl_stream_id_t)>;
     using RtpPacketCallback = FtlStream::RtpPacketCallback;
+    using StreamStartedCallback = 
+        std::function<Result<std::pair<ftl_stream_id_t, RtpPacketCallback>>(ftl_channel_id_t, MediaMetadata)>;
+    using StreamEndedCallback = std::function<void(ftl_channel_id_t, ftl_stream_id_t)>;
 
     /* Constructor/Destructor */
     FtlServer(

@@ -324,6 +324,9 @@ JsonPtr GlimeshServiceConnection::runGraphQlQuery(
     int numRetries = 0;
     while (true)
     {
+        // HACK, make service calls very noticable
+        //std::this_thread::sleep_for(std::chrono::seconds(2));
+
         JsonPtr result = nullptr;
 
         // If we're doing files, use a multipart http request

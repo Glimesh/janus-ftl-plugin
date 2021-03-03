@@ -48,6 +48,8 @@ class ConnectionListener;
 class JanusFtl
 {
 public:
+    using RtpPacketCallback = FtlStream::RtpPacketCallback;
+
     /* Public Members */
     static const unsigned int FTL_PLUGIN_ERROR_NO_MESSAGE        = 450;
     static const unsigned int FTL_PLUGIN_ERROR_INVALID_JSON      = 451;
@@ -85,24 +87,31 @@ public:
 
 private:
     /* Private types */
-    struct ActiveStream
+    struct ActiveRelay
     {
         ftl_channel_id_t ChannelId;
-        ftl_stream_id_t StreamId;
-        MediaMetadata Metadata;
-        std::unordered_set<JanusSession*> ViewerSessions;
-        std::time_t streamStartTime;
+        std::string TargetHostname;
+        std::unique_ptr<FtlClient> Client;
     };
     struct ActiveSession
     {
         std::optional<ftl_channel_id_t> WatchingChannelId;
         std::unique_ptr<JanusSession> Session;
     };
-    struct ActiveRelay
+    struct ActiveStream
     {
         ftl_channel_id_t ChannelId;
-        std::string TargetHostname;
-        std::unique_ptr<FtlClient> Client;
+        ftl_stream_id_t StreamId;
+        MediaMetadata Metadata;
+        std::unordered_set<JanusSession*> ViewerSessions;
+        std::list<ActiveRelay> RelayClients;
+        std::mutex Mutex;
+
+        ActiveStream(ftl_channel_id_t channelId, ftl_stream_id_t streamId, MediaMetadata metadata)
+        : ChannelId(channelId)
+        , StreamId(streamId)
+        , Metadata(metadata)
+        {}
     };
 
     /* Private fields */
@@ -124,19 +133,20 @@ private:
     std::condition_variable threadShutdownConditionVariable;
     // Stream/Session/Relay data
     std::shared_mutex streamDataMutex; // Covers shared access to streams and sessions
-    std::unordered_map<ftl_channel_id_t, ActiveStream> streams;
+    std::unordered_map<ftl_channel_id_t, std::shared_ptr<ActiveStream>> streams;
     std::unordered_map<janus_plugin_session*, ActiveSession> sessions;
     std::unordered_map<ftl_channel_id_t, std::unordered_set<JanusSession*>> pendingViewerSessions;
-    std::unordered_map<ftl_channel_id_t, std::list<ActiveRelay>> relayClients;
 
     /* Private methods */
     // FtlServer Callbacks
     Result<std::vector<std::byte>> ftlServerRequestKey(ftl_channel_id_t channelId);
-    Result<ftl_stream_id_t> ftlServerStreamStarted(ftl_channel_id_t channelId,
+    Result<std::pair<ftl_stream_id_t, RtpPacketCallback>> ftlServerStreamStarted(ftl_channel_id_t channelId,
         MediaMetadata mediaMetadata);
     void ftlServerStreamEnded(ftl_channel_id_t channelId, ftl_stream_id_t streamId);
     void ftlServerRtpPacket(ftl_channel_id_t channelId, ftl_stream_id_t streamId,
         const std::vector<std::byte>& packetData);
+    void ftlStreamRtpPacket(ftl_channel_id_t channelId, ftl_stream_id_t streamId,
+        const std::vector<std::byte>& packetData, const std::shared_ptr<JanusFtl::ActiveStream>& stream);
     // Initialization
     void initPreviewGenerators();
     void initOrchestratorConnection();
