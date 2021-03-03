@@ -218,7 +218,8 @@ Result<uint16_t> FtlServer::onControlStartMediaPort(FtlControlConnection& contro
     if (pendingControlConnections.count(&controlConnection) <= 0)
     {
         // HACK - replace with debug assert
-        spdlog::error("Unknown control connection requested a media port assignment");
+        spdlog::error("Unknown control connection requested a media port assignment - ignoring");
+        return Result<uint16_t>::Error("Unknown control connection");
         // throw std::runtime_error("Unknown control connection requested a media port assignment");
         // /HACK
     }
