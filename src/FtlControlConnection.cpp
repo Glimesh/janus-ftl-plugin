@@ -51,7 +51,7 @@ Result<void> FtlControlConnection::StartAsync()
     return transport->StartAsync();
 }
 
-void FtlControlConnection::Stop(FtlResponseCode responseCode)
+void FtlControlConnection::Stop(FtlResponseCode responseCode, bool noBlock)
 {
     // BUG: Right now, the transport will halt the connection before these bytes
     // can make it out the door.
@@ -59,7 +59,7 @@ void FtlControlConnection::Stop(FtlResponseCode responseCode)
     writeToTransport(fmt::format("{}\n", responseCode));
 
     // Stop the transport, but don't fire OnConnectionClosed
-    transport->Stop();
+    transport->Stop(noBlock);
 }
 #pragma endregion Public functions
 

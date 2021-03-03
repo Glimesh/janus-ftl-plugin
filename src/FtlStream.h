@@ -62,7 +62,7 @@ public:
 
     /* Public methods */
     Result<void> StartAsync();
-    void Stop();
+    void Stop(/* HACK */ bool noBlock = false);
 
     /* Getters/Setters */
     ftl_channel_id_t GetChannelId() const;

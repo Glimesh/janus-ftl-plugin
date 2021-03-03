@@ -69,7 +69,8 @@ public:
      * @brief Stops the stream with the specified channel ID and stream ID.
      * This will not fire the StreamEnded callback.
      */
-    Result<void> StopStream(ftl_channel_id_t channelId, ftl_stream_id_t streamId);
+    Result<void> StopStream(ftl_channel_id_t channelId, ftl_stream_id_t streamId,
+        /* HACK */ bool noBlock = false);
 
     /**
      * @brief Retrieves stats for all active streams
