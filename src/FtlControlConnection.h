@@ -69,7 +69,8 @@ public:
 
     /* Public functions */
     Result<void> StartAsync();
-    void Stop(FtlResponseCode responseCode = FtlResponseCode::FTL_INGEST_RESP_SERVER_TERMINATE);
+    void Stop(FtlResponseCode responseCode = FtlResponseCode::FTL_INGEST_RESP_SERVER_TERMINATE,
+        bool noBlock = false);
 
 private:
     /* Constants */

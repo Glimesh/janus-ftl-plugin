@@ -78,16 +78,17 @@ Result<void> FtlStream::StartAsync()
     return Result<void>::Success();
 }
 
-void FtlStream::Stop()
+void FtlStream::Stop(/* HACK */ bool noBlock)
 {
     spdlog::info("Stopping FTL channel {} / stream {}...", controlConnection->GetChannelId(),
         streamId);
 
     // Stop our media connection
-    mediaTransport->Stop();
+    mediaTransport->Stop(noBlock);
 
     // Stop the control connection
-    controlConnection->Stop();
+    controlConnection->Stop(FtlControlConnection::FtlResponseCode::FTL_INGEST_RESP_SERVER_TERMINATE,
+        true);
 }
 
 ftl_channel_id_t FtlStream::GetChannelId() const

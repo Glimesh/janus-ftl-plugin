@@ -76,7 +76,8 @@ void FtlServer::Stop()
     }
 }
 
-Result<void> FtlServer::StopStream(ftl_channel_id_t channelId, ftl_stream_id_t streamId)
+Result<void> FtlServer::StopStream(ftl_channel_id_t channelId, ftl_stream_id_t streamId,
+    /* HACK */ bool noBlock)
 {
     std::unique_lock lock(streamDataMutex);
     for (const auto& pair : activeStreams)
@@ -84,7 +85,7 @@ Result<void> FtlServer::StopStream(ftl_channel_id_t channelId, ftl_stream_id_t s
         const std::unique_ptr<FtlStream>& stream = pair.second.Stream;
         if ((stream->GetChannelId() == channelId) && (stream->GetStreamId() == streamId))
         {
-            stream->Stop();
+            stream->Stop(noBlock);
             removeStreamRecord(pair.first, lock);
             return Result<void>::Success();
         }
