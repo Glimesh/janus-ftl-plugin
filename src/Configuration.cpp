@@ -117,10 +117,10 @@ void Configuration::Load()
         }
     }
 
-    // FTL_SERVICE_METADATAREPORTINTERVALMS -> ServiceConnectionMetadataReportIntervalMs
+    // FTL_SERVICE_METADATAREPORTINTERVALMS -> ServiceConnectionMetadataReportInterval
     if (char* varVal = std::getenv("FTL_SERVICE_METADATAREPORTINTERVALMS"))
     {
-        serviceConnectionMetadataReportIntervalMs = std::stoi(varVal);
+        serviceConnectionMetadataReportInterval = std::chrono::milliseconds(std::stoi(varVal));
     }
 
     // FTL_MAX_ALLOWED_BITS_PER_SECOND -> MaxAllowedBitsPerSecond
@@ -259,9 +259,9 @@ std::string Configuration::GetDummyPreviewImagePath()
     return dummyPreviewImagePath;
 }
 
-uint16_t Configuration::GetServiceConnectionMetadataReportIntervalMs()
+std::chrono::milliseconds Configuration::GetServiceConnectionMetadataReportInterval()
 {
-    return serviceConnectionMetadataReportIntervalMs;
+    return serviceConnectionMetadataReportInterval;
 }
 
 uint32_t Configuration::GetMaxAllowedBitsPerSecond()

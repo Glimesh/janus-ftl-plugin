@@ -10,6 +10,7 @@
 
 #pragma once
 
+#include <chrono>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -43,7 +44,7 @@ public:
     std::vector<std::byte> GetOrchestratorPsk();
     std::string GetOrchestratorRegionCode();
     ServiceConnectionKind GetServiceConnectionKind();
-    uint16_t GetServiceConnectionMetadataReportIntervalMs();
+    std::chrono::milliseconds GetServiceConnectionMetadataReportInterval();
     uint32_t GetMaxAllowedBitsPerSecond();
 
     // Dummy Service Connection Values
@@ -73,7 +74,7 @@ private:
     std::vector<std::byte> orchestratorPsk;
     std::string orchestratorRegionCode = "global";
     ServiceConnectionKind serviceConnectionKind = ServiceConnectionKind::DummyServiceConnection;
-    uint16_t serviceConnectionMetadataReportIntervalMs = 4000;
+    std::chrono::milliseconds serviceConnectionMetadataReportInterval = std::chrono::milliseconds(4000);
     uint32_t maxAllowedBitsPerSecond = 0;
 
     // Dummy Service Connection Backing Stores

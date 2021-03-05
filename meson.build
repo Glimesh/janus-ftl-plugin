@@ -27,6 +27,7 @@ installdir = get_variable('INSTALL_PATH', (januspath + '/lib/janus/plugins'))
 sources = files([
     # Utilities
     'src/Utilities/Rtp.cpp',
+    'src/Utilities/Watchdog.cpp',
     # Preview Generators
     'src/PreviewGenerators/H264PreviewGenerator.cpp',
     # Service Connections
@@ -57,6 +58,14 @@ fmt_wrap = subproject('fmt', default_options: 'default_library=static')
 meson.override_dependency('fmt', fmt_wrap.get_variable('fmt_dep')) # Use our copy of fmt for spdlog
 spdlog_wrap = subproject('spdlog', default_options: ['default_library=static', 'compile_library=true', 'external_fmt=true'] )
 
+# Optional libsystemd dep for watchdog monitoring support
+systemd_dep = dependency('libsystemd', required : get_option('systemd_watchdog_support'))
+if systemd_dep.found()
+  add_project_arguments('-DSYSTEMD_WATCHDOG_SUPPORT', language: 'cpp') 
+else
+  systemd_dep = disabler()
+endif
+
 deps = [
     dependency('glib-2.0'),
     dependency('libsrtp2'),
@@ -68,6 +77,7 @@ deps = [
     # Meson wrapped dependencies
     fmt_wrap.get_variable('fmt_dep'),
     spdlog_wrap.get_variable('spdlog_dep'),
+    systemd_dep,
 ]
 
 incdir = include_directories(

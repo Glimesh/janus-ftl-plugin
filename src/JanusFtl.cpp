@@ -63,7 +63,9 @@ int JanusFtl::Init(janus_callbacks* callback, const char* config_path)
     configuration = std::make_unique<Configuration>();
     configuration->Load();
     maxAllowedBitsPerSecond = configuration->GetMaxAllowedBitsPerSecond();
-    metadataReportIntervalMs = configuration->GetServiceConnectionMetadataReportIntervalMs();
+    metadataReportInterval = configuration->GetServiceConnectionMetadataReportInterval();
+    watchdog = std::make_unique<Watchdog>(configuration->GetServiceConnectionMetadataReportInterval());
+
 
     initPreviewGenerators();
 
@@ -76,6 +78,7 @@ int JanusFtl::Init(janus_callbacks* callback, const char* config_path)
     initServiceReportThread();
 
     spdlog::info("FTL plugin initialized!");
+    watchdog->Ready();
     return 0;
 }
 
@@ -540,10 +543,13 @@ void JanusFtl::serviceReportThreadBody(std::promise<void>&& threadEndedPromise)
 {
     threadEndedPromise.set_value_at_thread_exit();
     std::unique_lock lock(threadShutdownMutex);
+
     while (true)
     {
-        threadShutdownConditionVariable.wait_for(lock,
-            std::chrono::milliseconds(metadataReportIntervalMs));
+        watchdog->IAmAlive();
+
+        threadShutdownConditionVariable.wait_for(lock, metadataReportInterval);
+
         if (isStopping)
         {
             break;
