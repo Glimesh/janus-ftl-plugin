@@ -40,5 +40,5 @@ public:
      * has been established
      */
     virtual void SetOnNewConnection(
-        std::function<void(std::unique_ptr<ConnectionTransport>)> onNewConnection) = 0;
+        std::function<void(ConnectionTransport*)> onNewConnection) = 0;
 };

@@ -111,7 +111,7 @@ void FtlControlConnection::onTransportClosed()
 {
     if (onConnectionClosed)
     {
-        onConnectionClosed(*this);
+        onConnectionClosed(this);
     }
 }
 
@@ -138,7 +138,7 @@ void FtlControlConnection::stopConnection()
     // if we call Stop ourselves
     if (onConnectionClosed)
     {
-        onConnectionClosed(*this);
+        onConnectionClosed(this);
     }
 }
 
@@ -429,8 +429,9 @@ void FtlControlConnection::processDotCommand()
     }
 
     // HACK: We assume GetAddr() returns a value here.
-    Result<uint16_t> mediaPortResult = onStartMediaPort(*this, channelId, mediaMetadata,
-        transport->GetAddr().value().sin_addr);
+    std::future<Result<uint16_t>> mediaPortFuture = onStartMediaPort(this, channelId,
+        mediaMetadata, transport->GetAddr().value().sin_addr);
+    Result<uint16_t> mediaPortResult = mediaPortFuture.get();
     if (mediaPortResult.IsError)
     {
         spdlog::error("Could not assign media port for FTL connection: {}",

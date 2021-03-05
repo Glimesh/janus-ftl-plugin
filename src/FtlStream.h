@@ -113,7 +113,7 @@ private:
     std::unordered_map<rtp_ssrc_t, SsrcData> ssrcData;
 
     /* Private methods */
-    void controlConnectionClosed(FtlControlConnection& connection);
+    void controlConnectionClosed(FtlControlConnection* connection);
     void mediaBytesReceived(const std::vector<std::byte>& bytes);
     void mediaConnectionClosed();
     // Packet processing

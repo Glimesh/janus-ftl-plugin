@@ -140,7 +140,7 @@ FtlStream::FtlKeyframe FtlStream::GetKeyframe()
 #pragma endregion
 
 #pragma region Private methods
-void FtlStream::controlConnectionClosed(FtlControlConnection& connection)
+void FtlStream::controlConnectionClosed(FtlControlConnection* connection)
 {
     // Stop the media connection
     mediaTransport->Stop();

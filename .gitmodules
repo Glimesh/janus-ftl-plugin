@@ -4,3 +4,6 @@
 [submodule "janus-ftl-orchestrator"]
 	path = vendor/janus-ftl-orchestrator
 	url = https://github.com/Glimesh/janus-ftl-orchestrator
+[submodule "vendor/eventpp"]
+	path = vendor/eventpp
+	url = https://github.com/wqking/eventpp.git

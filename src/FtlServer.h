@@ -13,6 +13,8 @@
 #include "Utilities/Result.h"
 
 #include <condition_variable>
+#include <eventpp/eventqueue.h>
+#include <eventpp/utilities/argumentadapter.h>
 #include <functional>
 #include <future>
 #include <list>
@@ -95,11 +97,53 @@ private:
         std::unique_ptr<FtlStream> Stream;
         uint16_t MediaPort;
     };
+    /* Private event types */
+    enum class FtlServerEventKind
+    {
+        Unknown = 0,
+        NewControlConnection,
+        ControlStartMediaPort,
+        StreamIdAssigned,
+        ControlConnectionClosed,
+        StreamClosed,
+    };
+    struct FtlServerEvent {};
+    struct FtlServerNewControlConnectionEvent : public FtlServerEvent
+    {
+        ConnectionTransport* Connection;
+    };
+    struct FtlServerControlConnectionClosedEvent : public FtlServerEvent
+    {
+        FtlControlConnection* Connection;
+    };
+    struct FtlServerControlStartMediaPortEvent : public FtlServerEvent
+    {
+        std::promise<Result<uint16_t>> MediaPortResultPromise;
+        FtlControlConnection* Connection;
+        ftl_channel_id_t ChannelId;
+        MediaMetadata Metadata;
+        in_addr TargetAddr;
+    };
+    struct FtlServerStreamIdAssignedEvent : public FtlServerEvent
+    {
+        std::promise<Result<uint16_t>> MediaPortResultPromise;
+        FtlControlConnection* Connection;
+        ftl_channel_id_t ChannelId;
+        ftl_stream_id_t StreamId;
+        MediaMetadata Metadata;
+        in_addr TargetAddr;
+    };
+    struct FtlServerStreamClosedEvent : public FtlServerEvent
+    {
+        FtlStream* Stream;
+    };
 
     /* Constants */
     static constexpr uint16_t DEFAULT_MEDIA_MIN_PORT = 9000;
     static constexpr uint16_t DEFAULT_MEDIA_MAX_PORT = 10000;
     static constexpr uint16_t CONNECTION_AUTH_TIMEOUT_MS = 5000;
+    static constexpr std::chrono::milliseconds EVENT_QUEUE_WAIT_TIME = 
+        std::chrono::milliseconds(32);
 
     /* Private fields */
     // Connection managers
@@ -113,6 +157,10 @@ private:
     // Media ports
     const uint16_t minMediaPort;
     const uint16_t maxMediaPort;
+    // Event queue
+    const std::jthread eventQueueThread;
+    eventpp::EventQueue<FtlServerEventKind, void (std::shared_ptr<FtlServerEvent>)> eventQueue;
+    std::list<std::pair<std::jthread, std::future<void>>> asyncProcessingThreads;
     // Misc fields
     bool isStopping { false };
     std::mutex stoppingMutex;
@@ -126,14 +174,23 @@ private:
 
     /* Private functions */
     void ingestThreadBody(std::promise<void>&& readyPromise);
+    void eventQueueThreadBody();
     Result<uint16_t> reserveMediaPort(const std::unique_lock<std::shared_mutex>& dataLock);
     void removeStreamRecord(FtlStream* stream, const std::unique_lock<std::shared_mutex>& dataLock);
     // Callback handlers
-    void onNewControlConnection(std::unique_ptr<ConnectionTransport> connection);
-    Result<uint16_t> onControlStartMediaPort(FtlControlConnection& controlConnection,
+    void onNewControlConnection(ConnectionTransport* connection);
+    std::future<Result<uint16_t>> onControlStartMediaPort(FtlControlConnection* controlConnection,
         ftl_channel_id_t channelId, MediaMetadata mediaMetadata, in_addr targetAddr);
-    void onControlConnectionClosed(FtlControlConnection& controlConnection);
+    void onControlConnectionClosed(FtlControlConnection* controlConnection);
     void onStreamClosed(FtlStream& stream);
     void onStreamRtpPacket(ftl_channel_id_t channelId, ftl_stream_id_t streamId,
         const std::vector<std::byte>& packet);
+    // Event queue listeners
+    void eventNewControlConnection(std::shared_ptr<FtlServerNewControlConnectionEvent> event);
+    void eventControlStartMediaPort(std::shared_ptr<FtlServerControlStartMediaPortEvent> event);
+    void eventStreamIdAssigned(std::shared_ptr<FtlServerStreamIdAssignedEvent> event);
+    void eventControlConnectionClosed(std::shared_ptr<FtlServerControlConnectionClosedEvent> event);
+    void eventStreamClosed(std::shared_ptr<FtlServerStreamClosedEvent> event);
+    // Callback dispatchers
+    void dispatchOnStreamEnded(ftl_channel_id_t channelId, ftl_stream_id_t streamId);
 };

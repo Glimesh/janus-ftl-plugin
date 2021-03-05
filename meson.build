@@ -73,6 +73,7 @@ deps = [
 incdir = include_directories(
     './vendor/cpp-httplib',
     './vendor/janus-ftl-orchestrator/inc',
+    './vendor/eventpp/include',
     janusincludepath,
     is_system: true,
 )

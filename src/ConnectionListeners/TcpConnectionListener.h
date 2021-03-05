@@ -28,11 +28,11 @@ public:
     void Listen(std::promise<void>&& readyPromise = std::promise<void>()) override;
     void StopListening() override;
     void SetOnNewConnection(
-        std::function<void(std::unique_ptr<ConnectionTransport>)> onNewConnection) override;
+        std::function<void(ConnectionTransport*)> onNewConnection) override;
 
 private:
     const int listenPort;
     const int socketQueueLimit;
     int listenSocketHandle = 0;
-    std::function<void(std::unique_ptr<ConnectionTransport>)> onNewConnection;
+    std::function<void(ConnectionTransport*)> onNewConnection;
 };

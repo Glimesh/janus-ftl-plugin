@@ -12,6 +12,7 @@
 #include "Utilities/Result.h"
 
 #include <functional>
+#include <future>
 #include <memory>
 #include <netinet/in.h>
 #include <regex>
@@ -28,9 +29,9 @@ class FtlControlConnection
 public:
     /* Public types */
     using RequestKeyCallback = std::function<Result<std::vector<std::byte>>(ftl_channel_id_t)>;
-    using StartMediaPortCallback = std::function<Result<uint16_t>(
-        FtlControlConnection&, ftl_channel_id_t, MediaMetadata, in_addr)>;
-    using ConnectionClosedCallback = std::function<void(FtlControlConnection&)>;
+    using StartMediaPortCallback = std::function<std::future<Result<uint16_t>>(
+        FtlControlConnection*, ftl_channel_id_t, MediaMetadata, in_addr)>;
+    using ConnectionClosedCallback = std::function<void(FtlControlConnection*)>;
     enum FtlResponseCode
     {
         // See ftl-sdk/ftl_private.h
