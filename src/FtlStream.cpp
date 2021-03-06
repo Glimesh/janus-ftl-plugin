@@ -335,41 +335,43 @@ void FtlStream::processRtpPacketSequencing(const std::vector<std::byte>& rtpPack
         data.CircularPacketBuffer.pop_front();
     }
 
-    // Grab the latest sequence # received for reference
-    rtp_sequence_num_t latestSequence = Rtp::GetRtpSequence(data.CircularPacketBuffer.back());
+    // TODO: Disabled NACKs because sometimes on sequence number rollover, we'd start
+    // seeing massive amounts of "lost" packets.
+    // https://github.com/Glimesh/janus-ftl-plugin/issues/95
+    // // Calculate which packets are missing and should be NACK'd
+    // rtp_sequence_num_t latestSequence = Rtp::GetRtpSequence(data.CircularPacketBuffer.back());
+    // if (missingSequences.size() == 0)
+    // {
+    //     data.PacketsSinceLastMissedSequence++;
+    // }
+    // else if (missingSequences.size() > (MAX_PACKETS_BEFORE_NACK * 2))
+    // {
+    //     spdlog::warn("At least {} packets were lost before current sequence {} - ignoring and "
+    //         "waiting for stream to stabilize...",
+    //         missingSequences.size(), seqNum);
+    //     data.PacketsSinceLastMissedSequence = 0;
+    //     data.PacketsLost += missingSequences.size();
+    // }
+    // else
+    // {
+    //     // Only nack packets if they're reasonably new, and haven't already been nack'd
+    //     int missingPacketCount = 0;
+    //     for (const auto& missingSeq : missingSequences)
+    //     {
+    //         if ((data.NackedSequences.count(missingSeq) <= 0) &&
+    //             (static_cast<uint16_t>(latestSequence - missingSeq) < NACK_TIMEOUT_SEQUENCE_DELTA))
+    //         {
+    //             data.NackQueue.insert(missingSeq);
+    //             ++missingPacketCount;
+    //         }
+    //     }
+    //     spdlog::debug("Marking {} packets missing since sequence {}", missingPacketCount,
+    //         seqNum);
+    //     data.PacketsSinceLastMissedSequence = 0;
+    // }
 
-    // Calculate which packets are missing and should be NACK'd
-    if (missingSequences.size() == 0)
-    {
-        data.PacketsSinceLastMissedSequence++;
-    }
-    else if (missingSequences.size() > (MAX_PACKETS_BEFORE_NACK * 2))
-    {
-        spdlog::warn("At least {} packets were lost before current sequence {} - ignoring and "
-            "waiting for stream to stabilize...",
-            missingSequences.size(), seqNum);
-        data.PacketsSinceLastMissedSequence = 0;
-        data.PacketsLost += missingSequences.size();
-    }
-    else
-    {
-        // Only nack packets if they're reasonably new, and haven't already been nack'd
-        int missingPacketCount = 0;
-        for (const auto& missingSeq : missingSequences)
-        {
-            if ((data.NackedSequences.count(missingSeq) <= 0) &&
-                (static_cast<uint16_t>(latestSequence - missingSeq) < NACK_TIMEOUT_SEQUENCE_DELTA))
-            {
-                data.NackQueue.insert(missingSeq);
-                ++missingPacketCount;
-            }
-        }
-        spdlog::debug("Marking {} packets missing since sequence {}", missingPacketCount,
-            seqNum);
-        data.PacketsSinceLastMissedSequence = 0;
-    }
-
-    processNacks(ssrc, dataLock);
+    // processNacks(ssrc, dataLock);
+    // /TODO
 }
 
 void FtlStream::processRtpPacketKeyframe(const std::vector<std::byte>& rtpPacket,
