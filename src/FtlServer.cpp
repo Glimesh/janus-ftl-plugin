@@ -330,7 +330,7 @@ void FtlServer::eventControlStartMediaPort(std::shared_ptr<FtlServerControlStart
             [this, threadPromise = std::move(threadPromise), event] () mutable
             {
                 // Attempt to start stream
-                Result<ftl_stream_id_t> streamIdResult = 
+                auto streamIdResult = 
                     onStreamStarted(event->ChannelId, event->Metadata);
                 if (streamIdResult.IsError)
                 {
@@ -338,7 +338,7 @@ void FtlServer::eventControlStartMediaPort(std::shared_ptr<FtlServerControlStart
                         Result<uint16_t>::Error(streamIdResult.ErrorMessage));
                     return;
                 }
-                ftl_stream_id_t streamId = streamIdResult.Value;
+                auto [streamId, onRtpPacketCallback] = streamIdResult.Value;
                 
                 spdlog::debug("FtlServer::eventControlStartMediaPort processing thread "
                     "successfully received Stream ID - queueing StreamIdAssigned event...");
@@ -352,6 +352,7 @@ void FtlServer::eventControlStartMediaPort(std::shared_ptr<FtlServerControlStart
                             .StreamId = streamId,
                             .Metadata = event->Metadata,
                             .TargetAddr = event->TargetAddr,
+                            .PacketCallback = onRtpPacketCallback,
                         }));
 
                 threadPromise.set_value();
@@ -401,8 +402,7 @@ void FtlServer::eventStreamIdAssigned(std::shared_ptr<FtlServerStreamIdAssignedE
     auto stream = std::make_unique<FtlStream>(
         std::move(control), std::move(mediaTransport), event->Metadata, event->StreamId,
         std::bind(&FtlServer::onStreamClosed, this, std::placeholders::_1),
-        std::bind(&FtlServer::onStreamRtpPacket, this, std::placeholders::_1, std::placeholders::_2,
-            std::placeholders::_3));
+        event->PacketCallback);
     pendingControlConnections.erase(controlConnection);
 
     Result<void> streamStartResult = stream->StartAsync();

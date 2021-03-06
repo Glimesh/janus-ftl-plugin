@@ -133,6 +133,7 @@ private:
         ftl_stream_id_t StreamId;
         MediaMetadata Metadata;
         in_addr TargetAddr;
+        RtpPacketCallback PacketCallback;
     };
     struct FtlServerStreamClosedEvent : public FtlServerEvent
     {
