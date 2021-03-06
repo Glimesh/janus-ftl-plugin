@@ -974,6 +974,7 @@ ConnectionResult JanusFtl::onOrchestratorStreamRelay(ConnectionRelayPayload payl
         ActiveStream& activeStream = *streams[payload.ChannelId];
 
         // Start the relay now!
+        lock.unlock(); // HACK: UNLOCK so we don't block if the FtlClient gets held up
         auto relayClient = std::make_unique<FtlClient>(payload.TargetHostname, payload.ChannelId,
             payload.StreamKey);
         Result<void> connectResult = relayClient->ConnectAsync(FtlClient::ConnectMetadata
@@ -997,6 +998,18 @@ ConnectionResult JanusFtl::onOrchestratorStreamRelay(ConnectionRelayPayload payl
         {
             spdlog::error("Failed to connect to relay target {} for channel {}: {}",
                 payload.TargetHostname, payload.ChannelId, connectResult.ErrorMessage);
+            return ConnectionResult
+                {
+                    .IsSuccess = false,
+                };
+        }
+
+        // HACK: Lock again and make sure our stream is still around
+        lock.lock();
+        if (streams.count(payload.ChannelId) <= 0)
+        {
+            lock.unlock();
+            relayClient->Stop();
             return ConnectionResult
                 {
                     .IsSuccess = false,
