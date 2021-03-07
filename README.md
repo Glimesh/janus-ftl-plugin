@@ -128,6 +128,29 @@ Configuration is achieved through environment variables.
     docker build -t janus-ftl .
     docker run --rm -p 8084:8084/tcp -p 8088:8088/tcp -p 9000-9100:9000-9100/udp -p 20000-20100:20000-20100/udp -e "DOCKER_IP=HOST.IP.ADDRESS.HERE" janus-ftl
 
+# systemd
+
+This plugin will have systemd watchdog support if the `libsystemd-dev` package is installed. To enable this integration set `WatchdogSec` in your service unit file. The following is a sample service unit for running this plugin under systemd with reasonable defaults.
+
+```systemd
+[Unit]
+Description=Janus WebRTC Server with FTL support
+Requires=network.target
+After=syslog.target network.target
+
+[Service]
+Type=notify
+ExecStart=/opt/janus/bin/janus -o
+Restart=on-failure
+RestartSec=10
+WatchdogSec=60
+
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
+```
+
 # Misc Notes
 
 ## Streaming from OBS
