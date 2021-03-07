@@ -46,7 +46,6 @@ private:
     /* Private members */
     const int MAX_RETRIES = 5;
     const int TIME_BETWEEN_RETRIES_MS = 3000;
-    httplib::Client httpClient;
     std::string hostname;
     uint16_t port;
     bool useHttps;

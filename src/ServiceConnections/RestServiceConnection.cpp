@@ -24,7 +24,6 @@ RestServiceConnection::RestServiceConnection(
     std::string pathBase,
     std::string authToken)
 :
-    httpClient(getHostUrl(useHttps, hostname, port).c_str()),
     hostname(hostname),
     port(port),
     useHttps(useHttps),
@@ -177,6 +176,8 @@ std::string RestServiceConnection::relativeToAbsolutePath(std::string relativePa
 
 httplib::Result RestServiceConnection::runGetRequest(std::string path)
 {
+    httplib::Client httpClient(hostname, port);
+
     // Make the request, and retry if necessary
     int numRetries = 0;
     while (true)
