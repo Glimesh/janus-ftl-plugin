@@ -24,7 +24,7 @@ RestServiceConnection::RestServiceConnection(
     std::string pathBase,
     std::string authToken)
 :
-    httpClient(getHostUrl(useHttps, hostname, port).c_str()),
+    baseUri(fmt::format("{}://{}:{}", (useHttps ? "https" : "http"), hostname, port)),
     hostname(hostname),
     port(port),
     useHttps(useHttps),
@@ -43,23 +43,13 @@ RestServiceConnection::RestServiceConnection(
             this->pathBase.push_back('/');
         }
     }
-
-    if (this->authToken.length() > 0)
-    {
-        httplib::Headers headers
-        {
-            {"Authorization", authToken}
-        };
-        httpClient.set_default_headers(headers);
-    }
 }
 #pragma endregion
 
 #pragma region Public methods
 void RestServiceConnection::Init()
 {
-    spdlog::info("Using REST Service Connection @ {}{}", getHostUrl(useHttps, hostname, port),
-        pathBase);
+    spdlog::info("Using REST Service Connection @ {}{}", baseUri, pathBase);
 }
 
 Result<std::vector<std::byte>> RestServiceConnection::GetHmacKey(ftl_channel_id_t channelId)
@@ -163,9 +153,17 @@ Result<void> RestServiceConnection::SendJpegPreviewImage(
 #pragma endregion
 
 #pragma region Private methods
-std::string RestServiceConnection::getHostUrl(bool https, std::string hostname, uint16_t port)
-{
-    return fmt::format("{}://{}:{}", (https ? "https" : "http"), hostname, port);
+std::unique_ptr<httplib::Client> RestServiceConnection::getHttpClientWithAuth() {
+    auto httpClient = std::make_unique<httplib::Client>(baseUri.c_str());
+    if (this->authToken.length() > 0)
+    {
+        httplib::Headers headers
+        {
+            {"Authorization", authToken}
+        };
+        httpClient->set_default_headers(headers);
+    }
+    return httpClient;
 }
 
 std::string RestServiceConnection::relativeToAbsolutePath(std::string relativePath)
@@ -177,12 +175,14 @@ std::string RestServiceConnection::relativeToAbsolutePath(std::string relativePa
 
 httplib::Result RestServiceConnection::runGetRequest(std::string path)
 {
+    std::unique_ptr<httplib::Client> httpClient = getHttpClientWithAuth();
+
     // Make the request, and retry if necessary
     int numRetries = 0;
     while (true)
     {
         std::string absolutePath = relativeToAbsolutePath(path);
-        httplib::Result response = httpClient.Get(absolutePath.c_str());
+        httplib::Result response = httpClient->Get(absolutePath.c_str());
         if (response && response.error() == httplib::Error::Success && response->status < 500)
         {
             return response;
@@ -212,6 +212,8 @@ httplib::Result RestServiceConnection::runGetRequest(std::string path)
 httplib::Result RestServiceConnection::runPostRequest(std::string path, JsonPtr body,
     httplib::MultipartFormDataItems fileData)
 {
+    std::unique_ptr<httplib::Client> httpClient = getHttpClientWithAuth();
+
     // Make the request, and retry if necessary
     int numRetries = 0;
     while (true)
@@ -221,18 +223,18 @@ httplib::Result RestServiceConnection::runPostRequest(std::string path, JsonPtr 
         {
             if (fileData.size() > 0)
             {
-                return httpClient.Post(absolutePath.c_str(), fileData);
+                return httpClient->Post(absolutePath.c_str(), fileData);
             }
             else if (body)
             {
                 char* bodyStr = json_dumps(body.get(), 0);
                 auto bodyString = std::string(bodyStr);
                 free(bodyStr);
-                return httpClient.Post(absolutePath.c_str(), bodyString, "application/json");
+                return httpClient->Post(absolutePath.c_str(), bodyString, "application/json");
             }
             else
             {
-                return httpClient.Post(absolutePath.c_str(), "", "text/plain");
+                return httpClient->Post(absolutePath.c_str(), "", "text/plain");
             }
         }();
 

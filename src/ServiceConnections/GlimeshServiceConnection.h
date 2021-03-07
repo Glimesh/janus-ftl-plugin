@@ -50,7 +50,7 @@ private:
     /* Private members */
     const int MAX_RETRIES = 10;
     const int TIME_BETWEEN_RETRIES_MS = 3000;
-    httplib::Client httpClient;
+    std::string baseUri;
     std::string hostname;
     uint16_t port;
     bool useHttps;
@@ -61,7 +61,8 @@ private:
     std::mutex authMutex;
 
     /* Private methods */
-    void ensureAuth();
+    std::unique_ptr<httplib::Client> getHttpClient();
+    void ensureAuth(httplib::Client& httpClient);
     JsonPtr runGraphQlQuery(std::string query, JsonPtr variables = nullptr, httplib::MultipartFormDataItems fileData = httplib::MultipartFormDataItems());
     JsonPtr processGraphQlResponse(const httplib::Result& result);
     tm parseIso8601DateTime(std::string dateTimeString);
