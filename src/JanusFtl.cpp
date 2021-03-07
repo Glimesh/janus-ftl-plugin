@@ -66,7 +66,6 @@ int JanusFtl::Init(janus_callbacks* callback, const char* config_path)
     metadataReportInterval = configuration->GetServiceConnectionMetadataReportInterval();
     watchdog = std::make_unique<Watchdog>(configuration->GetServiceConnectionMetadataReportInterval());
 
-
     initPreviewGenerators();
 
     initOrchestratorConnection();
