@@ -60,6 +60,7 @@ private:
     std::mutex authMutex;
 
     /* Private methods */
+    std::unique_ptr<httplib::Client> getHttpClient();
     void ensureAuth(httplib::Client& httpClient);
     JsonPtr runGraphQlQuery(std::string query, JsonPtr variables = nullptr, httplib::MultipartFormDataItems fileData = httplib::MultipartFormDataItems());
     JsonPtr processGraphQlResponse(const httplib::Result& result);

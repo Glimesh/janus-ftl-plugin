@@ -38,8 +38,7 @@ void GlimeshServiceConnection::Init()
     spdlog::info("Using Glimesh Service Connection @ {}", baseUri.str());
 
     // Try to auth
-    httplib::Client httpClient(hostname, port);
-    ensureAuth(httpClient);
+    ensureAuth(*getHttpClient());
 }
 
 Result<std::vector<std::byte>> GlimeshServiceConnection::GetHmacKey(uint32_t channelId)
@@ -219,6 +218,10 @@ Result<void> GlimeshServiceConnection::SendJpegPreviewImage(
 #pragma endregion
 
 #pragma region Private methods
+std::unique_ptr<httplib::Client> GlimeshServiceConnection::getHttpClient() {
+    return std::make_unique<httplib::Client>(hostname, port);
+}
+
 void GlimeshServiceConnection::ensureAuth(httplib::Client& httpClient)
 {
     std::lock_guard<std::mutex> lock(authMutex);
@@ -290,11 +293,10 @@ JsonPtr GlimeshServiceConnection::runGraphQlQuery(
     JsonPtr variables,
     httplib::MultipartFormDataItems fileData)
 {
-    httplib::Client httpClient(hostname, port);
+    std::unique_ptr<httplib::Client> httpClient = getHttpClient();
 
     // Make sure we have a valid access token
-    ensureAuth(httpClient);
-    httpClient.set_bearer_token_auth(accessToken.c_str());
+    ensureAuth(*httpClient);
 
     std::string queryString;
 
@@ -328,13 +330,13 @@ JsonPtr GlimeshServiceConnection::runGraphQlQuery(
         // If we're doing files, use a multipart http request
         if (fileData.size() > 0)
         {
-            httplib::Result response = httpClient.Post("/api", fileData);
+            httplib::Result response = httpClient->Post("/api", fileData);
             result = processGraphQlResponse(response);
         }
         // otherwise, stick with post body
         else
         {
-            httplib::Result response = httpClient.Post("/api", queryString, "application/json");
+            httplib::Result response = httpClient->Post("/api", queryString, "application/json");
             result = processGraphQlResponse(response);
         }
 
