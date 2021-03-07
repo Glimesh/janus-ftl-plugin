@@ -22,6 +22,7 @@ GlimeshServiceConnection::GlimeshServiceConnection(
     bool useHttps,
     std::string clientId,
     std::string clientSecret) : 
+    baseUri(fmt::format("{}://{}:{}", (useHttps ? "https" : "http"), hostname, port)),
     hostname(hostname),
     port(port),
     useHttps(useHttps),
@@ -33,9 +34,7 @@ GlimeshServiceConnection::GlimeshServiceConnection(
 #pragma region ServiceConnection
 void GlimeshServiceConnection::Init()
 {
-    std::stringstream baseUri;
-    baseUri << (useHttps ? "https" : "http") << "://" << hostname << ":" << port;
-    spdlog::info("Using Glimesh Service Connection @ {}", baseUri.str());
+    spdlog::info("Using Glimesh Service Connection @ {}", baseUri);
 
     // Try to auth
     ensureAuth(*getHttpClient());
@@ -219,7 +218,7 @@ Result<void> GlimeshServiceConnection::SendJpegPreviewImage(
 
 #pragma region Private methods
 std::unique_ptr<httplib::Client> GlimeshServiceConnection::getHttpClient() {
-    return std::make_unique<httplib::Client>(hostname, port);
+    return std::make_unique<httplib::Client>(baseUri.c_str());
 }
 
 void GlimeshServiceConnection::ensureAuth(httplib::Client& httpClient)

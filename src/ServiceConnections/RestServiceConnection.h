@@ -46,6 +46,7 @@ private:
     /* Private members */
     const int MAX_RETRIES = 5;
     const int TIME_BETWEEN_RETRIES_MS = 3000;
+    std::string baseUri;
     std::string hostname;
     uint16_t port;
     bool useHttps;
@@ -54,7 +55,6 @@ private:
 
     /* Private methods */
     std::unique_ptr<httplib::Client> getHttpClientWithAuth();
-    std::string getHostUrl(bool https, std::string hostname, uint16_t port);
     std::string relativeToAbsolutePath(std::string relativePath);
     httplib::Result runGetRequest(std::string path);
     httplib::Result runPostRequest(std::string path, JsonPtr body = nullptr,

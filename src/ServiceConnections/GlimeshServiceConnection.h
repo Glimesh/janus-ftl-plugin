@@ -50,6 +50,7 @@ private:
     /* Private members */
     const int MAX_RETRIES = 10;
     const int TIME_BETWEEN_RETRIES_MS = 3000;
+    std::string baseUri;
     std::string hostname;
     uint16_t port;
     bool useHttps;

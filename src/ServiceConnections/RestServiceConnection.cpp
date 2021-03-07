@@ -24,6 +24,7 @@ RestServiceConnection::RestServiceConnection(
     std::string pathBase,
     std::string authToken)
 :
+    baseUri(fmt::format("{}://{}:{}", (useHttps ? "https" : "http"), hostname, port)),
     hostname(hostname),
     port(port),
     useHttps(useHttps),
@@ -48,8 +49,7 @@ RestServiceConnection::RestServiceConnection(
 #pragma region Public methods
 void RestServiceConnection::Init()
 {
-    spdlog::info("Using REST Service Connection @ {}{}", getHostUrl(useHttps, hostname, port),
-        pathBase);
+    spdlog::info("Using REST Service Connection @ {}{}", baseUri, pathBase);
 }
 
 Result<std::vector<std::byte>> RestServiceConnection::GetHmacKey(ftl_channel_id_t channelId)
@@ -154,7 +154,7 @@ Result<void> RestServiceConnection::SendJpegPreviewImage(
 
 #pragma region Private methods
 std::unique_ptr<httplib::Client> RestServiceConnection::getHttpClientWithAuth() {
-    auto httpClient = std::make_unique<httplib::Client>(hostname, port);
+    auto httpClient = std::make_unique<httplib::Client>(baseUri.c_str());
     if (this->authToken.length() > 0)
     {
         httplib::Headers headers
@@ -166,19 +166,12 @@ std::unique_ptr<httplib::Client> RestServiceConnection::getHttpClientWithAuth() 
     return httpClient;
 }
 
-std::string RestServiceConnection::getHostUrl(bool https, std::string hostname, uint16_t port)
-{
-    return fmt::format("{}://{}:{}", (https ? "https" : "http"), hostname, port);
-}
-
 std::string RestServiceConnection::relativeToAbsolutePath(std::string relativePath)
 {
     // Relative path must not be prefixed with a slash
     assert((relativePath.size() > 0) && (relativePath.front() != '/'));
     return fmt::format("{}{}", pathBase, relativePath);
 }
-
-
 
 httplib::Result RestServiceConnection::runGetRequest(std::string path)
 {
