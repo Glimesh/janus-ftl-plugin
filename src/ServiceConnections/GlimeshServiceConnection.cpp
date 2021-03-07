@@ -232,6 +232,7 @@ void GlimeshServiceConnection::ensureAuth(httplib::Client& httpClient)
         std::time_t currentTime = std::time(nullptr);
         if (currentTime < accessTokenExpirationTime)
         {
+            httpClient.set_bearer_token_auth(accessToken.c_str());
             return;
         }
     }
@@ -277,7 +278,6 @@ void GlimeshServiceConnection::ensureAuth(httplib::Client& httpClient)
                 spdlog::info("Received new access token, expires in {} - {} = {} seconds",
                     expirationTime, currentTime, (expirationTime - currentTime));
 
-                // Update HTTP client Authorization header
                 httpClient.set_bearer_token_auth(accessToken.c_str());
                 return;
             }
