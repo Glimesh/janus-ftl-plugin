@@ -39,6 +39,11 @@ ftl_channel_id_t FtlControlConnection::GetChannelId()
     return channelId;
 }
 
+std::optional<sockaddr_in> FtlControlConnection::GetAddr()
+{
+    return transport->GetAddr();
+}
+
 void FtlControlConnection::SetOnConnectionClosed(ConnectionClosedCallback onConnectionClosed)
 {
     this->onConnectionClosed = onConnectionClosed;

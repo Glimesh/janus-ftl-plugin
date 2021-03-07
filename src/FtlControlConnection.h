@@ -65,6 +65,7 @@ public:
 
     /* Getters/Setters */
     ftl_channel_id_t GetChannelId();
+    std::optional<sockaddr_in> GetAddr();
     void SetOnConnectionClosed(ConnectionClosedCallback onConnectionClosed);
 
     /* Public functions */

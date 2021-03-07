@@ -355,7 +355,7 @@ Result<ftl_stream_id_t> JanusFtl::ftlServerStreamStarted(ftl_channel_id_t channe
         spdlog::info("Existing Stream {} exists for Channel {} - stopping...",
             activeStream.StreamId, channelId);
         Result<void> stopResult = ftlServer->StopStream(activeStream.ChannelId,
-            activeStream.StreamId);
+            activeStream.StreamId).get(); // TODO: DO NOT WAIT FOR FUTURE HERE
         if (stopResult.IsError)
         {
             spdlog::error("Received error attempting to stop Channel {} / Stream {}: {}",
@@ -585,7 +585,7 @@ void JanusFtl::serviceReportThreadBody(std::promise<void>&& threadEndedPromise)
                 spdlog::info("Channel {} / Stream {} is averaging {}bps, exceeding the limit of "
                     "{}bps. Stopping the stream...", channelId, streamId,
                     stats.RollingAverageBitrateBps, maxAllowedBitsPerSecond);
-                Result<void> stopResult = ftlServer->StopStream(channelId, streamId);
+                Result<void> stopResult = ftlServer->StopStream(channelId, streamId).get(); // TODO: DO NOT WAIT FOR FUTURE HERE
                 if (stopResult.IsError)
                 {
                     spdlog::error("Received error attempting to stop Channel {} / Stream {}: {}",
@@ -636,7 +636,7 @@ void JanusFtl::serviceReportThreadBody(std::promise<void>&& threadEndedPromise)
                         "Stopping the stream...", channelId, streamId);
                 }
 
-                Result<void> stopResult = ftlServer->StopStream(channelId, streamId);
+                Result<void> stopResult = ftlServer->StopStream(channelId, streamId).get(); // TODO: DO NOT WAIT FOR FUTURE HERE
                 if (stopResult.IsError)
                 {
                     spdlog::error("Received error attempting to stop Channel {} / Stream {}: {}",

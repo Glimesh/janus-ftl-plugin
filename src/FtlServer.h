@@ -71,7 +71,7 @@ public:
      * @brief Stops the stream with the specified channel ID and stream ID.
      * This will not fire the StreamEnded callback.
      */
-    Result<void> StopStream(ftl_channel_id_t channelId, ftl_stream_id_t streamId);
+    std::future<Result<void>> StopStream(ftl_channel_id_t channelId, ftl_stream_id_t streamId);
 
     /**
      * @brief Retrieves stats for all active streams
@@ -101,6 +101,7 @@ private:
     enum class FtlServerEventKind
     {
         Unknown = 0,
+        StopStream,
         NewControlConnection,
         ControlStartMediaPort,
         StreamIdAssigned,
@@ -108,6 +109,12 @@ private:
         StreamClosed,
     };
     struct FtlServerEvent {};
+    struct FtlServerStopStreamEvent : public FtlServerEvent
+    {
+        std::promise<Result<void>> StopResultPromise;
+        ftl_channel_id_t ChannelId;
+        ftl_stream_id_t StreamId;
+    };
     struct FtlServerNewControlConnectionEvent : public FtlServerEvent
     {
         ConnectionTransport* Connection;
@@ -141,9 +148,10 @@ private:
     /* Constants */
     static constexpr uint16_t DEFAULT_MEDIA_MIN_PORT = 9000;
     static constexpr uint16_t DEFAULT_MEDIA_MAX_PORT = 10000;
-    static constexpr uint16_t CONNECTION_AUTH_TIMEOUT_MS = 5000;
-    static constexpr std::chrono::milliseconds EVENT_QUEUE_WAIT_TIME = 
-        std::chrono::milliseconds(32);
+    static constexpr std::chrono::milliseconds CONNECTION_AUTH_TIMEOUT
+        = std::chrono::milliseconds(5000);
+    static constexpr std::chrono::milliseconds EVENT_QUEUE_WAIT_TIME
+        = std::chrono::milliseconds(32);
 
     /* Private fields */
     // Connection managers
@@ -167,7 +175,9 @@ private:
     std::condition_variable stoppingConditionVariable;
     std::thread listenThread;
     std::shared_mutex streamDataMutex;
-    std::unordered_map<FtlControlConnection*, std::unique_ptr<FtlControlConnection>>
+    std::unordered_map<FtlControlConnection*, 
+        std::pair<std::unique_ptr<FtlControlConnection>,
+            std::chrono::time_point<std::chrono::steady_clock>>>
         pendingControlConnections;
     std::unordered_map<FtlStream*, FtlStreamRecord> activeStreams;
     std::unordered_set<uint16_t> usedMediaPorts;
@@ -182,10 +192,11 @@ private:
     std::future<Result<uint16_t>> onControlStartMediaPort(FtlControlConnection* controlConnection,
         ftl_channel_id_t channelId, MediaMetadata mediaMetadata, in_addr targetAddr);
     void onControlConnectionClosed(FtlControlConnection* controlConnection);
-    void onStreamClosed(FtlStream& stream);
+    void onStreamClosed(FtlStream* stream);
     void onStreamRtpPacket(ftl_channel_id_t channelId, ftl_stream_id_t streamId,
         const std::vector<std::byte>& packet);
     // Event queue listeners
+    void eventStopStream(std::shared_ptr<FtlServerStopStreamEvent> event);
     void eventNewControlConnection(std::shared_ptr<FtlServerNewControlConnectionEvent> event);
     void eventControlStartMediaPort(std::shared_ptr<FtlServerControlStartMediaPortEvent> event);
     void eventStreamIdAssigned(std::shared_ptr<FtlServerStreamIdAssignedEvent> event);
@@ -193,4 +204,23 @@ private:
     void eventStreamClosed(std::shared_ptr<FtlServerStreamClosedEvent> event);
     // Callback dispatchers
     void dispatchOnStreamEnded(ftl_channel_id_t channelId, ftl_stream_id_t streamId);
+
+    // Private template functions
+    template<typename Callable>
+    void dispatchAsyncCall(Callable call)
+    {
+        // Dispatch this call on a separate thread, but keep track of the thread so
+        // we can properly join it when it has finished (or we're being destructed)
+        std::promise<void> threadPromise;
+        std::future<void> threadFuture = threadPromise.get_future();
+        asyncProcessingThreads.emplace_back(
+            std::piecewise_construct,
+            std::forward_as_tuple(
+                [call = std::move(call), threadPromise = std::move(threadPromise)]() mutable
+                {
+                    call();
+                    threadPromise.set_value();
+                }),
+            std::forward_as_tuple(std::move(threadFuture)));
+    }
 };

@@ -146,7 +146,7 @@ void FtlStream::controlConnectionClosed(FtlControlConnection* connection)
     mediaTransport->Stop();
 
     // Indicate that we've been stopped
-    onClosed(*this);
+    onClosed(this);
 }
 
 void FtlStream::mediaBytesReceived(const std::vector<std::byte>& bytes)
@@ -171,7 +171,7 @@ void FtlStream::mediaConnectionClosed()
         "Media connection closed unexpectedly for channel {} / stream {}",
         GetChannelId(), streamId);
     controlConnection->Stop();
-    onClosed(*this);
+    onClosed(this);
 }
 
 std::set<rtp_sequence_num_t> FtlStream::insertPacketInSequenceOrder(
