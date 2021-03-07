@@ -19,6 +19,7 @@
 #include "Utilities/FtlTypes.h"
 #include "Utilities/JanssonPtr.h"
 #include "Utilities/Result.h"
+#include "Utilities/Watchdog.h"
 
 extern "C"
 {
@@ -114,7 +115,7 @@ private:
     std::shared_ptr<ServiceConnection> serviceConnection;
     std::unordered_map<VideoCodecKind, std::unique_ptr<PreviewGenerator>> previewGenerators;
     uint32_t maxAllowedBitsPerSecond = 0;
-    uint32_t metadataReportIntervalMs = 0;
+    std::chrono::milliseconds metadataReportInterval = std::chrono::milliseconds::min();
     uint16_t minMediaPort = 9000; // TODO: Migrate to Configuration
     uint16_t maxMediaPort = 10000; // TODO: Migrate to Configuration
     std::atomic<bool> isStopping = false;
@@ -122,6 +123,7 @@ private:
     std::future<void> serviceReportThreadEndedFuture;
     std::mutex threadShutdownMutex;
     std::condition_variable threadShutdownConditionVariable;
+    std::unique_ptr<Watchdog> watchdog;
     // Stream/Session/Relay data
     std::shared_mutex streamDataMutex; // Covers shared access to streams and sessions
     std::unordered_map<ftl_channel_id_t, ActiveStream> streams;

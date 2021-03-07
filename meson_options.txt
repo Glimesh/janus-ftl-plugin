@@ -1,0 +1,1 @@
+option('systemd_watchdog_support', type : 'feature', value : 'auto') # http://0pointer.de/blog/projects/watchdog.html
