@@ -22,7 +22,6 @@ GlimeshServiceConnection::GlimeshServiceConnection(
     bool useHttps,
     std::string clientId,
     std::string clientSecret) : 
-    httpClient(fmt::format("{}://{}:{}", (useHttps ? "https" : "http"), hostname, port).c_str()),
     hostname(hostname),
     port(port),
     useHttps(useHttps),
@@ -39,7 +38,8 @@ void GlimeshServiceConnection::Init()
     spdlog::info("Using Glimesh Service Connection @ {}", baseUri.str());
 
     // Try to auth
-    ensureAuth();
+    httplib::Client httpClient(hostname, port);
+    ensureAuth(httpClient);
 }
 
 Result<std::vector<std::byte>> GlimeshServiceConnection::GetHmacKey(uint32_t channelId)
@@ -219,7 +219,7 @@ Result<void> GlimeshServiceConnection::SendJpegPreviewImage(
 #pragma endregion
 
 #pragma region Private methods
-void GlimeshServiceConnection::ensureAuth()
+void GlimeshServiceConnection::ensureAuth(httplib::Client& httpClient)
 {
     std::lock_guard<std::mutex> lock(authMutex);
 
@@ -275,11 +275,7 @@ void GlimeshServiceConnection::ensureAuth()
                     expirationTime, currentTime, (expirationTime - currentTime));
 
                 // Update HTTP client Authorization header
-                httplib::Headers headers
-                {
-                    {"Authorization", "Bearer " + accessToken}
-                };
-                httpClient.set_default_headers(headers);
+                httpClient.set_bearer_token_auth(accessToken.c_str());
                 return;
             }
         }
@@ -294,8 +290,11 @@ JsonPtr GlimeshServiceConnection::runGraphQlQuery(
     JsonPtr variables,
     httplib::MultipartFormDataItems fileData)
 {
+    httplib::Client httpClient(hostname, port);
+
     // Make sure we have a valid access token
-    ensureAuth();
+    ensureAuth(httpClient);
+    httpClient.set_bearer_token_auth(accessToken.c_str());
 
     std::string queryString;
 
