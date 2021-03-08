@@ -20,6 +20,7 @@
 
 // Forward declarations
 class ConnectionTransport;
+class FtlServer;
 
 /**
  * @brief Manages incoming FTL control connections
@@ -28,10 +29,6 @@ class FtlControlConnection
 {
 public:
     /* Public types */
-    using RequestKeyCallback = std::function<Result<std::vector<std::byte>>(ftl_channel_id_t)>;
-    using StartMediaPortCallback = std::function<std::future<Result<uint16_t>>(
-        FtlControlConnection*, ftl_channel_id_t, MediaMetadata, in_addr)>;
-    using ConnectionClosedCallback = std::function<void(FtlControlConnection*)>;
     enum FtlResponseCode
     {
         // See ftl-sdk/ftl_private.h
@@ -58,17 +55,16 @@ public:
 
     /* Constructor/Destructor */
     FtlControlConnection(
-        std::unique_ptr<ConnectionTransport> transport,
-        RequestKeyCallback onRequestKey,
-        StartMediaPortCallback onStartMediaPort,
-        ConnectionClosedCallback onConnectionClosed);
+        FtlServer* ftlServer,
+        std::unique_ptr<ConnectionTransport> transport);
 
     /* Getters/Setters */
     ftl_channel_id_t GetChannelId();
     std::optional<sockaddr_in> GetAddr();
-    void SetOnConnectionClosed(ConnectionClosedCallback onConnectionClosed);
 
     /* Public functions */
+    void ProvideHmacKey(const std::vector<std::byte>& hmacKey);
+    void StartMediaPort(uint16_t mediaPort);
     Result<void> StartAsync();
     void Stop(FtlResponseCode responseCode = FtlResponseCode::FTL_INGEST_RESP_SERVER_TERMINATE);
 
@@ -78,14 +74,15 @@ private:
     static constexpr int HMAC_PAYLOAD_SIZE = 128;
 
     /* Private fields */
+    FtlServer* const ftlServer;
     const std::unique_ptr<ConnectionTransport> transport;
-    const RequestKeyCallback onRequestKey;
-    const StartMediaPortCallback onStartMediaPort;
-    ConnectionClosedCallback onConnectionClosed;
+    bool hmacRequested = false;
     bool isAuthenticated = false;
+    bool mediaPortRequested = false;
     bool isStreaming = false;
     ftl_channel_id_t channelId = 0;
     std::vector<std::byte> hmacPayload;
+    std::vector<std::byte> clientHmacHash;
     MediaMetadata mediaMetadata {};
     // Command processing
     std::string commandBuffer;

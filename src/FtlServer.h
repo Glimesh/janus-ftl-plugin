@@ -68,10 +68,27 @@ public:
     void Stop();
 
     /**
+     * @brief Called by FtlControlConnection when the control connection has stopped.
+     */
+    void ControlConnectionStopped(FtlControlConnection* connection);
+
+    /**
+     * @brief Called by FtlControlConnection when it wants an HMAC key for a channel
+     */
+    void ControlConnectionRequestedHmacKey(FtlControlConnection* connection,
+        ftl_channel_id_t channelId);
+
+    /**
+     * @brief Called by FtlControlConnection when it needs a media port assigned
+     */
+    void ControlConnectionRequestedMediaPort(FtlControlConnection* connection,
+        ftl_channel_id_t channelId, MediaMetadata mediaMetadata, in_addr targetAddr);
+
+    /**
      * @brief Stops the stream with the specified channel ID and stream ID.
      * This will not fire the StreamEnded callback.
      */
-    std::future<Result<void>> StopStream(ftl_channel_id_t channelId, ftl_stream_id_t streamId);
+    void StopStream(ftl_channel_id_t channelId, ftl_stream_id_t streamId);
 
     /**
      * @brief Retrieves stats for all active streams
@@ -90,28 +107,32 @@ private:
     /* Private types */
     struct FtlStreamRecord
     {
-        FtlStreamRecord(std::unique_ptr<FtlStream> stream, uint16_t mediaPort) : 
+        FtlStreamRecord(std::shared_ptr<FtlStream> stream, uint16_t mediaPort) : 
             Stream(std::move(stream)), MediaPort(mediaPort)
         { }
 
-        std::unique_ptr<FtlStream> Stream;
+        std::shared_ptr<FtlStream> Stream;
         uint16_t MediaPort;
     };
     /* Private event types */
     enum class FtlServerEventKind
     {
         Unknown = 0,
-        StopStream,
-        NewControlConnection,
-        ControlStartMediaPort,
-        StreamIdAssigned,
-        ControlConnectionClosed,
-        StreamClosed,
+        StopStream,                 // Request to stop a specific Channel / Stream ID
+        NewControlConnection,       // ConnectionListener has produced a ConnectionTransport
+        ControlConnectionClosed,    // FtlControlConnection has closed
+        ControlRequestHmacKey,      // Control connection requests HMAC key
+        ControlHmacKeyFound,        // HMAC key has been provided for a Control connection
+        ControlRequestMediaPort,    // Control connection requests media port
+        TerminateControlConnection, // Terminate and remove a Control connection
+        StreamIdAssigned,           // StreamStartedCallback has returned a Stream ID
+        StreamStarted,              // FtlStream has started successfully
+        StreamStartFailed,          // FtlStream has failed to start
+        StreamClosed,               // FtlStream has closed
     };
     struct FtlServerEvent {};
     struct FtlServerStopStreamEvent : public FtlServerEvent
     {
-        std::promise<Result<void>> StopResultPromise;
         ftl_channel_id_t ChannelId;
         ftl_stream_id_t StreamId;
     };
@@ -123,21 +144,50 @@ private:
     {
         FtlControlConnection* Connection;
     };
-    struct FtlServerControlStartMediaPortEvent : public FtlServerEvent
+    struct FtlServerControlRequestHmacKeyEvent : public FtlServerEvent
     {
-        std::promise<Result<uint16_t>> MediaPortResultPromise;
+        FtlControlConnection* Connection;
+        ftl_channel_id_t ChannelId;
+    };
+    struct FtlServerControlHmacKeyFoundEvent : public FtlServerEvent
+    {
+        FtlControlConnection* Connection;
+        std::vector<std::byte> HmacKey;
+    };
+    struct FtlServerControlRequestMediaPortEvent : public FtlServerEvent
+    {
         FtlControlConnection* Connection;
         ftl_channel_id_t ChannelId;
         MediaMetadata Metadata;
         in_addr TargetAddr;
     };
+    struct FtlServerTerminateControlConnectionEvent : public FtlServerEvent
+    {
+        FtlControlConnection* Connection;
+        FtlControlConnection::FtlResponseCode ResponseCode;
+    };
     struct FtlServerStreamIdAssignedEvent : public FtlServerEvent
     {
-        std::promise<Result<uint16_t>> MediaPortResultPromise;
         FtlControlConnection* Connection;
         ftl_channel_id_t ChannelId;
         ftl_stream_id_t StreamId;
         MediaMetadata Metadata;
+        in_addr TargetAddr;
+    };
+    struct FtlServerStreamStartedEvent : public FtlServerEvent
+    {
+        std::shared_ptr<FtlStream> Stream;
+        ftl_channel_id_t ChannelId;
+        ftl_stream_id_t StreamId;
+        uint16_t MediaPort;
+        in_addr TargetAddr;
+    };
+    struct FtlServerStreamStartFailedEvent : public FtlServerEvent
+    {
+        Result<void> FailureResult;
+        ftl_channel_id_t ChannelId;
+        ftl_stream_id_t StreamId;
+        uint16_t MediaPort;
         in_addr TargetAddr;
     };
     struct FtlServerStreamClosedEvent : public FtlServerEvent
@@ -176,7 +226,7 @@ private:
     std::thread listenThread;
     std::shared_mutex streamDataMutex;
     std::unordered_map<FtlControlConnection*, 
-        std::pair<std::unique_ptr<FtlControlConnection>,
+        std::pair<std::shared_ptr<FtlControlConnection>,
             std::chrono::time_point<std::chrono::steady_clock>>>
         pendingControlConnections;
     std::unordered_map<FtlStream*, FtlStreamRecord> activeStreams;
@@ -189,18 +239,21 @@ private:
     void removeStreamRecord(FtlStream* stream, const std::unique_lock<std::shared_mutex>& dataLock);
     // Callback handlers
     void onNewControlConnection(ConnectionTransport* connection);
-    std::future<Result<uint16_t>> onControlStartMediaPort(FtlControlConnection* controlConnection,
-        ftl_channel_id_t channelId, MediaMetadata mediaMetadata, in_addr targetAddr);
-    void onControlConnectionClosed(FtlControlConnection* controlConnection);
     void onStreamClosed(FtlStream* stream);
     void onStreamRtpPacket(ftl_channel_id_t channelId, ftl_stream_id_t streamId,
         const std::vector<std::byte>& packet);
     // Event queue listeners
     void eventStopStream(std::shared_ptr<FtlServerStopStreamEvent> event);
     void eventNewControlConnection(std::shared_ptr<FtlServerNewControlConnectionEvent> event);
-    void eventControlStartMediaPort(std::shared_ptr<FtlServerControlStartMediaPortEvent> event);
-    void eventStreamIdAssigned(std::shared_ptr<FtlServerStreamIdAssignedEvent> event);
     void eventControlConnectionClosed(std::shared_ptr<FtlServerControlConnectionClosedEvent> event);
+    void eventControlRequestHmacKey(std::shared_ptr<FtlServerControlRequestHmacKeyEvent> event);
+    void eventControlHmacKeyFound(std::shared_ptr<FtlServerControlHmacKeyFoundEvent> event);
+    void eventControlRequestMediaPort(std::shared_ptr<FtlServerControlRequestMediaPortEvent> event);
+    void eventTerminateControlConnection(
+        std::shared_ptr<FtlServerTerminateControlConnectionEvent> event);
+    void eventStreamIdAssigned(std::shared_ptr<FtlServerStreamIdAssignedEvent> event);
+    void eventStreamStarted(std::shared_ptr<FtlServerStreamStartedEvent> event);
+    void eventStreamStartFailed(std::shared_ptr<FtlServerStreamStartFailedEvent> event);
     void eventStreamClosed(std::shared_ptr<FtlServerStreamClosedEvent> event);
     // Callback dispatchers
     void dispatchOnStreamEnded(ftl_channel_id_t channelId, ftl_stream_id_t streamId);

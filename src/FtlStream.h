@@ -52,7 +52,7 @@ public:
 
     /* Constructor/Destructor */
     FtlStream(
-        std::unique_ptr<FtlControlConnection> controlConnection,
+        std::shared_ptr<FtlControlConnection> controlConnection,
         std::unique_ptr<ConnectionTransport> mediaTransport,
         const MediaMetadata mediaMetadata,
         const ftl_stream_id_t streamId,
@@ -98,7 +98,7 @@ private:
     static constexpr uint32_t            ROLLING_SIZE_AVERAGE_MS        = 2000;
 
     /* Private members */
-    const std::unique_ptr<FtlControlConnection> controlConnection;
+    const std::shared_ptr<FtlControlConnection> controlConnection;
     const std::unique_ptr<ConnectionTransport> mediaTransport;
     const MediaMetadata mediaMetadata;
     const ftl_stream_id_t streamId;

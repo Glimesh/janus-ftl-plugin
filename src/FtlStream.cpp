@@ -25,7 +25,7 @@
 
 #pragma region Constructor/Destructor
 FtlStream::FtlStream(
-    std::unique_ptr<FtlControlConnection> controlConnection,
+    std::shared_ptr<FtlControlConnection> controlConnection,
     std::unique_ptr<ConnectionTransport> mediaTransport,
     const MediaMetadata mediaMetadata,
     const ftl_stream_id_t streamId,
