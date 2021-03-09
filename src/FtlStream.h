@@ -61,8 +61,9 @@ public:
         const bool nackLostPackets = true);
 
     /* Public methods */
-    Result<void> StartAsync();
+    Result<void> StartAsync(uint16_t mediaPort);
     void Stop();
+    void ControlConnectionStopped(FtlControlConnection* controlConnection);
 
     /* Getters/Setters */
     ftl_channel_id_t GetChannelId() const;
@@ -113,7 +114,6 @@ private:
     std::unordered_map<rtp_ssrc_t, SsrcData> ssrcData;
 
     /* Private methods */
-    void controlConnectionClosed(FtlControlConnection* connection);
     void mediaBytesReceived(const std::vector<std::byte>& bytes);
     void mediaConnectionClosed();
     // Packet processing

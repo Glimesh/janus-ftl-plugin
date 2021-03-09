@@ -354,13 +354,7 @@ Result<ftl_stream_id_t> JanusFtl::ftlServerStreamStarted(ftl_channel_id_t channe
         const ActiveStream& activeStream = streams[channelId];
         spdlog::info("Existing Stream {} exists for Channel {} - stopping...",
             activeStream.StreamId, channelId);
-        Result<void> stopResult = ftlServer->StopStream(activeStream.ChannelId,
-            activeStream.StreamId).get(); // TODO: DO NOT WAIT FOR FUTURE HERE
-        if (stopResult.IsError)
-        {
-            spdlog::error("Received error attempting to stop Channel {} / Stream {}: {}",
-                activeStream.ChannelId, activeStream.StreamId, stopResult.ErrorMessage);
-        }
+        ftlServer->StopStream(activeStream.ChannelId, activeStream.StreamId);
         endStream(activeStream.ChannelId, activeStream.StreamId, lock);
     }
 
@@ -585,12 +579,7 @@ void JanusFtl::serviceReportThreadBody(std::promise<void>&& threadEndedPromise)
                 spdlog::info("Channel {} / Stream {} is averaging {}bps, exceeding the limit of "
                     "{}bps. Stopping the stream...", channelId, streamId,
                     stats.RollingAverageBitrateBps, maxAllowedBitsPerSecond);
-                Result<void> stopResult = ftlServer->StopStream(channelId, streamId).get(); // TODO: DO NOT WAIT FOR FUTURE HERE
-                if (stopResult.IsError)
-                {
-                    spdlog::error("Received error attempting to stop Channel {} / Stream {}: {}",
-                        channelId, streamId, stopResult.ErrorMessage);
-                }
+                ftlServer->StopStream(channelId, streamId);
                 streamsStopped.emplace_back(channelId, streamId);
                 continue;
             }
@@ -636,12 +625,7 @@ void JanusFtl::serviceReportThreadBody(std::promise<void>&& threadEndedPromise)
                         "Stopping the stream...", channelId, streamId);
                 }
 
-                Result<void> stopResult = ftlServer->StopStream(channelId, streamId).get(); // TODO: DO NOT WAIT FOR FUTURE HERE
-                if (stopResult.IsError)
-                {
-                    spdlog::error("Received error attempting to stop Channel {} / Stream {}: {}",
-                        channelId, streamId, stopResult.ErrorMessage);
-                }
+                ftlServer->StopStream(channelId, streamId);
                 streamsStopped.emplace_back(channelId, streamId);
                 continue;
             }

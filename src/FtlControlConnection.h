@@ -7,7 +7,6 @@
 
 #pragma once
 
-#include "FtlStream.h"
 #include "Utilities/FtlTypes.h"
 #include "Utilities/Result.h"
 
@@ -21,6 +20,7 @@
 // Forward declarations
 class ConnectionTransport;
 class FtlServer;
+class FtlStream;
 
 /**
  * @brief Manages incoming FTL control connections
@@ -61,6 +61,7 @@ public:
     /* Getters/Setters */
     ftl_channel_id_t GetChannelId();
     std::optional<sockaddr_in> GetAddr();
+    void SetFtlStream(FtlStream* ftlStream);
 
     /* Public functions */
     void ProvideHmacKey(const std::vector<std::byte>& hmacKey);
@@ -76,6 +77,7 @@ private:
     /* Private fields */
     FtlServer* const ftlServer;
     const std::unique_ptr<ConnectionTransport> transport;
+    FtlStream* ftlStream = nullptr;
     bool hmacRequested = false;
     bool isAuthenticated = false;
     bool mediaPortRequested = false;

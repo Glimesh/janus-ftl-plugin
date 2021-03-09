@@ -40,6 +40,11 @@ std::optional<sockaddr_in> FtlControlConnection::GetAddr()
 {
     return transport->GetAddr();
 }
+
+void FtlControlConnection::SetFtlStream(FtlStream* ftlStream)
+{
+    this->ftlStream = ftlStream;
+}
 #pragma endregion Getters/setters
 
 #pragma region Public functions
@@ -176,7 +181,14 @@ void FtlControlConnection::onTransportBytesReceived(const std::vector<std::byte>
 
 void FtlControlConnection::onTransportClosed()
 {
-    ftlServer->ControlConnectionStopped(this);
+    if (ftlStream != nullptr)
+    {
+        ftlStream->ControlConnectionStopped(this);
+    }
+    else if (ftlServer != nullptr)
+    {
+        ftlServer->ControlConnectionStopped(this);
+    }
 }
 
 void FtlControlConnection::writeToTransport(const std::string& str)
@@ -200,7 +212,14 @@ void FtlControlConnection::stopConnection()
     
     // Notify that we've stopped -  we will not receive an OnConnectionClosed from the transport
     // if we call Stop ourselves
-    ftlServer->ControlConnectionStopped(this);
+    if (ftlStream != nullptr)
+    {
+        ftlStream->ControlConnectionStopped(this);
+    }
+    else if (ftlServer != nullptr)
+    {
+        ftlServer->ControlConnectionStopped(this);
+    }
 }
 
 void FtlControlConnection::processCommand(const std::string& command)

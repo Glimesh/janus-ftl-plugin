@@ -47,9 +47,21 @@ FtlServer::FtlServer(
         eventpp::argumentAdapter<void(std::shared_ptr<FtlServerControlConnectionClosedEvent>)>(
             std::bind(&FtlServer::eventControlConnectionClosed, this, std::placeholders::_1)));
 
+    eventQueue.appendListener(FtlServerEventKind::ControlRequestHmacKey,
+        eventpp::argumentAdapter<void(std::shared_ptr<FtlServerControlRequestHmacKeyEvent>)>(
+            std::bind(&FtlServer::eventControlRequestHmacKey, this, std::placeholders::_1)));
+
+    eventQueue.appendListener(FtlServerEventKind::ControlHmacKeyFound,
+        eventpp::argumentAdapter<void(std::shared_ptr<FtlServerControlHmacKeyFoundEvent>)>(
+            std::bind(&FtlServer::eventControlHmacKeyFound, this, std::placeholders::_1)));
+
     eventQueue.appendListener(FtlServerEventKind::ControlRequestMediaPort,
         eventpp::argumentAdapter<void(std::shared_ptr<FtlServerControlRequestMediaPortEvent>)>(
             std::bind(&FtlServer::eventControlRequestMediaPort, this, std::placeholders::_1)));
+
+    eventQueue.appendListener(FtlServerEventKind::TerminateControlConnection,
+        eventpp::argumentAdapter<void(std::shared_ptr<FtlServerTerminateControlConnectionEvent>)>(
+            std::bind(&FtlServer::eventTerminateControlConnection, this, std::placeholders::_1)));
 
     eventQueue.appendListener(FtlServerEventKind::StreamIdAssigned,
         eventpp::argumentAdapter<void(std::shared_ptr<FtlServerStreamIdAssignedEvent>)>(
@@ -262,7 +274,8 @@ void FtlServer::eventQueueThreadBody()
     }
 }
 
-Result<uint16_t> FtlServer::reserveMediaPort(const std::unique_lock<std::shared_mutex>& dataLock)
+Result<uint16_t> FtlServer::reserveMediaPort(
+    const std::unique_lock<std::shared_mutex>& dataLock)
 {
     for (uint16_t i = minMediaPort; i <= maxMediaPort; ++i)
     {
@@ -371,7 +384,8 @@ void FtlServer::eventNewControlConnection(std::shared_ptr<FtlServerNewControlCon
     spdlog::info("New FTL control connection is pending from {}", addrString);
 }
 
-void FtlServer::eventControlRequestHmacKey(std::shared_ptr<FtlServerControlRequestHmacKeyEvent> event)
+void FtlServer::eventControlRequestHmacKey(
+    std::shared_ptr<FtlServerControlRequestHmacKeyEvent> event)
 {
     spdlog::debug(
         "FtlServer::eventControlRequestHmacKey processing ControlRequestHmacKey event...");
@@ -454,7 +468,8 @@ void FtlServer::eventTerminateControlConnection(
         });
 }
 
-void FtlServer::eventControlRequestMediaPort(std::shared_ptr<FtlServerControlRequestMediaPortEvent> event)
+void FtlServer::eventControlRequestMediaPort(
+    std::shared_ptr<FtlServerControlRequestMediaPortEvent> event)
 {
     spdlog::debug(
         "FtlServer::eventControlRequestMediaPort processing ControlRequestMediaPort event...");
@@ -552,7 +567,7 @@ void FtlServer::eventStreamIdAssigned(std::shared_ptr<FtlServerStreamIdAssignedE
                 std::bind(&FtlServer::onStreamRtpPacket, this, std::placeholders::_1,
                     std::placeholders::_2, std::placeholders::_3));
             
-            Result<void> streamStartResult = stream->StartAsync();
+            Result<void> streamStartResult = stream->StartAsync(mediaPort);
             if (streamStartResult.IsError)
             {
                 // Here, we purposefully drop the FtlStream reference since we're done using it.
@@ -588,7 +603,8 @@ void FtlServer::eventStreamIdAssigned(std::shared_ptr<FtlServerStreamIdAssignedE
     pendingControlConnections.erase(controlConnection);
 }
 
-void FtlServer::eventControlConnectionClosed(std::shared_ptr<FtlServerControlConnectionClosedEvent> event)
+void FtlServer::eventControlConnectionClosed(
+    std::shared_ptr<FtlServerControlConnectionClosedEvent> event)
 {
     spdlog::debug(
         "FtlServer::eventControlConnectionClosed processing ControlConnectionClosed event...");
