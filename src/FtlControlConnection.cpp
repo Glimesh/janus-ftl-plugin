@@ -8,6 +8,7 @@
 #include "FtlControlConnection.h"
 
 #include "ConnectionTransports/ConnectionTransport.h"
+#include "FtlServer.h"
 #include "Utilities/Util.h"
 
 #include <algorithm>
@@ -15,16 +16,12 @@
 
 #pragma region Constructor/Destructor
 FtlControlConnection::FtlControlConnection(
-    std::unique_ptr<ConnectionTransport> transport,
-    RequestKeyCallback onRequestKey,
-    StartMediaPortCallback onStartMediaPort,
-    ConnectionClosedCallback onConnectionClosed)
+    FtlServer* ftlServer,
+    std::unique_ptr<ConnectionTransport> transport)
 :
-    transport(std::move(transport)),
-    onRequestKey(onRequestKey),
-    onStartMediaPort(onStartMediaPort),
-    onConnectionClosed(onConnectionClosed)
-{ 
+    ftlServer(ftlServer),
+    transport(std::move(transport))
+{
     // Bind to transport events
     this->transport->SetOnBytesReceived(std::bind(
         &FtlControlConnection::onTransportBytesReceived, this, std::placeholders::_1));
@@ -39,13 +36,88 @@ ftl_channel_id_t FtlControlConnection::GetChannelId()
     return channelId;
 }
 
-void FtlControlConnection::SetOnConnectionClosed(ConnectionClosedCallback onConnectionClosed)
+std::optional<sockaddr_in> FtlControlConnection::GetAddr()
 {
-    this->onConnectionClosed = onConnectionClosed;
+    return transport->GetAddr();
+}
+
+void FtlControlConnection::SetFtlStream(FtlStream* ftlStream)
+{
+    this->ftlStream = ftlStream;
 }
 #pragma endregion Getters/setters
 
 #pragma region Public functions
+void FtlControlConnection::ProvideHmacKey(const std::vector<std::byte>& hmacKey)
+{
+    if (isAuthenticated)
+    {
+        spdlog::error("FtlControlConnection::ProvideHmacKey HMAC key was provided, but connection "
+            "was already authenticated!");
+        return;
+    }
+    else if (!hmacRequested)
+    {
+        spdlog::error("FtlControlConnection::ProvideHmacKey HMAC key was provided, but HMAC key "
+            "was never requested!");
+        return;
+    }
+
+    // Calculate 
+    std::byte buffer[512];
+    uint32_t bufferLength;
+    HMAC(EVP_sha512(), reinterpret_cast<const unsigned char*>(hmacKey.data()), hmacKey.size(),
+        reinterpret_cast<const unsigned char*>(hmacPayload.data()), hmacPayload.size(),
+        reinterpret_cast<unsigned char*>(buffer), &bufferLength);
+
+    // Do the hashed values match?
+    bool match = true;
+    if (bufferLength != clientHmacHash.size())
+    {
+        match = false;
+    }
+    else
+    {
+        for (unsigned int i = 0; i < bufferLength; ++i)
+        {
+            if (clientHmacHash.at(i) != buffer[i])
+            {
+                match = false;
+                break;
+            }
+        }
+    }
+
+    if (match)
+    {
+        isAuthenticated = true;
+        writeToTransport(fmt::format("{}\n", FtlResponseCode::FTL_INGEST_RESP_OK));
+        std::string addrStr = transport->GetAddr().has_value() ? 
+            Util::AddrToString(transport->GetAddr().value().sin_addr) : "UNKNOWN";
+        spdlog::info("{} authenticated as Channel {} successfully.", addrStr,
+            channelId);
+    }
+    else
+    {
+        spdlog::info("Client provided invalid HMAC hash for channel {}, disconnecting...",
+            channelId);
+        stopConnection();
+        return;
+    }
+}
+
+void FtlControlConnection::StartMediaPort(uint16_t mediaPort)
+{
+    if (isStreaming)
+    {
+        spdlog::error("Channel {} has been assigned multiple media ports", channelId);
+    }
+    isStreaming = true;
+    spdlog::info("Assigned Channel {} media port {}", channelId, mediaPort);
+    writeToTransport(fmt::format("{} hi. Use UDP port {}\n", FtlResponseCode::FTL_INGEST_RESP_OK,
+        mediaPort));
+}
+
 Result<void> FtlControlConnection::StartAsync()
 {
     return transport->StartAsync();
@@ -109,9 +181,13 @@ void FtlControlConnection::onTransportBytesReceived(const std::vector<std::byte>
 
 void FtlControlConnection::onTransportClosed()
 {
-    if (onConnectionClosed)
+    if (ftlStream != nullptr)
     {
-        onConnectionClosed(*this);
+        ftlStream->ControlConnectionStopped(this);
+    }
+    else if (ftlServer != nullptr)
+    {
+        ftlServer->ControlConnectionStopped(this);
     }
 }
 
@@ -136,9 +212,13 @@ void FtlControlConnection::stopConnection()
     
     // Notify that we've stopped -  we will not receive an OnConnectionClosed from the transport
     // if we call Stop ourselves
-    if (onConnectionClosed)
+    if (ftlStream != nullptr)
     {
-        onConnectionClosed(*this);
+        ftlStream->ControlConnectionStopped(this);
+    }
+    else if (ftlServer != nullptr)
+    {
+        ftlServer->ControlConnectionStopped(this);
     }
 }
 
@@ -202,61 +282,20 @@ void FtlControlConnection::processConnectCommand(const std::string& command)
             stopConnection();
             return;
         }
-        std::vector<std::byte> hmacHash = Util::HexStringToByteArray(hmacHashStr);
-
-        // Try to fetch the key for this channel
-        Result<std::vector<std::byte>> keyResult = onRequestKey(requestedChannelId);
-        if (keyResult.IsError)
+        if (hmacRequested)
         {
-            // Couldn't look up the key, so let's close the connection
-            spdlog::warn("Couldn't look up HMAC key for channel {}: {}", requestedChannelId,
-                keyResult.ErrorMessage);
+            spdlog::error("Control connection attempted multiple CONNECT handshakes");
             stopConnection();
             return;
         }
-        std::vector<std::byte> key = keyResult.Value;
 
-        std::byte buffer[512];
-        uint32_t bufferLength;
-        HMAC(EVP_sha512(), reinterpret_cast<const unsigned char*>(key.data()), key.size(),
-            reinterpret_cast<const unsigned char*>(hmacPayload.data()), hmacPayload.size(),
-            reinterpret_cast<unsigned char*>(buffer), &bufferLength);
+        // Store the client's hash and requested channel ID
+        channelId = requestedChannelId;
+        clientHmacHash = Util::HexStringToByteArray(hmacHashStr);
 
-        // Do the hashed values match?
-        bool match = true;
-        if (bufferLength != hmacHash.size())
-        {
-            match = false;
-        }
-        else
-        {
-            for (unsigned int i = 0; i < bufferLength; ++i)
-            {
-                if (hmacHash.at(i) != buffer[i])
-                {
-                    match = false;
-                    break;
-                }
-            }
-        }
-
-        if (match)
-        {
-            isAuthenticated = true;
-            channelId = requestedChannelId;
-            writeToTransport(fmt::format("{}\n", FtlResponseCode::FTL_INGEST_RESP_OK));
-            std::string addrStr = transport->GetAddr().has_value() ? 
-                Util::AddrToString(transport->GetAddr().value().sin_addr) : "UNKNOWN";
-            spdlog::info("{} authenticated as Channel {} successfully.", addrStr,
-                requestedChannelId);
-        }
-        else
-        {
-            spdlog::info("Client provided invalid HMAC hash for channel {}, disconnecting...",
-                requestedChannelId);
-            stopConnection();
-            return;
-        }
+        // Let the FtlServer know that we need an hmac key to calculate our own hash!
+        hmacRequested = true;
+        ftlServer->ControlConnectionRequestedHmacKey(this, requestedChannelId);
     }
     else
     {
@@ -429,20 +468,10 @@ void FtlControlConnection::processDotCommand()
     }
 
     // HACK: We assume GetAddr() returns a value here.
-    Result<uint16_t> mediaPortResult = onStartMediaPort(*this, channelId, mediaMetadata,
+    // Tell the FtlServer we want a media port!
+    ftlServer->ControlConnectionRequestedMediaPort(this, channelId, mediaMetadata,
         transport->GetAddr().value().sin_addr);
-    if (mediaPortResult.IsError)
-    {
-        spdlog::error("Could not assign media port for FTL connection: {}",
-            mediaPortResult.ErrorMessage);
-        stopConnection();
-        return;
-    }
-    uint16_t mediaPort = mediaPortResult.Value;
-    isStreaming = true;
-    spdlog::info("Assigned Channel {} media port {}", channelId, mediaPort);
-    writeToTransport(fmt::format("{} hi. Use UDP port {}\n", FtlResponseCode::FTL_INGEST_RESP_OK,
-        mediaPort));
+    
 }
 
 void FtlControlConnection::processPingCommand()

@@ -1,11 +1,8 @@
 /**
  * @file FtlStream.cpp
  * @author Hayden McAfee (hayden@outlook.com)
- * @version 0.1
  * @date 2020-08-11
- * 
  * @copyright Copyright (c) 2020 Hayden McAfee
- * 
  */
 
 #include "FtlStream.h"
@@ -25,7 +22,7 @@
 
 #pragma region Constructor/Destructor
 FtlStream::FtlStream(
-    std::unique_ptr<FtlControlConnection> controlConnection,
+    std::shared_ptr<FtlControlConnection> controlConnection,
     std::unique_ptr<ConnectionTransport> mediaTransport,
     const MediaMetadata mediaMetadata,
     const ftl_stream_id_t streamId,
@@ -45,9 +42,8 @@ FtlStream::FtlStream(
     ssrcData.try_emplace(mediaMetadata.AudioSsrc);
     ssrcData.try_emplace(mediaMetadata.VideoSsrc);
 
-    // Bind to control callbacks
-    this->controlConnection->SetOnConnectionClosed(
-        std::bind(&FtlStream::controlConnectionClosed, this, std::placeholders::_1));
+    // Bind to FtlStream
+    this->controlConnection->SetFtlStream(this);
 
     // Bind to media transport callbacks
     this->mediaTransport->SetOnBytesReceived(
@@ -60,7 +56,7 @@ FtlStream::FtlStream(
 #pragma endregion
 
 #pragma region Public methods
-Result<void> FtlStream::StartAsync()
+Result<void> FtlStream::StartAsync(uint16_t mediaPort)
 {
     std::unique_lock lock(dataMutex);
     // Fire up our media connection
@@ -75,6 +71,9 @@ Result<void> FtlStream::StartAsync()
     steadyStartTime = std::chrono::steady_clock::now();
     spdlog::info("Media stream receiving for Channel {} / Stream {}",
         controlConnection->GetChannelId(), streamId);
+
+    // Tell the control connection that we have a media port!
+    controlConnection->StartMediaPort(mediaPort);
     return Result<void>::Success();
 }
 
@@ -88,6 +87,18 @@ void FtlStream::Stop()
 
     // Stop the control connection
     controlConnection->Stop();
+}
+
+void FtlStream::ControlConnectionStopped(FtlControlConnection* connection)
+{
+    // Stop the media connection
+    mediaTransport->Stop();
+
+    // Indicate that we've been stopped
+    if (onClosed)
+    {
+        onClosed(this);
+    }
 }
 
 ftl_channel_id_t FtlStream::GetChannelId() const
@@ -140,15 +151,6 @@ FtlStream::FtlKeyframe FtlStream::GetKeyframe()
 #pragma endregion
 
 #pragma region Private methods
-void FtlStream::controlConnectionClosed(FtlControlConnection& connection)
-{
-    // Stop the media connection
-    mediaTransport->Stop();
-
-    // Indicate that we've been stopped
-    onClosed(*this);
-}
-
 void FtlStream::mediaBytesReceived(const std::vector<std::byte>& bytes)
 {
     if (bytes.size() < 12)
@@ -171,7 +173,7 @@ void FtlStream::mediaConnectionClosed()
         "Media connection closed unexpectedly for channel {} / stream {}",
         GetChannelId(), streamId);
     controlConnection->Stop();
-    onClosed(*this);
+    onClosed(this);
 }
 
 std::set<rtp_sequence_num_t> FtlStream::insertPacketInSequenceOrder(

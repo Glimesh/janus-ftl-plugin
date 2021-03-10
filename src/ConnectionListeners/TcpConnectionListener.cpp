@@ -107,14 +107,14 @@ void TcpConnectionListener::Listen(std::promise<void>&& readyPromise)
             sockaddr_in acceptAddress = { 0 };
             socklen_t acceptLen = sizeof(acceptAddress);
             getpeername(connectionHandle, reinterpret_cast<sockaddr*>(&acceptAddress), &acceptLen);
-            // Create a ConnectionTransport for this new connection
-            auto transport = std::make_unique<NetworkSocketConnectionTransport>(
-                NetworkSocketConnectionKind::Tcp,
-                connectionHandle,
-                acceptAddress);
             if (onNewConnection)
             {
-                onNewConnection(std::move(transport));
+                // Create a ConnectionTransport for this new connection
+                auto transport = new NetworkSocketConnectionTransport(
+                    NetworkSocketConnectionKind::Tcp,
+                    connectionHandle,
+                    acceptAddress);
+                onNewConnection(transport);
             }
             else
             {
@@ -126,11 +126,11 @@ void TcpConnectionListener::Listen(std::promise<void>&& readyPromise)
 
 void TcpConnectionListener::StopListening()
 {
-
+    // TODO
 }
 
 void TcpConnectionListener::SetOnNewConnection(
-    std::function<void(std::unique_ptr<ConnectionTransport>)> onNewConnection)
+    std::function<void(ConnectionTransport*)> onNewConnection)
 {
     this->onNewConnection = onNewConnection;
 }

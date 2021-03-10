@@ -32,7 +32,7 @@ class FtlStream
 {
 public:
     /* Public types */
-    using ClosedCallback = std::function<void(FtlStream&)>;
+    using ClosedCallback = std::function<void(FtlStream*)>;
     using RtpPacketCallback = std::function<void(
         ftl_channel_id_t, ftl_stream_id_t, const std::vector<std::byte>&)>;
     struct FtlStreamStats
@@ -52,7 +52,7 @@ public:
 
     /* Constructor/Destructor */
     FtlStream(
-        std::unique_ptr<FtlControlConnection> controlConnection,
+        std::shared_ptr<FtlControlConnection> controlConnection,
         std::unique_ptr<ConnectionTransport> mediaTransport,
         const MediaMetadata mediaMetadata,
         const ftl_stream_id_t streamId,
@@ -61,8 +61,9 @@ public:
         const bool nackLostPackets = true);
 
     /* Public methods */
-    Result<void> StartAsync();
+    Result<void> StartAsync(uint16_t mediaPort);
     void Stop();
+    void ControlConnectionStopped(FtlControlConnection* controlConnection);
 
     /* Getters/Setters */
     ftl_channel_id_t GetChannelId() const;
@@ -98,7 +99,7 @@ private:
     static constexpr uint32_t            ROLLING_SIZE_AVERAGE_MS        = 2000;
 
     /* Private members */
-    const std::unique_ptr<FtlControlConnection> controlConnection;
+    const std::shared_ptr<FtlControlConnection> controlConnection;
     const std::unique_ptr<ConnectionTransport> mediaTransport;
     const MediaMetadata mediaMetadata;
     const ftl_stream_id_t streamId;
@@ -113,7 +114,6 @@ private:
     std::unordered_map<rtp_ssrc_t, SsrcData> ssrcData;
 
     /* Private methods */
-    void controlConnectionClosed(FtlControlConnection& connection);
     void mediaBytesReceived(const std::vector<std::byte>& bytes);
     void mediaConnectionClosed();
     // Packet processing
