@@ -41,12 +41,9 @@ public:
     /* ConnectionTransport Implementation */
     std::optional<sockaddr_in> GetAddr() override;
     std::optional<sockaddr_in6> GetAddr6() override;
-    Result<void> StartAsync() override;
-    void Stop(bool noBlock = false) override;
-    void Write(const std::vector<std::byte>& bytes) override;
-    void SetOnConnectionClosed(std::function<void(void)> onConnectionClosed) override;
-    void SetOnBytesReceived(
-        std::function<void(const std::vector<std::byte>&)> onBytesReceived) override;
+    void Stop() override;
+    Result<ssize_t> Read(std::vector<std::byte>& bytes) override;
+    Result<void> Write(const std::vector<std::byte>& bytes) override;
 
 private:
     /* Static members */
@@ -59,17 +56,13 @@ private:
     std::mutex stoppingMutex;
     bool isStopping = false; // Indicates that the socket has been requested to close
     bool isStopped = false;  // Indicates that the socket has finished closing
-    std::thread connectionThread;
-    std::future<void> connectionThreadEndedFuture;
     std::mutex writeMutex;
-    int writePipeFds[2]; // We use pipes to write to the socket via poll
     std::list<std::vector<std::byte>> datagramsPendingWrite;
     // Callbacks
     std::function<void(void)> onConnectionClosed;
     std::function<void(const std::vector<std::byte>&)> onBytesReceived;
 
     /* Private methods */
-    void connectionThreadBody(std::promise<void>&& connectionThreadEndedPromise);
     Result<void> sendData(const std::vector<std::byte>& data);
     void closeConnection();
 };

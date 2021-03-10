@@ -20,7 +20,6 @@ FtlServer::FtlServer(
     RequestKeyCallback onRequestKey,
     StreamStartedCallback onStreamStarted,
     StreamEndedCallback onStreamEnded,
-    RtpPacketCallback onRtpPacket,
     uint16_t minMediaPort,
     uint16_t maxMediaPort)
 :
@@ -29,7 +28,6 @@ FtlServer::FtlServer(
     onRequestKey(onRequestKey),
     onStreamStarted(onStreamStarted),
     onStreamEnded(onStreamEnded),
-    onRtpPacket(onRtpPacket),
     minMediaPort(minMediaPort),
     maxMediaPort(maxMediaPort)
 {
@@ -92,12 +90,12 @@ Result<void> FtlServer::StopStream(ftl_channel_id_t channelId, ftl_stream_id_t s
 }
 
 std::list<std::pair<std::pair<ftl_channel_id_t, ftl_stream_id_t>,
-    std::pair<FtlStream::FtlStreamStats, FtlStream::FtlKeyframe>>>
+    std::pair<FtlStreamStats, FtlKeyframe>>>
     FtlServer::GetAllStatsAndKeyframes()
 {
     std::shared_lock lock(streamDataMutex);
     std::list<std::pair<std::pair<ftl_channel_id_t, ftl_stream_id_t>,
-        std::pair<FtlStream::FtlStreamStats, FtlStream::FtlKeyframe>>>
+        std::pair<FtlStreamStats, FtlKeyframe>>>
         returnVal;
     for (const auto& pair : activeStreams)
     {
@@ -108,7 +106,7 @@ std::list<std::pair<std::pair<ftl_channel_id_t, ftl_stream_id_t>,
     return returnVal;
 }
 
-Result<FtlStream::FtlStreamStats> FtlServer::GetStats(ftl_channel_id_t channelId,
+Result<FtlStreamStats> FtlServer::GetStats(ftl_channel_id_t channelId,
     ftl_stream_id_t streamId)
 {
     std::shared_lock lock(streamDataMutex);
@@ -117,10 +115,10 @@ Result<FtlStream::FtlStreamStats> FtlServer::GetStats(ftl_channel_id_t channelId
         const std::unique_ptr<FtlStream>& stream = pair.second.Stream;
         if ((stream->GetChannelId() == channelId) && (stream->GetStreamId() == streamId))
         {
-            return Result<FtlStream::FtlStreamStats>::Success(stream->GetStats());
+            return Result<FtlStreamStats>::Success(stream->GetStats());
         }
     }
-    return Result<FtlStream::FtlStreamStats>::Error("Stream does not exist.");
+    return Result<FtlStreamStats>::Error("Stream does not exist.");
 }
 #pragma endregion Public functions
 
@@ -172,7 +170,6 @@ void FtlServer::onNewControlConnection(std::unique_ptr<ConnectionTransport> conn
     auto ingestControlConnectionPtr = ingestControlConnection.get();
     pendingControlConnections.insert_or_assign(ingestControlConnection.get(),
         std::move(ingestControlConnection));
-    ingestControlConnectionPtr->StartAsync();
 
     spdlog::info("New FTL control connection is pending from {}", addrString);
 
@@ -232,19 +229,24 @@ Result<uint16_t> FtlServer::onControlStartMediaPort(FtlControlConnection& contro
     }
     ftl_stream_id_t streamId = streamIdResult.Value;
 
-    // Start a new media connection transport on that port
-    std::unique_ptr<ConnectionTransport> mediaTransport = 
-        mediaConnectionCreator->CreateConnection(mediaPort, targetAddr);
-
     // Fire up a new FtlStream and hand over our control connection
     auto stream = std::make_unique<FtlStream>(
-        std::move(control), std::move(mediaTransport), mediaMetadata, streamId,
-        std::bind(&FtlServer::onStreamClosed, this, std::placeholders::_1),
-        std::bind(&FtlServer::onStreamRtpPacket, this, std::placeholders::_1, std::placeholders::_2,
-            std::placeholders::_3));
+        std::move(control),
+        streamId,
+        std::bind(&FtlServer::onStreamClosed, this, std::placeholders::_1)
+    );
     pendingControlConnections.erase(&controlConnection);
 
-    Result<void> streamStartResult = stream->StartAsync();
+    // Start a new media connection on the allocated media port
+    auto onMediaStreamRtpPacket = [this](const std::vector<std::byte>& packetData) {
+        // TODO
+    };
+    auto mediaTransport = mediaConnectionCreator->CreateConnection(mediaPort, targetAddr);
+    Result<void> streamStartResult = stream->StartMediaConnection(
+        std::move(mediaTransport),
+        mediaMetadata,
+        onMediaStreamRtpPacket
+    );
     if (streamStartResult.IsError)
     {
         // Whoops - indicate that the stream we just indicated has started has abruptly ended
@@ -294,9 +296,4 @@ void FtlServer::onStreamClosed(FtlStream& stream)
     onStreamEnded(channelId, streamId);
 }
 
-void FtlServer::onStreamRtpPacket(ftl_channel_id_t channelId, ftl_stream_id_t streamId,
-    const std::vector<std::byte>& packet)
-{
-    onRtpPacket(channelId, streamId, packet);
-}
 #pragma endregion Private functions

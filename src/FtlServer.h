@@ -40,7 +40,6 @@ public:
     using StreamStartedCallback = 
         std::function<Result<ftl_stream_id_t>(ftl_channel_id_t, MediaMetadata)>;
     using StreamEndedCallback = std::function<void(ftl_channel_id_t, ftl_stream_id_t)>;
-    using RtpPacketCallback = FtlStream::RtpPacketCallback;
 
     /* Constructor/Destructor */
     FtlServer(
@@ -49,7 +48,6 @@ public:
         RequestKeyCallback onRequestKey,
         StreamStartedCallback onStreamStarted,
         StreamEndedCallback onStreamEnded,
-        RtpPacketCallback onRtpPacket,
         uint16_t minMediaPort = DEFAULT_MEDIA_MIN_PORT,
         uint16_t maxMediaPort = DEFAULT_MEDIA_MAX_PORT);
     ~FtlServer() = default;
@@ -75,13 +73,13 @@ public:
      * @brief Retrieves stats for all active streams
      */
     std::list<std::pair<std::pair<ftl_channel_id_t, ftl_stream_id_t>,
-        std::pair<FtlStream::FtlStreamStats, FtlStream::FtlKeyframe>>>
+        std::pair<FtlStreamStats, FtlKeyframe>>>
         GetAllStatsAndKeyframes();
 
     /**
      * @brief Retrieves stats for the given stream
      */
-    Result<FtlStream::FtlStreamStats> GetStats(ftl_channel_id_t channelId,
+    Result<FtlStreamStats> GetStats(ftl_channel_id_t channelId,
         ftl_stream_id_t streamId);
 
 private:
@@ -109,7 +107,6 @@ private:
     const RequestKeyCallback onRequestKey;
     const StreamStartedCallback onStreamStarted;
     const StreamEndedCallback onStreamEnded;
-    const RtpPacketCallback onRtpPacket;
     // Media ports
     const uint16_t minMediaPort;
     const uint16_t maxMediaPort;
@@ -134,6 +131,4 @@ private:
         ftl_channel_id_t channelId, MediaMetadata mediaMetadata, in_addr targetAddr);
     void onControlConnectionClosed(FtlControlConnection& controlConnection);
     void onStreamClosed(FtlStream& stream);
-    void onStreamRtpPacket(ftl_channel_id_t channelId, ftl_stream_id_t streamId,
-        const std::vector<std::byte>& packet);
 };

@@ -23,13 +23,9 @@ FtlControlConnection::FtlControlConnection(
     transport(std::move(transport)),
     onRequestKey(onRequestKey),
     onStartMediaPort(onStartMediaPort),
-    onConnectionClosed(onConnectionClosed)
-{ 
-    // Bind to transport events
-    this->transport->SetOnBytesReceived(std::bind(
-        &FtlControlConnection::onTransportBytesReceived, this, std::placeholders::_1));
-    this->transport->SetOnConnectionClosed(std::bind(
-        &FtlControlConnection::onTransportClosed, this));
+    onConnectionClosed(onConnectionClosed),
+    thread(std::bind(&FtlControlConnection::threadBody, this, std::placeholders::_1))
+{
 }
 #pragma endregion Constructor/Destructor
 
@@ -46,16 +42,21 @@ void FtlControlConnection::SetOnConnectionClosed(ConnectionClosedCallback onConn
 #pragma endregion Getters/setters
 
 #pragma region Public functions
-Result<void> FtlControlConnection::StartAsync()
+void FtlControlConnection::StartMediaPort(uint16_t mediaPort)
 {
-    return transport->StartAsync();
+    // TODO
+    // if (isStreaming)
+    // {
+    //     spdlog::error("Channel {} has been assigned multiple media ports", channelId);
+    // }
+    // isStreaming = true;
+    // spdlog::info("Assigned Channel {} media port {}", channelId, mediaPort);
+    // writeToTransport(fmt::format("{} hi. Use UDP port {}\n", FtlResponseCode::FTL_INGEST_RESP_OK,
+    //     mediaPort));
 }
 
 void FtlControlConnection::Stop(FtlResponseCode responseCode)
 {
-    // BUG: Right now, the transport will halt the connection before these bytes
-    // can make it out the door.
-    // https://github.com/Glimesh/janus-ftl-plugin/issues/79
     writeToTransport(fmt::format("{}\n", responseCode));
 
     // Stop the transport, but don't fire OnConnectionClosed
@@ -64,6 +65,29 @@ void FtlControlConnection::Stop(FtlResponseCode responseCode)
 #pragma endregion Public functions
 
 #pragma region Private functions
+
+void FtlControlConnection::threadBody(std::stop_token stopToken)
+{
+    std::vector<std::byte> buffer;
+
+    while (!stopToken.stop_requested())
+    {
+        auto result = transport->Read(buffer);
+        if (result.IsError) {
+            // TODO spdlog
+            break;
+        }
+
+        spdlog::trace("Read {} bytes from control transport for Channel {}", buffer.size(), channelId);
+
+        if (result.Value > 0) {
+            onTransportBytesReceived(buffer);
+        }
+    }
+
+    stopConnection();
+}
+
 void FtlControlConnection::onTransportBytesReceived(const std::vector<std::byte>& bytes)
 {
     // Tack the new bytes onto the end of our running buffer
@@ -107,14 +131,6 @@ void FtlControlConnection::onTransportBytesReceived(const std::vector<std::byte>
     }
 }
 
-void FtlControlConnection::onTransportClosed()
-{
-    if (onConnectionClosed)
-    {
-        onConnectionClosed(*this);
-    }
-}
-
 void FtlControlConnection::writeToTransport(const std::string& str)
 {
     std::vector<std::byte> writeBytes;
@@ -129,10 +145,7 @@ void FtlControlConnection::writeToTransport(const std::string& str)
 void FtlControlConnection::stopConnection()
 {
     // First, stop the transport
-    // The first parameter indicates that the transport shouldn't wait for its read thread
-    // to end - this is important to prevent deadlocks, as we are likely calling from that same
-    // thread.
-    transport->Stop(true);
+    transport->Stop();
     
     // Notify that we've stopped -  we will not receive an OnConnectionClosed from the transport
     // if we call Stop ourselves
@@ -144,6 +157,7 @@ void FtlControlConnection::stopConnection()
 
 void FtlControlConnection::processCommand(const std::string& command)
 {
+    spdlog::debug("Processing command: {}", command);
     if (command.compare("HMAC") == 0)
     {
         processHmacCommand();
