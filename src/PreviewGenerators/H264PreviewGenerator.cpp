@@ -37,7 +37,7 @@ std::vector<uint8_t> H264PreviewGenerator::GenerateJpegImage(
 
         // For fragmented types, start bits are special, they have some extra data in the NAL header
         // that we need to include.
-        if ((fragmentType == 28))
+        if (fragmentType == 28)
         {
             if (startBit)
             {

@@ -48,8 +48,9 @@ sources = files([
     'src/FtlMediaConnection.cpp',
     'src/FtlServer.cpp',
     'src/FtlStream.cpp',
-    'src/JanusSession.cpp',
     'src/JanusFtl.cpp',
+    'src/JanusSession.cpp',
+    'src/JanusStream.cpp',
     # Library entrypoint
     'src/entrypoint.cpp',
 ])

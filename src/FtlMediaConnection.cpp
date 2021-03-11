@@ -38,8 +38,7 @@ FtlMediaConnection::FtlMediaConnection(
     channelId(channelId),
     streamId(streamId),
     onClosed(onClosed),
-    onRtpPacket(onRtpPacket),
-    nackLostPackets(nackLostPackets)
+    onRtpPacket(onRtpPacket)
 {
     // Prepare stream data stores to accept packets from SSRCs specified by control handshake
     ssrcData.try_emplace(mediaMetadata.AudioSsrc);

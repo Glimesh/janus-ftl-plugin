@@ -14,6 +14,7 @@
 #include "FtlClient.h"
 #include "FtlServer.h"
 #include "JanusSession.h"
+#include "JanusStream.h"
 #include "PreviewGenerators/PreviewGenerator.h"
 #include "ServiceConnections/ServiceConnection.h"
 #include "Utilities/FtlTypes.h"
@@ -86,24 +87,10 @@ public:
 
 private:
     /* Private types */
-    struct ActiveStream
-    {
-        ftl_channel_id_t ChannelId;
-        ftl_stream_id_t StreamId;
-        MediaMetadata Metadata;
-        std::unordered_set<JanusSession*> ViewerSessions;
-        std::time_t streamStartTime;
-    };
     struct ActiveSession
     {
         std::optional<ftl_channel_id_t> WatchingChannelId;
         std::unique_ptr<JanusSession> Session;
-    };
-    struct ActiveRelay
-    {
-        ftl_channel_id_t ChannelId;
-        std::string TargetHostname;
-        std::unique_ptr<FtlClient> Client;
     };
 
     /* Private fields */
@@ -116,8 +103,6 @@ private:
     std::unordered_map<VideoCodecKind, std::unique_ptr<PreviewGenerator>> previewGenerators;
     uint32_t maxAllowedBitsPerSecond = 0;
     std::chrono::milliseconds metadataReportInterval = std::chrono::milliseconds::min();
-    uint16_t minMediaPort = 9000; // TODO: Migrate to Configuration
-    uint16_t maxMediaPort = 10000; // TODO: Migrate to Configuration
     std::atomic<bool> isStopping = false;
     std::thread serviceReportThread;
     std::future<void> serviceReportThreadEndedFuture;
@@ -126,19 +111,16 @@ private:
     std::unique_ptr<Watchdog> watchdog;
     // Stream/Session/Relay data
     std::shared_mutex streamDataMutex; // Covers shared access to streams and sessions
-    std::unordered_map<ftl_channel_id_t, ActiveStream> streams;
+    std::unordered_map<ftl_channel_id_t, std::shared_ptr<JanusStream>> streams;
     std::unordered_map<janus_plugin_session*, ActiveSession> sessions;
     std::unordered_map<ftl_channel_id_t, std::unordered_set<JanusSession*>> pendingViewerSessions;
-    std::unordered_map<ftl_channel_id_t, std::list<ActiveRelay>> relayClients;
 
     /* Private methods */
     // FtlServer Callbacks
     Result<std::vector<std::byte>> ftlServerRequestKey(ftl_channel_id_t channelId);
-    Result<ftl_stream_id_t> ftlServerStreamStarted(ftl_channel_id_t channelId,
+    Result<FtlServer::StartedStreamInfo> ftlServerStreamStarted(ftl_channel_id_t channelId,
         MediaMetadata mediaMetadata);
     void ftlServerStreamEnded(ftl_channel_id_t channelId, ftl_stream_id_t streamId);
-    void ftlServerRtpPacket(ftl_channel_id_t channelId, ftl_stream_id_t streamId,
-        const std::vector<std::byte>& packetData);
     // Initialization
     void initPreviewGenerators();
     void initOrchestratorConnection();
@@ -157,8 +139,8 @@ private:
         char* transaction);
     janus_plugin_result* handleStartMessage(ActiveSession& session, JsonPtr message,
         char* transaction);
-    int sendJsep(const ActiveSession& session, const ActiveStream& stream, char* transaction);
-    std::string generateSdpOffer(const ActiveSession& session, const ActiveStream& stream);
+    int sendJsep(const ActiveSession& session, const JanusStream& stream, char* transaction);
+    std::string generateSdpOffer(const ActiveSession& session, const JanusStream& stream);
     // Orchestrator message handling
     void onOrchestratorConnectionClosed();
     ConnectionResult onOrchestratorIntro(ConnectionIntroPayload payload);

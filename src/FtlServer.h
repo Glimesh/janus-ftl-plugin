@@ -9,6 +9,7 @@
 
 #include "FtlControlConnection.h"
 #include "FtlStream.h"
+#include "RtpPacketSink.h"
 #include "Utilities/FtlTypes.h"
 #include "Utilities/Result.h"
 
@@ -35,10 +36,16 @@ class ConnectionTransport;
 class FtlServer
 {
 public:
+    /* Public types */
+    struct StartedStreamInfo {
+        ftl_stream_id_t StreamId;
+        std::shared_ptr<RtpPacketSink> PacketSink;
+    };
+
     /* Callback types */
     using RequestKeyCallback = std::function<Result<std::vector<std::byte>>(ftl_channel_id_t)>;
     using StreamStartedCallback = 
-        std::function<Result<ftl_stream_id_t>(ftl_channel_id_t, MediaMetadata)>;
+        std::function<Result<StartedStreamInfo>(ftl_channel_id_t, MediaMetadata)>;
     using StreamEndedCallback = std::function<void(ftl_channel_id_t, ftl_stream_id_t)>;
 
     /* Constructor/Destructor */

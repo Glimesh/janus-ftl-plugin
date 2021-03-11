@@ -78,8 +78,6 @@ void FtlControlConnection::threadBody(std::stop_token stopToken)
             break;
         }
 
-        spdlog::trace("Read {} bytes from control transport for Channel {}", buffer.size(), channelId);
-
         if (result.Value > 0) {
             onTransportBytesReceived(buffer);
         }

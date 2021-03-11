@@ -87,8 +87,6 @@ private:
     const ftl_stream_id_t streamId;
     const ClosedCallback onClosed;
     const RtpPacketCallback onRtpPacket;
-    const bool nackLostPackets;
-    bool stopping = false;
     std::jthread thread;
     // Stream data
     std::shared_mutex dataMutex;

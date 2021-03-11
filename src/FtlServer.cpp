@@ -220,14 +220,15 @@ Result<uint16_t> FtlServer::onControlStartMediaPort(FtlControlConnection& contro
 
     // Try to start the stream and get a stream ID
     lock.unlock(); // Release lock temporarily to prevent deadlocks during callback
-    Result<ftl_stream_id_t> streamIdResult = onStreamStarted(channelId, mediaMetadata);
+    Result<StartedStreamInfo> streamStartResult = onStreamStarted(channelId, mediaMetadata);
     lock.lock();
-    if (streamIdResult.IsError)
+    if (streamStartResult.IsError)
     {
         usedMediaPorts.erase(mediaPort);
-        return Result<uint16_t>::Error(streamIdResult.ErrorMessage);
+        return Result<uint16_t>::Error(streamStartResult.ErrorMessage);
     }
-    ftl_stream_id_t streamId = streamIdResult.Value;
+    ftl_stream_id_t streamId = streamStartResult.Value.StreamId;
+    std::shared_ptr<RtpPacketSink> packetSink = streamStartResult.Value.PacketSink;
 
     // Fire up a new FtlStream and hand over our control connection
     auto stream = std::make_unique<FtlStream>(
@@ -238,23 +239,23 @@ Result<uint16_t> FtlServer::onControlStartMediaPort(FtlControlConnection& contro
     pendingControlConnections.erase(&controlConnection);
 
     // Start a new media connection on the allocated media port
-    auto onMediaStreamRtpPacket = [this](const std::vector<std::byte>& packetData) {
-        // TODO
+    auto onMediaStreamRtpPacket = [packetSink](const std::vector<std::byte>& packet) {
+        packetSink->SendRtpPacket(packet);
     };
     auto mediaTransport = mediaConnectionCreator->CreateConnection(mediaPort, targetAddr);
-    Result<void> streamStartResult = stream->StartMediaConnection(
+    Result<void> startMediaResult = stream->StartMediaConnection(
         std::move(mediaTransport),
         mediaMetadata,
         onMediaStreamRtpPacket
     );
-    if (streamStartResult.IsError)
+    if (startMediaResult.IsError)
     {
         // Whoops - indicate that the stream we just indicated has started has abruptly ended
         lock.unlock(); // Release lock temporarily to prevent deadlocks during callback
         onStreamEnded(channelId, streamId);
         lock.lock();
         usedMediaPorts.erase(mediaPort);
-        return Result<uint16_t>::Error(streamStartResult.ErrorMessage);
+        return Result<uint16_t>::Error(startMediaResult.ErrorMessage);
     }
     activeStreams.try_emplace(stream.get(), std::move(stream), mediaPort);
 
