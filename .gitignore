@@ -6,6 +6,7 @@
 test/test
 core
 build/
+build-clang/
 builddir/
 subprojects/*
 !subprojects/*.wrap

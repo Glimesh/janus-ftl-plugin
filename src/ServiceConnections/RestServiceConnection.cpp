@@ -26,8 +26,6 @@ RestServiceConnection::RestServiceConnection(
 :
     baseUri(fmt::format("{}://{}:{}", (useHttps ? "https" : "http"), hostname, port)),
     hostname(hostname),
-    port(port),
-    useHttps(useHttps),
     pathBase(pathBase),
     authToken(authToken)
 {
