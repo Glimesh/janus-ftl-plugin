@@ -454,7 +454,7 @@ void FtlServer::eventTerminateControlConnection(
         std::move(pendingControlConnections.at(event->Connection).first);
     pendingControlConnections.erase(event->Connection);
     dispatchAsyncCall(
-        [this, event, control = std::move(control)]() mutable
+        [event, control = std::move(control)]() mutable
         {
             control->Stop(event->ResponseCode);
         });
