@@ -9,6 +9,7 @@
 
 #include "FtlControlConnection.h"
 #include "FtlStream.h"
+#include "RtpPacketSink.h"
 #include "Utilities/FtlTypes.h"
 #include "Utilities/Result.h"
 
@@ -37,12 +38,17 @@ class ConnectionTransport;
 class FtlServer
 {
 public:
+    /* Public types */
+    struct StartedStreamInfo {
+        ftl_stream_id_t StreamId;
+        std::shared_ptr<RtpPacketSink> PacketSink;
+    };
+
     /* Callback types */
     using RequestKeyCallback = std::function<Result<std::vector<std::byte>>(ftl_channel_id_t)>;
     using StreamStartedCallback = 
-        std::function<Result<ftl_stream_id_t>(ftl_channel_id_t, MediaMetadata)>;
+        std::function<Result<StartedStreamInfo>(ftl_channel_id_t, MediaMetadata)>;
     using StreamEndedCallback = std::function<void(ftl_channel_id_t, ftl_stream_id_t)>;
-    using RtpPacketCallback = FtlStream::RtpPacketCallback;
 
     /* Constructor/Destructor */
     FtlServer(
@@ -51,7 +57,6 @@ public:
         RequestKeyCallback onRequestKey,
         StreamStartedCallback onStreamStarted,
         StreamEndedCallback onStreamEnded,
-        RtpPacketCallback onRtpPacket,
         uint16_t minMediaPort = DEFAULT_MEDIA_MIN_PORT,
         uint16_t maxMediaPort = DEFAULT_MEDIA_MAX_PORT);
     ~FtlServer() = default;
@@ -173,6 +178,7 @@ private:
         ftl_stream_id_t StreamId;
         MediaMetadata Metadata;
         in_addr TargetAddr;
+        std::shared_ptr<RtpPacketSink> PacketSink;
     };
     struct FtlServerStreamStartedEvent : public FtlServerEvent
     {
@@ -211,7 +217,6 @@ private:
     const RequestKeyCallback onRequestKey;
     const StreamStartedCallback onStreamStarted;
     const StreamEndedCallback onStreamEnded;
-    const RtpPacketCallback onRtpPacket;
     // Media ports
     const uint16_t minMediaPort;
     const uint16_t maxMediaPort;

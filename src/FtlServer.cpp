@@ -20,7 +20,6 @@ FtlServer::FtlServer(
     RequestKeyCallback onRequestKey,
     StreamStartedCallback onStreamStarted,
     StreamEndedCallback onStreamEnded,
-    RtpPacketCallback onRtpPacket,
     uint16_t minMediaPort,
     uint16_t maxMediaPort)
 :
@@ -29,7 +28,6 @@ FtlServer::FtlServer(
     onRequestKey(onRequestKey),
     onStreamStarted(onStreamStarted),
     onStreamEnded(onStreamEnded),
-    onRtpPacket(onRtpPacket),
     minMediaPort(minMediaPort),
     maxMediaPort(maxMediaPort),
     eventQueueThread(std::jthread(&FtlServer::eventQueueThreadBody, this))
@@ -325,12 +323,6 @@ void FtlServer::onStreamClosed(FtlStream* stream)
             }));
 }
 
-void FtlServer::onStreamRtpPacket(ftl_channel_id_t channelId, ftl_stream_id_t streamId,
-    const std::vector<std::byte>& packet)
-{
-    onRtpPacket(channelId, streamId, packet);
-}
-
 void FtlServer::eventStopStream(std::shared_ptr<FtlServerStopStreamEvent> event)
 {
     spdlog::debug("FtlServer::eventStopStream processing StopStream event...");
@@ -480,13 +472,13 @@ void FtlServer::eventControlRequestMediaPort(
         [this, event]()
         {
             // Attempt to start stream
-            Result<ftl_stream_id_t> streamIdResult = 
+            Result<StartedStreamInfo> streamStartResult = 
                 onStreamStarted(event->ChannelId, event->Metadata);
-            if (streamIdResult.IsError)
+            if (streamStartResult.IsError)
             {
                 spdlog::debug("FtlServer::eventControlRequestMediaPort processing thread "
                     "error starting stream - queueing TerminateControlConnection event: {}",
-                    streamIdResult.ErrorMessage);
+                    streamStartResult.ErrorMessage);
                 eventQueue.enqueue(FtlServerEventKind::TerminateControlConnection,
                     std::shared_ptr<FtlServerTerminateControlConnectionEvent>(
                         new FtlServerTerminateControlConnectionEvent
@@ -500,7 +492,8 @@ void FtlServer::eventControlRequestMediaPort(
             {
                 spdlog::debug("FtlServer::eventControlRequestMediaPort processing thread "
                     "successfully received Stream ID - queueing StreamIdAssigned event...");
-                ftl_stream_id_t streamId = streamIdResult.Value;
+                ftl_stream_id_t streamId = streamStartResult.Value.StreamId;
+                std::shared_ptr<RtpPacketSink> packetSink = streamStartResult.Value.PacketSink;
                 eventQueue.enqueue(FtlServerEventKind::StreamIdAssigned,
                     std::shared_ptr<FtlServerStreamIdAssignedEvent>(
                         new FtlServerStreamIdAssignedEvent
@@ -510,6 +503,7 @@ void FtlServer::eventControlRequestMediaPort(
                             .StreamId = streamId,
                             .Metadata = event->Metadata,
                             .TargetAddr = event->TargetAddr,
+                            .PacketSink = packetSink,
                         }));
             }
         });
@@ -554,18 +548,21 @@ void FtlServer::eventStreamIdAssigned(std::shared_ptr<FtlServerStreamIdAssignedE
         return;
     }
     uint16_t mediaPort = portResult.Value;
+    std::shared_ptr<RtpPacketSink> rtpPacketSink = event->PacketSink;
 
     // Attempt to fire up the new FtlStream. Queue a new event when we're done.
     dispatchAsyncCall(
-        [this, event, control = std::move(control), mediaPort]() mutable
+        [this, event, control = std::move(control), mediaPort, rtpPacketSink]() mutable
         {
             std::unique_ptr<ConnectionTransport> mediaTransport = 
                 mediaConnectionCreator->CreateConnection(mediaPort, event->TargetAddr);
             auto stream = std::make_shared<FtlStream>(
                 std::move(control), std::move(mediaTransport), event->Metadata, event->StreamId,
                 std::bind(&FtlServer::onStreamClosed, this, std::placeholders::_1),
-                std::bind(&FtlServer::onStreamRtpPacket, this, std::placeholders::_1,
-                    std::placeholders::_2, std::placeholders::_3));
+                [rtpPacketSink](ftl_channel_id_t channelId, ftl_stream_id_t steamId, const std::vector<std::byte> packet)
+                {
+                    rtpPacketSink->SendRtpPacket(packet);
+                });
             
             Result<void> streamStartResult = stream->StartAsync(mediaPort);
             if (streamStartResult.IsError)
