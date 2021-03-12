@@ -24,8 +24,6 @@ GlimeshServiceConnection::GlimeshServiceConnection(
     std::string clientSecret) : 
     baseUri(fmt::format("{}://{}:{}", (useHttps ? "https" : "http"), hostname, port)),
     hostname(hostname),
-    port(port),
-    useHttps(useHttps),
     clientId(clientId),
     clientSecret(clientSecret)
 { }

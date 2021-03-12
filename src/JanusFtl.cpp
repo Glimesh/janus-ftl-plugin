@@ -657,7 +657,7 @@ void JanusFtl::serviceReportThreadBody(std::promise<void>&& threadEndedPromise)
         // wind up waiting forever on the connection thread due to it taking a lock in the
         // JanusFtl::ftlServerRtpPacket callback
         lock.lock();
-        for (const auto channelStreamPair : streamsStopped)
+        for (const auto& channelStreamPair : streamsStopped)
         {
             endStream(channelStreamPair.first, channelStreamPair.second, lock);
         }
@@ -987,12 +987,11 @@ ConnectionResult JanusFtl::onOrchestratorStreamRelay(ConnectionRelayPayload payl
                 };
         }
 
-        if (relayClients.count(payload.ChannelId) <= 0)
-        {
-            relayClients.insert_or_assign(payload.ChannelId, std::list<ActiveRelay>());
-        }
-        relayClients.at(payload.ChannelId).emplace_back(payload.ChannelId, payload.TargetHostname,
-            std::move(relayClient));
+        relayClients[payload.ChannelId].push_back(ActiveRelay {
+            .ChannelId = payload.ChannelId,
+            .TargetHostname = payload.TargetHostname,
+            .Client = std::move(relayClient),
+        });
         
         return ConnectionResult
         {

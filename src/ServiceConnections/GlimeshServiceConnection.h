@@ -52,8 +52,6 @@ private:
     const int TIME_BETWEEN_RETRIES_MS = 3000;
     std::string baseUri;
     std::string hostname;
-    uint16_t port;
-    bool useHttps;
     std::string clientId;
     std::string clientSecret;
     std::string accessToken;

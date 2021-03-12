@@ -116,8 +116,6 @@ private:
     std::unordered_map<VideoCodecKind, std::unique_ptr<PreviewGenerator>> previewGenerators;
     uint32_t maxAllowedBitsPerSecond = 0;
     std::chrono::milliseconds metadataReportInterval = std::chrono::milliseconds::min();
-    uint16_t minMediaPort = 9000; // TODO: Migrate to Configuration
-    uint16_t maxMediaPort = 10000; // TODO: Migrate to Configuration
     std::atomic<bool> isStopping = false;
     std::thread serviceReportThread;
     std::future<void> serviceReportThreadEndedFuture;
