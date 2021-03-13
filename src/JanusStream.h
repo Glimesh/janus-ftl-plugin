@@ -55,5 +55,5 @@ private:
     MediaMetadata mediaMetadata;
     std::unordered_set<JanusSession*> viewerSessions;
     std::list<Relay> relays;
-    std::mutex mutex;
+    mutable std::mutex mutex;
 };
