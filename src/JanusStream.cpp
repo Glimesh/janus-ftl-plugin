@@ -56,6 +56,7 @@ std::unordered_set<JanusSession*> JanusStream::RemoveAllViewerSessions()
 
 size_t JanusStream::GetViewerCount() const
 {
+    std::lock_guard lock(mutex);
     return viewerSessions.size();
 }
 
