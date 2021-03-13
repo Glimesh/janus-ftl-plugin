@@ -954,7 +954,7 @@ ConnectionResult JanusFtl::onOrchestratorStreamRelay(ConnectionRelayPayload payl
 
             
         // Do we have an active stream?
-        if (streams.contains(payload.ChannelId))
+        if (!streams.contains(payload.ChannelId))
         {
             spdlog::warn("Orchestrator requested to stop a relay for channel that is not streaming."
                 "Target hostname: {}, Channel ID: {}", payload.TargetHostname, payload.ChannelId);
