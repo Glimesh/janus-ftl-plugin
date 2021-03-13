@@ -33,8 +33,7 @@ class FtlStream
 public:
     /* Public types */
     using ClosedCallback = std::function<void(FtlStream*)>;
-    using RtpPacketCallback = std::function<void(
-        ftl_channel_id_t, ftl_stream_id_t, const std::vector<std::byte>&)>;
+    using RtpPacketCallback = std::function<void(const std::vector<std::byte>&)>;
     struct FtlStreamStats
     {
         time_t StartTime;

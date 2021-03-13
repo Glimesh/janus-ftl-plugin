@@ -580,7 +580,7 @@ void FtlStream::processAudioVideoRtpPacket(const std::vector<std::byte>& rtpPack
     if (onRtpPacket)
     {
         dataLock.unlock(); // Unlock while we call out
-        onRtpPacket(GetChannelId(), streamId, rtpPacket);
+        onRtpPacket(rtpPacket);
         dataLock.lock();
     }
 }

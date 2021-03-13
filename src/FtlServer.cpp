@@ -559,7 +559,7 @@ void FtlServer::eventStreamIdAssigned(std::shared_ptr<FtlServerStreamIdAssignedE
             auto stream = std::make_shared<FtlStream>(
                 std::move(control), std::move(mediaTransport), event->Metadata, event->StreamId,
                 std::bind(&FtlServer::onStreamClosed, this, std::placeholders::_1),
-                [rtpPacketSink](ftl_channel_id_t channelId, ftl_stream_id_t steamId, const std::vector<std::byte> packet)
+                [rtpPacketSink](const std::vector<std::byte> packet)
                 {
                     rtpPacketSink->SendRtpPacket(packet);
                 });
