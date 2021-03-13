@@ -63,8 +63,6 @@ spdlog_wrap = subproject('spdlog', default_options: ['default_library=static', '
 systemd_dep = dependency('libsystemd', required : get_option('systemd_watchdog_support'))
 if systemd_dep.found()
   add_project_arguments('-DSYSTEMD_WATCHDOG_SUPPORT', language: 'cpp') 
-else
-  systemd_dep = disabler()
 endif
 
 deps = [
