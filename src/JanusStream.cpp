@@ -69,19 +69,23 @@ void JanusStream::AddRelayClient(const std::string targetHostname,
 
 size_t JanusStream::StopRelay(const std::string& targetHostname)
 {
-    std::lock_guard lock(mutex);
-    size_t numRelaysRemoved = 0;
-    for (auto it = relays.begin();
-        it != relays.end();)
+    std::list<Relay> removedRelays;
     {
-        Relay& relay = *it;
-        if (relay.TargetHostname == targetHostname) {
-            relay.Client->Stop();
-            it = relays.erase(it);
-            ++numRelaysRemoved;
+        std::lock_guard lock(mutex);
+        for (auto it = relays.begin();
+            it != relays.end();)
+        {
+            if (it->TargetHostname == targetHostname) {
+                removedRelays.push_back(std::move(*it));
+                it = relays.erase(it);
+            }
         }
     }
-    return numRelaysRemoved;
+    for (Relay& relay : relays)
+    {
+         relay.Client->Stop();
+    }
+    return removedRelays.size();
 }
 
 void JanusStream::StopRelays()
