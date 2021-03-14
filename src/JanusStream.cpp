@@ -60,12 +60,12 @@ size_t JanusStream::GetViewerCount() const
     return viewerSessions.size();
 }
 
-void JanusStream::AddRelayClient(const std::string targetHostname, std::unique_ptr<FtlClient> client)
+void JanusStream::AddRelayClient(const std::string targetHostname,
+    std::unique_ptr<FtlClient> client)
 {
     std::lock_guard lock(mutex);
     relays.push_back(Relay { .TargetHostname = targetHostname, .Client = std::move(client) });
 }
-
 
 size_t JanusStream::StopRelay(const std::string& targetHostname)
 {
