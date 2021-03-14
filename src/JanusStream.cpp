@@ -81,8 +81,10 @@ size_t JanusStream::StopRelay(const std::string& targetHostname)
             }
         }
     }
-    for (Relay& relay : relays)
+    for (Relay& relay : removedRelays)
     {
+        spdlog::info("Stopping relay for channel {} / stream {} -> {}...",
+            channelId, streamId, relay.TargetHostname);
          relay.Client->Stop();
     }
     return removedRelays.size();
@@ -93,8 +95,8 @@ void JanusStream::StopRelays()
     std::lock_guard lock(mutex);
     for (const auto& relay : relays)
     {
-        spdlog::info("Stopping relay for channel {} / stream {} -> {}...", channelId,
-            streamId, relay.TargetHostname);
+        spdlog::info("Stopping relay for channel {} / stream {} -> {}...",
+            channelId, streamId, relay.TargetHostname);
         relay.Client->Stop();
     }
     relays.clear();
