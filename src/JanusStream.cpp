@@ -49,9 +49,9 @@ size_t JanusStream::RemoveViewerSession(JanusSession* session)
 std::unordered_set<JanusSession*> JanusStream::RemoveAllViewerSessions()
 {
     std::lock_guard lock(mutex);
-    std::unordered_set<JanusSession*> viewerSessions;
-    viewerSessions.swap(viewerSessions);
-    return viewerSessions;
+    std::unordered_set<JanusSession*> removedSessions;
+    viewerSessions.swap(removedSessions);
+    return removedSessions;
 }
 
 size_t JanusStream::GetViewerCount() const
