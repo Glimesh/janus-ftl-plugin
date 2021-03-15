@@ -402,37 +402,7 @@ void JanusFtl::ftlServerStreamEnded(ftl_channel_id_t channelId, ftl_stream_id_t 
     endStream(channelId, streamId, lock);
 }
 
-void JanusFtl::ftlServerRtpPacket(ftl_channel_id_t channelId, ftl_stream_id_t streamId,
-    const std::vector<std::byte>& packetData)
-{
-    std::shared_lock lock(streamDataMutex);
-    if (streams.count(channelId) <= 0)
-    {
-        spdlog::error("Packet received for unexpected channel {}", channelId);
-        return;
-    }
-    const ActiveStream& stream = streams[channelId];
-    if (stream.StreamId != streamId)
-    {
-        spdlog::error("Packet received for channel {} had an unexpected stream ID: {}, expected {}",
-            channelId, streamId, stream.StreamId);
-        return;
-    }
-    for (const auto& session : stream.ViewerSessions)
-    {
-        session->SendRtpPacket(packetData, stream.Metadata);
-    }
-
-    if (relayClients.count(channelId) > 0)
-    {
-        for (const auto& relay : relayClients.at(channelId))
-        {
-            relay.Client->RelayPacket(packetData);
-        }
-    }
-}
-
-void JanusFtl::initPreviewGenerators()
+void JanusFtl::initVideoDecoders()
 {
     // H264
     videoDecoders.try_emplace(VideoCodecKind::H264, std::make_unique<H264VideoDecoder>());
