@@ -43,9 +43,7 @@ JanusFtl::JanusFtl(
         std::bind(&JanusFtl::ftlServerStreamStarted, this, std::placeholders::_1,
             std::placeholders::_2),
         std::bind(&JanusFtl::ftlServerStreamEnded, this, std::placeholders::_1,
-            std::placeholders::_2),
-        std::bind(&JanusFtl::ftlServerRtpPacket, this, std::placeholders::_1,
-            std::placeholders::_2, std::placeholders::_3));
+            std::placeholders::_2));
 }
 #pragma endregion
 
@@ -268,13 +266,13 @@ void JanusFtl::DestroySession(janus_plugin_session* handle, int* error)
         // If session is watching an active stream, remove it
         if (streams.count(channelId) > 0)
         {
-            ActiveStream& watchingStream = streams[channelId];
-            watchingStream.ViewerSessions.erase(session.Session.get());
+            std::shared_ptr<JanusStream>& watchingStream = streams[channelId];
+            watchingStream->RemoveViewerSession(session.Session.get());
 
             // If we're an Edge node and there are no more viewers for this channel, we can
             // unsubscribe.
             if ((configuration->GetNodeKind() == NodeKind::Edge) &&
-                (watchingStream.ViewerSessions.size() == 0))
+                (watchingStream->GetViewerCount() == 0))
             {
                 orchestratorUnsubscribe = true;
             }
@@ -337,7 +335,8 @@ Result<std::vector<std::byte>> JanusFtl::ftlServerRequestKey(ftl_channel_id_t ch
     return serviceConnection->GetHmacKey(channelId);
 }
 
-Result<ftl_stream_id_t> JanusFtl::ftlServerStreamStarted(ftl_channel_id_t channelId,
+Result<FtlServer::StartedStreamInfo> JanusFtl::ftlServerStreamStarted(
+    ftl_channel_id_t channelId,
     MediaMetadata mediaMetadata)
 {
     std::unique_lock lock(streamDataMutex);
@@ -346,37 +345,31 @@ Result<ftl_stream_id_t> JanusFtl::ftlServerStreamStarted(ftl_channel_id_t channe
     Result<ftl_stream_id_t> startResult = serviceConnection->StartStream(channelId);
     if (startResult.IsError)
     {
-        return startResult;
+        return Result<FtlServer::StartedStreamInfo>::Error(startResult.ErrorMessage);
     }
     ftl_stream_id_t streamId = startResult.Value;
 
     // Stop any existing streams on this channel
     if (streams.count(channelId) > 0)
     {
-        const ActiveStream& activeStream = streams[channelId];
+        const auto& stream = streams.at(channelId);
         spdlog::info("Existing Stream {} exists for Channel {} - stopping...",
-            activeStream.StreamId, channelId);
-        ftlServer->StopStream(activeStream.ChannelId, activeStream.StreamId);
-        endStream(activeStream.ChannelId, activeStream.StreamId, lock);
+            stream->GetStreamId(), channelId);
+        ftlServer->StopStream(stream->GetChannelId(), stream->GetStreamId());
+        endStream(stream->GetChannelId(), stream->GetStreamId(), lock);
     }
 
     // Insert new stream
-    streams.insert_or_assign(channelId, ActiveStream
-    {
-        .ChannelId = channelId,
-        .StreamId = streamId,
-        .Metadata = mediaMetadata,
-        .ViewerSessions = {},
-    });
+    auto stream = std::make_shared<JanusStream>(channelId, streamId, mediaMetadata);
+    streams[channelId] = stream;
 
     // Move any pending viewer sessions over
     if (pendingViewerSessions.count(channelId) > 0)
     {
         for (const auto& pendingSession : pendingViewerSessions[channelId])
         {
-            streams[channelId].ViewerSessions.insert(pendingSession);
-            sendJsep(sessions[pendingSession->GetJanusPluginSessionHandle()], streams[channelId],
-                nullptr);
+            stream->AddViewerSession(pendingSession);
+            sendJsep(sessions[pendingSession->GetJanusPluginSessionHandle()], *stream, nullptr);
         }
         pendingViewerSessions.erase(channelId);
     }
@@ -397,43 +390,16 @@ Result<ftl_stream_id_t> JanusFtl::ftlServerStreamStarted(ftl_channel_id_t channe
 
     spdlog::info("Registered new stream: Channel {} / Stream {}.", channelId, streamId);
 
-    return Result<ftl_stream_id_t>::Success(streamId);
+    return Result<FtlServer::StartedStreamInfo>::Success(FtlServer::StartedStreamInfo {
+        .StreamId = streamId,
+        .PacketSink = stream,
+    });
 }
 
 void JanusFtl::ftlServerStreamEnded(ftl_channel_id_t channelId, ftl_stream_id_t streamId)
 {
     std::unique_lock lock(streamDataMutex);
     endStream(channelId, streamId, lock);
-}
-
-void JanusFtl::ftlServerRtpPacket(ftl_channel_id_t channelId, ftl_stream_id_t streamId,
-    const std::vector<std::byte>& packetData)
-{
-    std::shared_lock lock(streamDataMutex);
-    if (streams.count(channelId) <= 0)
-    {
-        spdlog::error("Packet received for unexpected channel {}", channelId);
-        return;
-    }
-    const ActiveStream& stream = streams[channelId];
-    if (stream.StreamId != streamId)
-    {
-        spdlog::error("Packet received for channel {} had an unexpected stream ID: {}, expected {}",
-            channelId, streamId, stream.StreamId);
-        return;
-    }
-    for (const auto& session : stream.ViewerSessions)
-    {
-        session->SendRtpPacket(packetData, stream.Metadata);
-    }
-
-    if (relayClients.count(channelId) > 0)
-    {
-        for (const auto& relay : relayClients.at(channelId))
-        {
-            relay.Client->RelayPacket(packetData);
-        }
-    }
 }
 
 void JanusFtl::initPreviewGenerators()
@@ -563,8 +529,8 @@ void JanusFtl::serviceReportThreadBody(std::promise<void>&& threadEndedPromise)
             {
                 continue;
             }
-            metadataByChannel.try_emplace(channelId, streams.at(channelId).Metadata);
-            viewersByChannel.try_emplace(channelId, streams.at(channelId).ViewerSessions.size());
+            metadataByChannel.try_emplace(channelId, streams.at(channelId)->GetMetadata());
+            viewersByChannel.try_emplace(channelId, streams.at(channelId)->GetViewerCount());
         }
         lock.unlock();
 
@@ -673,50 +639,36 @@ void JanusFtl::endStream(ftl_channel_id_t channelId, ftl_stream_id_t streamId,
             streamId);
         return;
     }
-    const ActiveStream& activeStream = streams[channelId];
-    if (activeStream.StreamId != streamId)
+    const std::shared_ptr<JanusStream>& stream = streams.at(channelId);
+    if (stream->GetStreamId() != streamId)
     {
         spdlog::error("Stream ended from channel {} had unexpected stream id {}, expected {}",
-            channelId, streamId, activeStream.StreamId);
+            channelId, streamId, stream->GetStreamId());
         return;
     }
 
     // Reset any existing viewers to a pending state
-    if (pendingViewerSessions.count(channelId) == 0)
-    {
-        pendingViewerSessions.insert_or_assign(channelId, std::unordered_set<JanusSession*>());
-    }
-    pendingViewerSessions[channelId].insert(activeStream.ViewerSessions.begin(),
-        activeStream.ViewerSessions.end());
+    auto viewerSessions = stream->RemoveAllViewerSessions();
+    pendingViewerSessions[channelId].insert(viewerSessions.begin(), viewerSessions.end());
     // TODO: Tell viewers stream is offline.
 
     // If we are configured as an Ingest node, notify the Orchestrator that a stream has ended.
     if ((configuration->GetNodeKind() == NodeKind::Ingest) && (orchestrationClient != nullptr))
     {
         spdlog::info("Unpublishing channel {} / stream {} from Orchestrator",
-            activeStream.ChannelId, activeStream.StreamId);
+            stream->GetChannelId(), stream->GetStreamId());
         orchestrationClient->SendStreamPublish(ConnectionPublishPayload
             {
                 .IsPublish = false,
-                .ChannelId = activeStream.ChannelId,
-                .StreamId = activeStream.StreamId,
+                .ChannelId = stream->GetChannelId(),
+                .StreamId = stream->GetStreamId(),
             });
     }
 
-    // If relays exist for this stream, stop them
-    if (relayClients.count(channelId) > 0)
-    {
-        for (const auto& relay : relayClients.at(channelId))
-        {
-            spdlog::info("Stopping relay for channel {} / stream {} -> {}...", activeStream.ChannelId,
-                activeStream.StreamId, relay.TargetHostname);
-            relay.Client->Stop();
-        }
-        relayClients.erase(channelId);
-    }
+    stream->StopRelays();
 
-    spdlog::info("Stream ended. Channel {} / stream {}", activeStream.ChannelId,
-        activeStream.StreamId);
+    spdlog::info("Stream ended. Channel {} / stream {}",
+        stream->GetChannelId(), stream->GetStreamId());
 
     serviceConnection->EndStream(streamId);
     streams.erase(channelId);
@@ -822,17 +774,17 @@ janus_plugin_result* JanusFtl::handleWatchMessage(ActiveSession& session, JsonPt
     }
 
     // Otherwise, we've got a live stream!
-    ActiveStream& stream = streams[channelId];
+    auto& stream = streams.at(channelId);
 
     // TODO allow user to request ICE restart (new offer)
 
     // TODO if they're already watching, handle it
 
     // Set this session as a viewer
-    stream.ViewerSessions.insert(session.Session.get());
+    stream->AddViewerSession(session.Session.get());
 
     // Send the JSEP to initiate the media connection
-    sendJsep(session, stream, transaction);
+    sendJsep(session, *stream, transaction);
 
     return janus_plugin_result_new(JANUS_PLUGIN_OK_WAIT, NULL, NULL);
 }
@@ -843,7 +795,7 @@ janus_plugin_result* JanusFtl::handleStartMessage(ActiveSession& session, JsonPt
     return janus_plugin_result_new(JANUS_PLUGIN_OK_WAIT, NULL, NULL);
 }
 
-int JanusFtl::sendJsep(const ActiveSession& session, const ActiveStream& stream, char* transaction)
+int JanusFtl::sendJsep(const ActiveSession& session, const JanusStream& stream, char* transaction)
 {
     // Prepare JSEP payload
     std::string sdpOffer = generateSdpOffer(session, stream);
@@ -865,7 +817,7 @@ int JanusFtl::sendJsep(const ActiveSession& session, const ActiveStream& stream,
         jsepPtr.get());
 }
 
-std::string JanusFtl::generateSdpOffer(const ActiveSession& session, const ActiveStream& stream)
+std::string JanusFtl::generateSdpOffer(const ActiveSession& session, const JanusStream& stream)
 {
     // https://tools.ietf.org/html/rfc4566
 
@@ -875,14 +827,14 @@ std::string JanusFtl::generateSdpOffer(const ActiveSession& session, const Activ
     offerStream <<  
         "v=0\r\n" <<
         "o=- " << session.Session->GetSdpSessionId() << " " << session.Session->GetSdpVersion() << " IN IP4 127.0.0.1\r\n" <<
-        "s=Channel " << stream.ChannelId << "\r\n";
+        "s=Channel " << stream.GetChannelId() << "\r\n";
 
     // Audio media description
-    if (stream.Metadata.HasAudio)
+    if (stream.GetMetadata().HasAudio)
     {
-        std::string audioPayloadType = std::to_string(stream.Metadata.AudioPayloadType);
+        std::string audioPayloadType = std::to_string(stream.GetMetadata().AudioPayloadType);
         std::string audioCodec = 
-            SupportedAudioCodecs::AudioCodecString(stream.Metadata.AudioCodec);
+            SupportedAudioCodecs::AudioCodecString(stream.GetMetadata().AudioCodec);
         offerStream <<  
             "m=audio 1 RTP/SAVPF " << audioPayloadType << "\r\n" <<
             "c=IN IP4 1.1.1.1\r\n" <<
@@ -892,11 +844,11 @@ std::string JanusFtl::generateSdpOffer(const ActiveSession& session, const Activ
     }
 
     // Video media description
-    if (stream.Metadata.HasVideo)
+    if (stream.GetMetadata().HasVideo)
     {
-        std::string videoPayloadType = std::to_string(stream.Metadata.VideoPayloadType);
+        std::string videoPayloadType = std::to_string(stream.GetMetadata().VideoPayloadType);
         std::string videoCodec = 
-            SupportedVideoCodecs::VideoCodecString(stream.Metadata.VideoCodec);
+            SupportedVideoCodecs::VideoCodecString(stream.GetMetadata().VideoCodec);
         offerStream <<  
             "m=video 1 RTP/SAVPF " << videoPayloadType << "\r\n" <<
             "c=IN IP4 1.1.1.1\r\n" <<
@@ -946,7 +898,7 @@ ConnectionResult JanusFtl::onOrchestratorStreamRelay(ConnectionRelayPayload payl
             payload.TargetHostname);
 
         // Do we have an active stream?
-        if (streams.count(payload.ChannelId) <= 0)
+        if (!streams.contains(payload.ChannelId))
         {
             spdlog::error("Orchestrator requested a relay for channel that is not streaming."
                 "Target hostname: {}, Channel ID: {}", payload.TargetHostname, payload.ChannelId);
@@ -955,7 +907,7 @@ ConnectionResult JanusFtl::onOrchestratorStreamRelay(ConnectionRelayPayload payl
                     .IsSuccess = false,
                 };
         }
-        ActiveStream& activeStream = streams[payload.ChannelId];
+        auto& stream = streams.at(payload.ChannelId);
 
         // Start the relay now!
         auto relayClient = std::make_unique<FtlClient>(payload.TargetHostname, payload.ChannelId,
@@ -964,18 +916,18 @@ ConnectionResult JanusFtl::onOrchestratorStreamRelay(ConnectionRelayPayload payl
             {
                 .VendorName = "janus-ftl-plugin",
                 .VendorVersion = "0.0.0", // TODO: Versioning
-                .HasVideo = activeStream.Metadata.HasVideo,
+                .HasVideo = stream->GetMetadata().HasVideo,
                 .VideoCodec = SupportedVideoCodecs::VideoCodecString(
-                    activeStream.Metadata.VideoCodec),
-                .VideoHeight = activeStream.Metadata.VideoHeight,
-                .VideoWidth = activeStream.Metadata.VideoWidth,
-                .VideoPayloadType = activeStream.Metadata.VideoPayloadType,
-                .VideoIngestSsrc = activeStream.Metadata.VideoSsrc,
-                .HasAudio = activeStream.Metadata.HasAudio,
+                    stream->GetMetadata().VideoCodec),
+                .VideoHeight = stream->GetMetadata().VideoHeight,
+                .VideoWidth = stream->GetMetadata().VideoWidth,
+                .VideoPayloadType = stream->GetMetadata().VideoPayloadType,
+                .VideoIngestSsrc = stream->GetMetadata().VideoSsrc,
+                .HasAudio = stream->GetMetadata().HasAudio,
                 .AudioCodec = SupportedAudioCodecs::AudioCodecString(
-                    activeStream.Metadata.AudioCodec),
-                .AudioPayloadType = activeStream.Metadata.AudioPayloadType,
-                .AudioIngestSsrc = activeStream.Metadata.AudioSsrc,
+                    stream->GetMetadata().AudioCodec),
+                .AudioPayloadType = stream->GetMetadata().AudioPayloadType,
+                .AudioIngestSsrc = stream->GetMetadata().AudioSsrc,
             });
         if (connectResult.IsError)
         {
@@ -987,11 +939,7 @@ ConnectionResult JanusFtl::onOrchestratorStreamRelay(ConnectionRelayPayload payl
                 };
         }
 
-        relayClients[payload.ChannelId].push_back(ActiveRelay {
-            .ChannelId = payload.ChannelId,
-            .TargetHostname = payload.TargetHostname,
-            .Client = std::move(relayClient),
-        });
+        stream->AddRelayClient(payload.TargetHostname, std::move(relayClient));
         
         return ConnectionResult
         {
@@ -1004,39 +952,28 @@ ConnectionResult JanusFtl::onOrchestratorStreamRelay(ConnectionRelayPayload payl
             "Channel {}, Stream {}, Target: {}", payload.ChannelId, payload.StreamId,
             payload.TargetHostname);
 
-        // Remove and stop matching relays
-        int numRelaysRemoved = 0;
-        if (relayClients.count(payload.ChannelId) > 0)
+            
+        // Do we have an active stream?
+        if (!streams.contains(payload.ChannelId))
         {
-            for (auto it = relayClients.at(payload.ChannelId).begin();
-                it != relayClients.at(payload.ChannelId).end();)
-            {
-                ActiveRelay& relay = *it;
-                if ((relay.ChannelId == payload.ChannelId) &&
-                    (relay.TargetHostname == payload.TargetHostname))
-                {
-                    relay.Client->Stop();
-                    it = relayClients.at(payload.ChannelId).erase(it);
-                    ++numRelaysRemoved;
-                }
-                else
-                {
-                    ++it;
-                }
-            }
+            spdlog::warn("Orchestrator requested to stop a relay for channel that is not streaming."
+                "Target hostname: {}, Channel ID: {}", payload.TargetHostname, payload.ChannelId);
+            return ConnectionResult { .IsSuccess = true };
         }
-
-        if (numRelaysRemoved == 0)
+        auto& stream = streams.at(payload.ChannelId);
+        if (stream->GetStreamId() != payload.StreamId)
+        {
+            spdlog::warn("Orchestrator requested to stop a relay for a stream that no longer exists: "
+                "Channel {}, Stream {}", payload.ChannelId, payload.StreamId);
+            return ConnectionResult { .IsSuccess = true };
+        }
+        if (!stream->StopRelay(payload.TargetHostname))
         {
             spdlog::warn("Orchestrator requested to stop non-existant relay: "
                 "Channel {}, Stream {}, Target: {}", payload.ChannelId, payload.StreamId,
                 payload.TargetHostname);
         }
-
-        return ConnectionResult
-        {
-            .IsSuccess = true,
-        };
+        return ConnectionResult { .IsSuccess = true };
     }
 }
 #pragma endregion Private methods

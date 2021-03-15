@@ -80,7 +80,6 @@ private:
     FtlStream* ftlStream = nullptr;
     bool hmacRequested = false;
     bool isAuthenticated = false;
-    bool mediaPortRequested = false;
     bool isStreaming = false;
     ftl_channel_id_t channelId = 0;
     std::vector<std::byte> hmacPayload;
