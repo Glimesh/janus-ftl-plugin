@@ -75,9 +75,14 @@ size_t JanusStream::StopRelay(const std::string& targetHostname)
         for (auto it = relays.begin();
             it != relays.end();)
         {
-            if (it->TargetHostname == targetHostname) {
+            if (it->TargetHostname == targetHostname)
+            {
                 removedRelays.push_back(std::move(*it));
                 it = relays.erase(it);
+            }
+            else
+            {
+                ++it;
             }
         }
     }
