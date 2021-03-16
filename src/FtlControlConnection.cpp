@@ -71,24 +71,8 @@ void FtlControlConnection::ProvideHmacKey(const std::vector<std::byte>& hmacKey)
         reinterpret_cast<unsigned char*>(buffer), &bufferLength);
 
     // Do the hashed values match?
-    bool match = true;
-    if (bufferLength != clientHmacHash.size())
-    {
-        match = false;
-    }
-    else
-    {
-        for (unsigned int i = 0; i < bufferLength; ++i)
-        {
-            if (clientHmacHash.at(i) != buffer[i])
-            {
-                match = false;
-                break;
-            }
-        }
-    }
-
-    if (match)
+    if (bufferLength == clientHmacHash.size() &&
+        CRYPTO_memcmp(buffer, clientHmacHash.data(), clientHmacHash.size()) == 0)
     {
         isAuthenticated = true;
         writeToTransport(fmt::format("{}\n", FtlResponseCode::FTL_INGEST_RESP_OK));
