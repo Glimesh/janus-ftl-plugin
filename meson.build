@@ -58,6 +58,7 @@ sources = files([
 fmt_wrap = subproject('fmt', default_options: 'default_library=static')
 meson.override_dependency('fmt', fmt_wrap.get_variable('fmt_dep')) # Use our copy of fmt for spdlog
 spdlog_wrap = subproject('spdlog', default_options: ['default_library=static', 'compile_library=true', 'external_fmt=true'] )
+catch2_wrap = subproject('catch2')
 
 # Optional libsystemd dep for watchdog monitoring support
 systemd_dep = dependency('libsystemd', required : get_option('systemd_watchdog_support'))
@@ -112,13 +113,15 @@ test_incdirs = include_directories(
 )
 
 test_deps = [
-    subproject('spdlog').get_variable('spdlog_dep'),
-    subproject('catch2').get_variable('catch2_dep'),
+    fmt_wrap.get_variable('fmt_dep'),
+    spdlog_wrap.get_variable('spdlog_dep'),
+    catch2_wrap.get_variable('catch2_dep'),
 ]
 
 executable(
     'janus-ftl-plugin-test',
     test_sources,
+    cpp_pch: 'pch/janus_ftl_test_pch.h',
     dependencies: test_deps,
     include_directories: test_incdirs,
 )
