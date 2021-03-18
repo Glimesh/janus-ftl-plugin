@@ -60,43 +60,43 @@ public:
         StreamEndedCallback onStreamEnded,
         uint16_t minMediaPort = DEFAULT_MEDIA_MIN_PORT,
         uint16_t maxMediaPort = DEFAULT_MEDIA_MAX_PORT);
-    virtual ~FtlServer() = default;
+    ~FtlServer() = default;
 
     /* Public functions */
     /**
      * @brief Starts listening for FTL connections on a new thread.
      */
-    virtual void StartAsync();
+    void StartAsync();
 
     /**
      * @brief Stops listening for FTL connections.
      */
-    virtual void Stop();
+    void Stop();
 
     /* FtlControlConnectionManager implementation */
-    virtual void ControlConnectionStopped(FtlControlConnection* connection) override;
-    virtual void ControlConnectionRequestedHmacKey(FtlControlConnection* connection,
+    void ControlConnectionStopped(FtlControlConnection* connection) override;
+    void ControlConnectionRequestedHmacKey(FtlControlConnection* connection,
         ftl_channel_id_t channelId) override;
-    virtual void ControlConnectionRequestedMediaPort(FtlControlConnection* connection,
+    void ControlConnectionRequestedMediaPort(FtlControlConnection* connection,
         ftl_channel_id_t channelId, MediaMetadata mediaMetadata, in_addr targetAddr) override;
 
     /**
      * @brief Stops the stream with the specified channel ID and stream ID.
      * This will not fire the StreamEnded callback.
      */
-    virtual void StopStream(ftl_channel_id_t channelId, ftl_stream_id_t streamId);
+    void StopStream(ftl_channel_id_t channelId, ftl_stream_id_t streamId);
 
     /**
      * @brief Retrieves stats for all active streams
      */
-    virtual std::list<std::pair<std::pair<ftl_channel_id_t, ftl_stream_id_t>,
+    std::list<std::pair<std::pair<ftl_channel_id_t, ftl_stream_id_t>,
         std::pair<FtlStream::FtlStreamStats, FtlStream::FtlKeyframe>>>
         GetAllStatsAndKeyframes();
 
     /**
      * @brief Retrieves stats for the given stream
      */
-    virtual Result<FtlStream::FtlStreamStats> GetStats(ftl_channel_id_t channelId,
+    Result<FtlStream::FtlStreamStats> GetStats(ftl_channel_id_t channelId,
         ftl_stream_id_t streamId);
 
 private:
