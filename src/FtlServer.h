@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include "FtlControlConnectionManager.h"
 #include "FtlControlConnection.h"
 #include "FtlStream.h"
 #include "RtpPacketSink.h"
@@ -35,7 +36,7 @@ class ConnectionTransport;
  * @brief FtlServer manages ingest control and media connections, exposing the relevant stream
  * data for consumers to use.
  */
-class FtlServer
+class FtlServer : public FtlControlConnectionManager
 {
 public:
     /* Public types */
@@ -59,53 +60,43 @@ public:
         StreamEndedCallback onStreamEnded,
         uint16_t minMediaPort = DEFAULT_MEDIA_MIN_PORT,
         uint16_t maxMediaPort = DEFAULT_MEDIA_MAX_PORT);
-    ~FtlServer() = default;
+    virtual ~FtlServer() = default;
 
     /* Public functions */
     /**
      * @brief Starts listening for FTL connections on a new thread.
      */
-    void StartAsync();
+    virtual void StartAsync();
 
     /**
      * @brief Stops listening for FTL connections.
      */
-    void Stop();
+    virtual void Stop();
 
-    /**
-     * @brief Called by FtlControlConnection when the control connection has stopped.
-     */
-    void ControlConnectionStopped(FtlControlConnection* connection);
-
-    /**
-     * @brief Called by FtlControlConnection when it wants an HMAC key for a channel
-     */
-    void ControlConnectionRequestedHmacKey(FtlControlConnection* connection,
-        ftl_channel_id_t channelId);
-
-    /**
-     * @brief Called by FtlControlConnection when it needs a media port assigned
-     */
-    void ControlConnectionRequestedMediaPort(FtlControlConnection* connection,
-        ftl_channel_id_t channelId, MediaMetadata mediaMetadata, in_addr targetAddr);
+    /* FtlControlConnectionManager implementation */
+    virtual void ControlConnectionStopped(FtlControlConnection* connection) override;
+    virtual void ControlConnectionRequestedHmacKey(FtlControlConnection* connection,
+        ftl_channel_id_t channelId) override;
+    virtual void ControlConnectionRequestedMediaPort(FtlControlConnection* connection,
+        ftl_channel_id_t channelId, MediaMetadata mediaMetadata, in_addr targetAddr) override;
 
     /**
      * @brief Stops the stream with the specified channel ID and stream ID.
      * This will not fire the StreamEnded callback.
      */
-    void StopStream(ftl_channel_id_t channelId, ftl_stream_id_t streamId);
+    virtual void StopStream(ftl_channel_id_t channelId, ftl_stream_id_t streamId);
 
     /**
      * @brief Retrieves stats for all active streams
      */
-    std::list<std::pair<std::pair<ftl_channel_id_t, ftl_stream_id_t>,
+    virtual std::list<std::pair<std::pair<ftl_channel_id_t, ftl_stream_id_t>,
         std::pair<FtlStream::FtlStreamStats, FtlStream::FtlKeyframe>>>
         GetAllStatsAndKeyframes();
 
     /**
      * @brief Retrieves stats for the given stream
      */
-    Result<FtlStream::FtlStreamStats> GetStats(ftl_channel_id_t channelId,
+    virtual Result<FtlStream::FtlStreamStats> GetStats(ftl_channel_id_t channelId,
         ftl_stream_id_t streamId);
 
 private:

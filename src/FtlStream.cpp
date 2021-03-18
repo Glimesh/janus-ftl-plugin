@@ -9,7 +9,6 @@
 
 #include "ConnectionTransports/ConnectionTransport.h"
 #include "FtlControlConnection.h"
-#include "JanusSession.h"
 #include "Utilities/Rtp.h"
 
 #include <algorithm>

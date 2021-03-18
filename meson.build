@@ -105,14 +105,22 @@ shared_library(
 test_sources = files([
     # Entrypoint
     'test/test.cpp',
+    # Unit tests
+    'test/unit/FtlControlConnectionUnitTests.cpp',
+    # Project sources
+    'src/FtlControlConnection.cpp',
+    'src/FtlStream.cpp',
+    'src/Utilities/Rtp.cpp',
 ])
 
 test_incdirs = include_directories(
-    './test',
-    './src',
+    './vendor/eventpp/include',
+    is_system: true,
 )
 
 test_deps = [
+    dependency('libssl'),
+    dependency('libcrypto'),
     fmt_wrap.get_variable('fmt_dep'),
     spdlog_wrap.get_variable('spdlog_dep'),
     catch2_wrap.get_variable('catch2_dep'),
