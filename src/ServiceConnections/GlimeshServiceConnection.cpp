@@ -11,7 +11,6 @@
 #include "GlimeshServiceConnection.h"
 
 #include "../Utilities/FtlTypes.h"
-#include "Util.h"
 
 #include <jansson.h>
 #include <string.h>
@@ -218,7 +217,15 @@ Result<void> GlimeshServiceConnection::SendJpegPreviewImage(
 #pragma region Private methods
 std::unique_ptr<httplib::Client> GlimeshServiceConnection::getHttpClient() {
     auto client = std::make_unique<httplib::Client>(baseUri.c_str());
-    client->set_socket_options(SetDefaultSocketOptions);
+    client->set_socket_options([](socket_t sock) {
+        // TODO: Remove once yhirose/cpp-httplib#873 is resolved
+        struct timeval tv{};
+        tv.tv_sec = DEFAULT_SOCKET_RECEIVE_TIMEOUT_SEC;
+        setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
+        // Set default options from cpp-httplib
+        httplib::default_socket_options(sock);
+    });
     return client;
 }
 

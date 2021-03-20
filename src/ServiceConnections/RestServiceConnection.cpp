@@ -11,7 +11,6 @@
 #include "RestServiceConnection.h"
 
 #include "../Utilities/FtlTypes.h"
-#include "Util.h"
 
 #include <cassert>
 #include <jansson.h>
@@ -154,7 +153,15 @@ Result<void> RestServiceConnection::SendJpegPreviewImage(
 #pragma region Private methods
 std::unique_ptr<httplib::Client> RestServiceConnection::getHttpClientWithAuth() {
     auto httpClient = std::make_unique<httplib::Client>(baseUri.c_str());
-    httpClient->set_socket_options(SetDefaultSocketOptions);
+    httpClient->set_socket_options([](socket_t sock) {
+        // TODO: Remove once yhirose/cpp-httplib#873 is resolved
+        struct timeval tv{};
+        tv.tv_sec = DEFAULT_SOCKET_RECEIVE_TIMEOUT_SEC;
+        setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
+        // Set default options from cpp-httplib
+        httplib::default_socket_options(sock);
+    });
     if (this->authToken.length() > 0)
     {
         httplib::Headers headers
