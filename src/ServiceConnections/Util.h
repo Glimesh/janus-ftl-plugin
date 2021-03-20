@@ -14,7 +14,7 @@ const static time_t DEFAULT_SOCKET_RECEIVE_TIMEOUT_SEC = 1;
 
 static void SetDefaultSocketOptions(socket_t sock)
 {
-    struct timeval tv;
+    struct timeval tv{};
     tv.tv_sec = DEFAULT_SOCKET_RECEIVE_TIMEOUT_SEC;
     setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
