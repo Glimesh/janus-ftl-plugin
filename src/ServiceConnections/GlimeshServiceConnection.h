@@ -50,6 +50,7 @@ private:
     /* Private members */
     const int MAX_RETRIES = 10;
     const int TIME_BETWEEN_RETRIES_MS = 3000;
+    const int DEFAULT_SOCKET_RECEIVE_TIMEOUT_SEC = 1;
     std::string baseUri;
     std::string hostname;
     std::string clientId;
