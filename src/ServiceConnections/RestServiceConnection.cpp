@@ -153,7 +153,7 @@ Result<void> RestServiceConnection::SendJpegPreviewImage(
 #pragma region Private methods
 std::unique_ptr<httplib::Client> RestServiceConnection::getHttpClientWithAuth() {
     auto httpClient = std::make_unique<httplib::Client>(baseUri.c_str());
-    httpClient->set_socket_options([](socket_t sock) {
+    httpClient->set_socket_options([this](socket_t sock) {
         // TODO: Remove once yhirose/cpp-httplib#873 is resolved
         struct timeval tv{};
         tv.tv_sec = DEFAULT_SOCKET_RECEIVE_TIMEOUT_SEC;

@@ -48,9 +48,9 @@ public:
 
 private:
     /* Private members */
-    const static int MAX_RETRIES = 10;
-    const static int TIME_BETWEEN_RETRIES_MS = 3000;
-    const static int DEFAULT_SOCKET_RECEIVE_TIMEOUT_SEC = 1;
+    const int MAX_RETRIES = 10;
+    const int TIME_BETWEEN_RETRIES_MS = 3000;
+    const int DEFAULT_SOCKET_RECEIVE_TIMEOUT_SEC = 1;
     std::string baseUri;
     std::string hostname;
     std::string clientId;
