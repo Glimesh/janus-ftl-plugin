@@ -71,6 +71,7 @@ Result<void> FtlClient::ConnectAsync(FtlClient::ConnectMetadata metadata)
 
 void FtlClient::Stop()
 {
+    std::unique_lock stoppingLock(stoppingMutex);
     if (!isStopping && !isStopped)
     {
         // Looks like this connection hasn't stopped yet.
@@ -90,13 +91,17 @@ void FtlClient::Stop()
         // Wait for the connection thread (only if it has actually started)
         if (connectionThreadEndedFuture.valid())
         {
+            stoppingLock.unlock(); // Unlock so the connection thread can finish stopping
             connectionThreadEndedFuture.wait();
         }
     }
     else if (isStopping && !isStopped)
     {
         // We're already stopping - just wait for the connnection thread to end.
-        connectionThreadEndedFuture.wait();
+        if (connectionThreadEndedFuture.valid()) {
+            stoppingLock.unlock(); // Unlock so the connection thread can finish stopping
+            connectionThreadEndedFuture.wait();
+        }
     }
 }
 
@@ -389,33 +394,39 @@ void FtlClient::connectionThreadBody()
 
 void FtlClient::endConnection()
 {
-    if (!isStopping)
+    bool fireCallback = false;
     {
-        // We haven't been asked to stop, so the connection was closed for another reason.
-        // Close the sockets.
-        isStopping = true;
-        if (controlSocketHandle != 0)
+        std::lock_guard lock(stoppingMutex);
+        if (!isStopping)
         {
-            shutdown(controlSocketHandle, SHUT_RDWR);
-            close(controlSocketHandle);
-        }
-        if (mediaSocketHandle != 0)
-        {
-            shutdown(mediaSocketHandle, SHUT_RDWR);
-            close(mediaSocketHandle);
+            // We haven't been asked to stop, so the connection was closed for another reason.
+            // Close the sockets.
+            isStopping = true;
+            if (controlSocketHandle != 0)
+            {
+                shutdown(controlSocketHandle, SHUT_RDWR);
+                close(controlSocketHandle);
+            }
+            if (mediaSocketHandle != 0)
+            {
+                shutdown(mediaSocketHandle, SHUT_RDWR);
+                close(mediaSocketHandle);
+            }
+
+            // We only callback when we haven't been explicitly told to stop (to avoid feedback loops)
+            fireCallback = true;
         }
 
-        // We only callback when we haven't been explicitly told to stop (to avoid feedback loops)
-        if (onClosed)
+        if (!isStopped)
         {
-            onClosed();
+            // By this point, the sockets have been closed.
+            isStopped = true;
         }
     }
-
-    if (!isStopped)
+    
+    if (fireCallback && onClosed)
     {
-        // By this point, the sockets have been closed.
-        isStopped = true;
+        onClosed();
     }
 }
 

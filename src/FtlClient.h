@@ -97,9 +97,10 @@ private:
     const std::string targetHostname;
     const ftl_channel_id_t channelId;
     const std::vector<std::byte> streamKey;
-    std::atomic<bool> isStopping { false }; // Set once close has been called on the sockets and we
-                                            // are waiting for the connection thread to notice.
-    std::atomic<bool> isStopped { false };  // Set just before the connection thread exits.
+    bool isStopping = false; // Set once close has been called on the sockets and we
+                             // are waiting for the connection thread to notice.
+    bool isStopped = false;  // Set just before the connection thread exits.
+    std::mutex stoppingMutex;
     int controlSocketHandle = 0;
     std::promise<void> connectionThreadEndedPromise;
     std::future<void> connectionThreadEndedFuture = connectionThreadEndedPromise.get_future();
