@@ -839,7 +839,7 @@ std::string JanusFtl::generateSdpOffer(const ActiveSession& session, const Janus
             "m=audio 1 RTP/SAVPF " << audioPayloadType << "\r\n" <<
             "c=IN IP4 1.1.1.1\r\n" <<
             "a=rtpmap:" << audioPayloadType << " " << audioCodec << "/48000/2\r\n" <<
-            "a=fmtp:" << audioPayloadType << " useinbandfec=1;sprop-stereo=1;\r\n" <<
+            "a=fmtp:" << audioPayloadType << " sprop-stereo=1;\r\n" <<
             "a=sendonly\r\n" <<
             "a=extmap:1 urn:ietf:params:rtp-hdrext:sdes:mid\r\n";
     }
