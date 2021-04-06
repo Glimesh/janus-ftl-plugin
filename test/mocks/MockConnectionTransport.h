@@ -12,6 +12,15 @@
 class MockConnectionTransport : public ConnectionTransport
 {
 public:
+    /* Mock methods */
+    void InjectReceivedBytes(const std::vector<std::byte>& bytes)
+    {
+        if (onBytesReceived)
+        {
+            onBytesReceived(bytes);
+        }
+    }
+
     /* ConnectionTransport Implementation */
     std::optional<sockaddr_in> GetAddr() override
     {
@@ -46,6 +55,9 @@ public:
     void SetOnBytesReceived(
         std::function<void(const std::vector<std::byte>&)> onBytesReceived) override
     {
-
+        this->onBytesReceived = onBytesReceived;
     }
+
+private:
+    std::function<void(const std::vector<std::byte>&)> onBytesReceived;
 };
