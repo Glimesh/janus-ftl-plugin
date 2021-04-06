@@ -43,7 +43,11 @@ Result<void> FtlStream::StartMediaConnection(
 {
     std::unique_lock lock(mutex);
 
-    // TODO make sure we don't already have a media connection
+    if (mediaConnection)
+    {
+        // TODO make sure we don't already have a media connection
+        // throw
+    }
 
     mediaConnection = std::make_unique<FtlMediaConnection>(
         std::move(mediaTransport),
@@ -65,8 +69,11 @@ void FtlStream::Stop()
         controlConnection->GetChannelId(),
         streamId);
 
-    // Stop our media connection
-    mediaConnection->Stop();
+    // Stop our media connection if we have one
+    if (mediaConnection)
+    {
+        mediaConnection->Stop();
+    }
 
     // Stop the control connection
     controlConnection->Stop();
