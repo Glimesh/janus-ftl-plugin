@@ -69,6 +69,13 @@ std::optional<sockaddr_in6> NetworkSocketConnectionTransport::GetAddr6()
 
 Result<ssize_t> NetworkSocketConnectionTransport::Read(std::vector<std::byte>& buffer)
 {
+    std::unique_lock lock(readMutex);
+
+    if (isStopped)
+    {
+        return Result<ssize_t>::Error("Transport is stopped");
+    }
+
     pollfd pollFds[]
     {
         // Socket read
@@ -79,7 +86,7 @@ Result<ssize_t> NetworkSocketConnectionTransport::Read(std::vector<std::byte>& b
         },
     };
 
-    poll(pollFds, 1, 200 /*ms*/);
+    poll(pollFds, 1, READ_TIMEOUT_MS);
 
     // Did the socket get closed?
     if (((pollFds[0].revents & POLLERR) > 0) || 
@@ -196,20 +203,21 @@ Result<ssize_t> NetworkSocketConnectionTransport::Read(std::vector<std::byte>& b
 
 Result<void> NetworkSocketConnectionTransport::Write(const std::span<std::byte>& bytes)
 {
-    std::unique_lock stoppingLock(stoppingMutex);
+    std::unique_lock lock(writeMutex);
 
-    if (isStopping || isStopped)
+    if (isStopped)
     {
         return Result<void>::Error("Transport is stopped");
     }
 
-    std::lock_guard<std::mutex> lock(writeMutex);
     return sendData(bytes);
 }
 
 void NetworkSocketConnectionTransport::Stop()
 {
-    std::unique_lock stoppingLock(stoppingMutex);
+    std::unique_lock readLock(readMutex);
+    std::unique_lock writeLock(writeMutex);
+
     if (!isStopped)
     {
         // We haven't already been asked to close, so shutdown gracefully if possible

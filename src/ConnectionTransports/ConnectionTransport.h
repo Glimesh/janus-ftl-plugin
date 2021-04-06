@@ -17,7 +17,7 @@
 
 /**
  * @brief
- *  A generic network transport abstraction, allowing bytes to be read/written
+ *  A generic thread-safe network transport abstraction, allowing bytes to be read/written
  *  to a connection via a common interface.
  * 
  */

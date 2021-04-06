@@ -48,19 +48,15 @@ public:
 private:
     /* Static members */
     static constexpr int BUFFER_SIZE = 2048;
+    static constexpr int READ_TIMEOUT_MS = 200;
 
     /* Private fields */
     const NetworkSocketConnectionKind connectionKind;
     const int socketHandle = 0;
     std::optional<sockaddr_in> targetAddr = std::nullopt;
-    std::mutex stoppingMutex;
-    bool isStopping = false; // Indicates that the socket has been requested to close
-    bool isStopped = false;  // Indicates that the socket has finished closing
+    bool isStopped = false;
+    std::mutex readMutex;
     std::mutex writeMutex;
-    std::list<std::vector<std::byte>> datagramsPendingWrite;
-    // Callbacks
-    std::function<void(void)> onConnectionClosed;
-    std::function<void(const std::vector<std::byte>&)> onBytesReceived;
 
     /* Private methods */
     Result<void> sendData(const std::span<std::byte>& data);
