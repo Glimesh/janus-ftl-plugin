@@ -517,7 +517,7 @@ void JanusFtl::serviceReportThreadBody(std::promise<void>&& threadEndedPromise)
         // Quickly gather data from active streams while under lock (defer reporting to avoid
         // holding up other threads)
         std::list<std::pair<std::pair<ftl_channel_id_t, ftl_stream_id_t>,
-            std::pair<FtlStream::FtlStreamStats, FtlStream::FtlKeyframe>>> statsAndKeyframes = 
+            std::pair<FtlStreamStats, FtlKeyframe>>> statsAndKeyframes = 
                 ftlServer->GetAllStatsAndKeyframes();
         std::unordered_map<ftl_channel_id_t, MediaMetadata> metadataByChannel;
         std::unordered_map<ftl_channel_id_t, uint32_t> viewersByChannel;
@@ -540,8 +540,8 @@ void JanusFtl::serviceReportThreadBody(std::promise<void>&& threadEndedPromise)
         {
             const ftl_channel_id_t& channelId = streamInfo.first.first;
             const ftl_stream_id_t& streamId = streamInfo.first.second;
-            const FtlStream::FtlStreamStats& stats = streamInfo.second.first;
-            const FtlStream::FtlKeyframe& keyframe = streamInfo.second.second;
+            const FtlStreamStats& stats = streamInfo.second.first;
+            const FtlKeyframe& keyframe = streamInfo.second.second;
 
             // Has this stream exceeded the maximum allowed bandwidth?
             if ((maxAllowedBitsPerSecond > 0) && 

@@ -16,6 +16,7 @@
 #include <netinet/in.h>
 #include <regex>
 #include <sstream>
+#include <thread>
 
 // Forward declarations
 class ConnectionTransport;
@@ -66,7 +67,6 @@ public:
     /* Public functions */
     void ProvideHmacKey(const std::vector<std::byte>& hmacKey);
     void StartMediaPort(uint16_t mediaPort);
-    Result<void> StartAsync();
     void Stop(FtlResponseCode responseCode = FtlResponseCode::FTL_INGEST_RESP_SERVER_TERMINATE);
 
 private:
@@ -85,12 +85,14 @@ private:
     std::vector<std::byte> hmacPayload;
     std::vector<std::byte> clientHmacHash;
     MediaMetadata mediaMetadata {};
+    std::jthread thread;
     // Command processing
     std::string commandBuffer;
     const std::regex connectPattern = std::regex(R"~(CONNECT ([0-9]+) \$([0-9a-f]+))~");
     const std::regex attributePattern = std::regex(R"~((.+): (.+))~");
 
     /* Private functions */
+    void threadBody(std::stop_token stopToken);
     void onTransportBytesReceived(const std::vector<std::byte>& bytes);
     void onTransportClosed();
     void writeToTransport(const std::string& str);

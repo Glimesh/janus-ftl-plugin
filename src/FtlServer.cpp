@@ -175,12 +175,12 @@ void FtlServer::StopStream(ftl_channel_id_t channelId, ftl_stream_id_t streamId)
 }
 
 std::list<std::pair<std::pair<ftl_channel_id_t, ftl_stream_id_t>,
-    std::pair<FtlStream::FtlStreamStats, FtlStream::FtlKeyframe>>>
+    std::pair<FtlStreamStats, FtlKeyframe>>>
     FtlServer::GetAllStatsAndKeyframes()
 {
     std::shared_lock lock(streamDataMutex);
     std::list<std::pair<std::pair<ftl_channel_id_t, ftl_stream_id_t>,
-        std::pair<FtlStream::FtlStreamStats, FtlStream::FtlKeyframe>>>
+        std::pair<FtlStreamStats, FtlKeyframe>>>
         returnVal;
     for (const auto& pair : activeStreams)
     {
@@ -191,7 +191,7 @@ std::list<std::pair<std::pair<ftl_channel_id_t, ftl_stream_id_t>,
     return returnVal;
 }
 
-Result<FtlStream::FtlStreamStats> FtlServer::GetStats(ftl_channel_id_t channelId,
+Result<FtlStreamStats> FtlServer::GetStats(ftl_channel_id_t channelId,
     ftl_stream_id_t streamId)
 {
     std::shared_lock lock(streamDataMutex);
@@ -200,10 +200,10 @@ Result<FtlStream::FtlStreamStats> FtlServer::GetStats(ftl_channel_id_t channelId
         const std::shared_ptr<FtlStream>& stream = pair.second.Stream;
         if ((stream->GetChannelId() == channelId) && (stream->GetStreamId() == streamId))
         {
-            return Result<FtlStream::FtlStreamStats>::Success(stream->GetStats());
+            return Result<FtlStreamStats>::Success(stream->GetStats());
         }
     }
-    return Result<FtlStream::FtlStreamStats>::Error("Stream does not exist.");
+    return Result<FtlStreamStats>::Error("Stream does not exist.");
 }
 #pragma endregion Public functions
 
@@ -360,19 +360,10 @@ void FtlServer::eventNewControlConnection(std::shared_ptr<FtlServerNewControlCon
         Util::AddrToString(connection->GetAddr().value().sin_addr) : "UNKNOWN";
     auto ingestControlConnection = std::make_shared<FtlControlConnection>(this,
         std::move(connection));
-    auto ingestControlConnectionPtr = ingestControlConnection.get();
     pendingControlConnections.emplace(std::piecewise_construct,
         std::forward_as_tuple(ingestControlConnection.get()),
         std::forward_as_tuple(std::move(ingestControlConnection),
             std::chrono::steady_clock::now()));
-
-    // Start the connection on another thread so as to not block our event queue
-    // TODO: use shared_ptr here in case the ref is lost before this call gets run
-    dispatchAsyncCall(
-        [ingestControlConnectionPtr]()
-        {
-            ingestControlConnectionPtr->StartAsync();
-        });
     spdlog::info("New FTL control connection is pending from {}", addrString);
 }
 
@@ -557,14 +548,17 @@ void FtlServer::eventStreamIdAssigned(std::shared_ptr<FtlServerStreamIdAssignedE
             std::unique_ptr<ConnectionTransport> mediaTransport = 
                 mediaConnectionCreator->CreateConnection(mediaPort, event->TargetAddr);
             auto stream = std::make_shared<FtlStream>(
-                std::move(control), std::move(mediaTransport), event->Metadata, event->StreamId,
-                std::bind(&FtlServer::onStreamClosed, this, std::placeholders::_1),
+                std::move(control),
+                event->StreamId,
+                std::bind(&FtlServer::onStreamClosed, this, std::placeholders::_1));
+
+            Result<void> streamStartResult = stream->StartMediaConnection(
+                std::move(mediaTransport),
+                event->Metadata,
                 [rtpPacketSink](const std::vector<std::byte> packet)
                 {
                     rtpPacketSink->SendRtpPacket(packet);
                 });
-            
-            Result<void> streamStartResult = stream->StartAsync(mediaPort);
             if (streamStartResult.IsError)
             {
                 // Here, we purposefully drop the FtlStream reference since we're done using it.
@@ -583,7 +577,7 @@ void FtlServer::eventStreamIdAssigned(std::shared_ptr<FtlServerStreamIdAssignedE
                         }));
                 return;
             }
-            
+
             // Stream was started successfully!
             eventQueue.enqueue(FtlServerEventKind::StreamStarted,
                 std::shared_ptr<FtlServerStreamStartedEvent>(

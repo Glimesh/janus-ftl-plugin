@@ -99,13 +99,13 @@ public:
      * @brief Retrieves stats for all active streams
      */
     std::list<std::pair<std::pair<ftl_channel_id_t, ftl_stream_id_t>,
-        std::pair<FtlStream::FtlStreamStats, FtlStream::FtlKeyframe>>>
+        std::pair<FtlStreamStats, FtlKeyframe>>>
         GetAllStatsAndKeyframes();
 
     /**
      * @brief Retrieves stats for the given stream
      */
-    Result<FtlStream::FtlStreamStats> GetStats(ftl_channel_id_t channelId,
+    Result<FtlStreamStats> GetStats(ftl_channel_id_t channelId,
         ftl_stream_id_t streamId);
 
 private:
