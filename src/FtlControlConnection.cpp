@@ -202,7 +202,6 @@ void FtlControlConnection::stopConnection()
 
 void FtlControlConnection::processCommand(const std::string& command)
 {
-    spdlog::debug("Processing command: {}", command);
     if (command.compare("HMAC") == 0)
     {
         processHmacCommand();
