@@ -43,7 +43,7 @@ public:
     std::optional<sockaddr_in6> GetAddr6() override;
     void Stop() override;
     Result<ssize_t> Read(std::vector<std::byte>& bytes) override;
-    Result<void> Write(const std::vector<std::byte>& bytes) override;
+    Result<void> Write(const std::span<std::byte>& bytes) override;
 
 private:
     /* Static members */
@@ -63,6 +63,6 @@ private:
     std::function<void(const std::vector<std::byte>&)> onBytesReceived;
 
     /* Private methods */
-    Result<void> sendData(const std::vector<std::byte>& data);
+    Result<void> sendData(const std::span<std::byte>& data);
     void closeConnection();
 };

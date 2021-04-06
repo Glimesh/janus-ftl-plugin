@@ -12,6 +12,7 @@
 #include <functional>
 #include <netinet/in.h>
 #include <optional>
+#include <span>
 #include <vector>
 
 /**
@@ -52,5 +53,5 @@ public:
     /**
      * @brief Write a set of bytes to the transport
      */
-    virtual Result<void> Write(const std::vector<std::byte>& bytes) = 0;
+    virtual Result<void> Write(const std::span<std::byte>& bytes) = 0;
 };

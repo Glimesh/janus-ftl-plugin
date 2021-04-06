@@ -194,7 +194,7 @@ Result<ssize_t> NetworkSocketConnectionTransport::Read(std::vector<std::byte>& b
 }
 
 
-Result<void> NetworkSocketConnectionTransport::Write(const std::vector<std::byte>& bytes)
+Result<void> NetworkSocketConnectionTransport::Write(const std::span<std::byte>& bytes)
 {
     std::unique_lock stoppingLock(stoppingMutex);
 
@@ -226,7 +226,7 @@ void NetworkSocketConnectionTransport::Stop()
 #pragma endregion ConnectionTransport Implementation
 
 #pragma region Private methods
-Result<void> NetworkSocketConnectionTransport::sendData(const std::vector<std::byte>& data)
+Result<void> NetworkSocketConnectionTransport::sendData(const std::span<std::byte>& data)
 {
     sockaddr_in sendToAddr{};
     sockaddr* sendToAddrPtr = nullptr;
