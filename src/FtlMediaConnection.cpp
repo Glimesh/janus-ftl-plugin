@@ -122,7 +122,10 @@ void FtlMediaConnection::threadBody(std::stop_token stopToken)
     transport->Stop();
 
     // Tell our parent we're shutting down
-    onClosed(*this);
+    if (onClosed)
+    {
+        onClosed(*this);
+    }
 }
 
 void FtlMediaConnection::onBytesReceived(const std::vector<std::byte>& bytes)

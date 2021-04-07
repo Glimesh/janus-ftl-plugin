@@ -116,7 +116,8 @@ Result<FtlStreamStats> FtlStream::GetStats()
     if (mediaConnection)
     {
         return Result<FtlStreamStats>::Success(mediaConnection->GetStats());
-    } else
+    }
+    else
     {
         return Result<FtlStreamStats>::Error("Stream media connection has not been started");
     }
@@ -129,7 +130,8 @@ Result<FtlKeyframe> FtlStream::GetKeyframe()
     if (mediaConnection)
     {
         return mediaConnection->GetKeyframe();
-    } else
+    }
+    else
     {
         return Result<FtlKeyframe>::Error("Stream media connection has not been started");
     }
