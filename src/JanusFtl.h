@@ -15,12 +15,12 @@
 #include "FtlServer.h"
 #include "JanusSession.h"
 #include "JanusStream.h"
-#include "PreviewGenerators/PreviewGenerator.h"
 #include "ServiceConnections/ServiceConnection.h"
 #include "Utilities/FtlTypes.h"
 #include "Utilities/JanssonPtr.h"
 #include "Utilities/Result.h"
 #include "Utilities/Watchdog.h"
+#include "VideoDecoders/VideoDecoder.h"
 
 extern "C"
 {
@@ -100,7 +100,7 @@ private:
     std::unique_ptr<Configuration> configuration;
     std::shared_ptr<FtlConnection> orchestrationClient;
     std::shared_ptr<ServiceConnection> serviceConnection;
-    std::unordered_map<VideoCodecKind, std::unique_ptr<PreviewGenerator>> previewGenerators;
+    std::unordered_map<VideoCodecKind, std::unique_ptr<VideoDecoder>> videoDecoders;
     uint32_t maxAllowedBitsPerSecond = 0;
     std::chrono::milliseconds metadataReportInterval = std::chrono::milliseconds::min();
     std::atomic<bool> isStopping = false;
@@ -122,7 +122,7 @@ private:
         MediaMetadata mediaMetadata);
     void ftlServerStreamEnded(ftl_channel_id_t channelId, ftl_stream_id_t streamId);
     // Initialization
-    void initPreviewGenerators();
+    void initVideoDecoders();
     void initOrchestratorConnection();
     void initServiceConnection();
     void initServiceReportThread();

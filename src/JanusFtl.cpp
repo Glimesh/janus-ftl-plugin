@@ -14,7 +14,7 @@
 #include "FtlClient.h"
 #include "FtlServer.h"
 #include "JanusFtl.h"
-#include "PreviewGenerators/H264PreviewGenerator.h"
+#include "VideoDecoders/H264VideoDecoder.h"
 #include "ServiceConnections/DummyServiceConnection.h"
 #include "ServiceConnections/EdgeNodeServiceConnection.h"
 #include "ServiceConnections/GlimeshServiceConnection.h"
@@ -64,7 +64,7 @@ int JanusFtl::Init(janus_callbacks* callback, const char* config_path)
     metadataReportInterval = configuration->GetServiceConnectionMetadataReportInterval();
     watchdog = std::make_unique<Watchdog>(configuration->GetServiceConnectionMetadataReportInterval());
 
-    initPreviewGenerators();
+    initVideoDecoders();
 
     initOrchestratorConnection();
 
@@ -402,10 +402,10 @@ void JanusFtl::ftlServerStreamEnded(ftl_channel_id_t channelId, ftl_stream_id_t 
     endStream(channelId, streamId, lock);
 }
 
-void JanusFtl::initPreviewGenerators()
+void JanusFtl::initVideoDecoders()
 {
     // H264
-    previewGenerators.try_emplace(VideoCodecKind::H264, std::make_unique<H264PreviewGenerator>());
+    videoDecoders.try_emplace(VideoCodecKind::H264, std::make_unique<H264VideoDecoder>());
 }
 
 void JanusFtl::initOrchestratorConnection()
@@ -562,6 +562,30 @@ void JanusFtl::serviceReportThreadBody(std::promise<void>&& threadEndedPromise)
             }
             const MediaMetadata& mediaMetadata = metadataByChannel.at(channelId);
             const uint32_t& numActiveViewers = viewersByChannel.at(channelId);
+
+            // Fallback width/height values, usually wrong
+            uint16_t videoWidth = mediaMetadata.VideoWidth;
+            uint16_t videoHeight = mediaMetadata.VideoHeight;
+
+            // Do we have a videodecoder available for this stream's codec?
+            if ((keyframe.Packets.size() > 0) && (videoDecoders.count(keyframe.Codec) > 0))
+            {
+                try
+                {
+                    // Read correct video dimensions
+                    std::pair<uint16_t, uint16_t> widthHeight =
+                        videoDecoders.at(keyframe.Codec)->ReadVideoDimensions(keyframe.Packets);
+
+                    videoWidth = widthHeight.first;
+                    videoHeight = widthHeight.second;
+                }
+                catch (const PreviewGenerationFailedException& e)
+                {
+                    spdlog::warn("Couldn't read stream video size for channel {} / stream {}: {}",
+                        channelId, streamId, e.what());
+                }
+            }
+
             StreamMetadata metadata
             {
                 .ingestServerHostname = configuration->GetMyHostname(),
@@ -576,8 +600,8 @@ void JanusFtl::serviceReportThreadBody(std::promise<void>&& threadEndedPromise)
                 .streamerClientVendorVersion = mediaMetadata.VendorVersion,
                 .videoCodec = SupportedVideoCodecs::VideoCodecString(mediaMetadata.VideoCodec),
                 .audioCodec = SupportedAudioCodecs::AudioCodecString(mediaMetadata.AudioCodec),
-                .videoWidth = mediaMetadata.VideoWidth,
-                .videoHeight = mediaMetadata.VideoHeight,
+                .videoWidth = videoWidth,
+                .videoHeight = videoHeight,
             };
             Result<ServiceConnection::ServiceResponse> updateResult =
                 serviceConnection->UpdateStreamMetadata(streamId, metadata);
@@ -601,13 +625,13 @@ void JanusFtl::serviceReportThreadBody(std::promise<void>&& threadEndedPromise)
                 continue;
             }
 
-            // Do we have a previewgenerator available for this stream's codec?
-            if ((keyframe.Packets.size() > 0) && (previewGenerators.count(keyframe.Codec) > 0))
+            // Do we have a videodecoder available for this stream's codec?
+            if ((keyframe.Packets.size() > 0) && (videoDecoders.count(keyframe.Codec) > 0))
             {
                 try
                 {
-                    std::vector<uint8_t> jpegBytes = 
-                        previewGenerators.at(keyframe.Codec)->GenerateJpegImage(keyframe.Packets);
+                    std::vector<uint8_t> jpegBytes =
+                        videoDecoders.at(keyframe.Codec)->GenerateJpegImage(keyframe.Packets);
                     serviceConnection->SendJpegPreviewImage(streamId, jpegBytes);
                 }
                 catch (const PreviewGenerationFailedException& e)
