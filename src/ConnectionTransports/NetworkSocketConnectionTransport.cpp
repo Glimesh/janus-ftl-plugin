@@ -31,9 +31,10 @@ NetworkSocketConnectionTransport::NetworkSocketConnectionTransport(
     int socketFlags = fcntl(socketHandle, F_GETFL, 0);
     if (socketFlags == -1)
     {
-        // int error = errno;
+        int error = errno;
         Stop();
         // TODO throw
+        spdlog::error("error: {}", error);
         // return Result<void>::Error(fmt::format(
         //         "Could not retrieve socket flags. Error {}: {}",
         //         error,
@@ -43,9 +44,10 @@ NetworkSocketConnectionTransport::NetworkSocketConnectionTransport(
     socketFlags = socketFlags | O_NONBLOCK;
     if (fcntl(socketHandle, F_SETFL, socketFlags) != 0)
     {
-        // int error = errno;
+        int error = errno;
         Stop();
         // TODO throw
+        spdlog::error("error: {}", error);
         // return Result<void>::Error(
         //     fmt::format(
         //         "Could not set socket to non-blocking mode. Error {}: {}",
