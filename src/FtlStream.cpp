@@ -38,15 +38,15 @@ FtlStream::FtlStream(
 #pragma region Public methods
 Result<void> FtlStream::StartMediaConnection(
         std::unique_ptr<ConnectionTransport> mediaTransport,
+        const uint16_t mediaPort,
         const MediaMetadata mediaMetadata,
         const FtlMediaConnection::RtpPacketCallback onRtpPacket)
 {
-    std::unique_lock lock(mutex);
+    std::lock_guard lock(mutex);
 
     if (mediaConnection)
     {
-        // TODO make sure we don't already have a media connection
-        // throw
+        return Result<void>::Error("Media connection already started");
     }
 
     mediaConnection = std::make_unique<FtlMediaConnection>(
@@ -58,13 +58,16 @@ Result<void> FtlStream::StartMediaConnection(
         onRtpPacket
     );
 
-    // TODO Send media port to control connection
+    // Send media port to control connection
+    controlConnection->StartMediaPort(mediaPort);
 
     return Result<void>::Success();
 }
 
 void FtlStream::Stop()
 {
+    std::lock_guard lock(mutex);
+
     spdlog::info("Stopping FTL channel {} / stream {}...",
         controlConnection->GetChannelId(),
         streamId);
@@ -81,8 +84,13 @@ void FtlStream::Stop()
 
 void FtlStream::ControlConnectionStopped(FtlControlConnection* connection)
 {
-    // Stop the media connection
-    mediaConnection->Stop();
+    std::lock_guard lock(mutex);
+ 
+    // Stop our media connection if we have one
+    if (mediaConnection)
+    {
+        mediaConnection->Stop();
+    }
 
     // Indicate that we've been stopped
     if (onClosed)
@@ -101,26 +109,34 @@ ftl_stream_id_t FtlStream::GetStreamId() const
     return streamId;
 }
 
-FtlStreamStats FtlStream::GetStats()
+Result<FtlStreamStats> FtlStream::GetStats()
 {
-    // TODO Don't just assume we have a media connection
-    return mediaConnection->GetStats();
+    std::lock_guard lock(mutex);
+
+    if (mediaConnection)
+    {
+        return Result<FtlStreamStats>::Success(mediaConnection->GetStats());
+    } else
+    {
+        return Result<FtlStreamStats>::Error("Stream media connection has not been started");
+    }
 }
 
-FtlKeyframe FtlStream::GetKeyframe()
+Result<FtlKeyframe> FtlStream::GetKeyframe()
 {
-    // TODO Don't just assume we have a media connection
-    return mediaConnection->GetKeyframe();
+    std::lock_guard lock(mutex);
+    
+    if (mediaConnection)
+    {
+        return mediaConnection->GetKeyframe();
+    } else
+    {
+        return Result<FtlKeyframe>::Error("Stream media connection has not been started");
+    }
 }
 #pragma endregion
 
 #pragma region Private methods
-void FtlStream::onControlConnectionClosed()
-{
-    mediaConnection->Stop();
-    onClosed(this);
-}
-
 void FtlStream::onMediaConnectionClosed()
 {
     // Somehow our media connection closed - since this transport is usually stateless, we don't

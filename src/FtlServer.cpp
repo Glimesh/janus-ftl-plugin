@@ -185,8 +185,22 @@ std::list<std::pair<std::pair<ftl_channel_id_t, ftl_stream_id_t>,
     for (const auto& pair : activeStreams)
     {
         const std::shared_ptr<FtlStream>& stream = pair.second.Stream;
+        ftl_channel_id_t channelId = stream->GetChannelId();
+        ftl_stream_id_t  streamId = stream->GetStreamId();
+        const auto stats = stream->GetStats();
+        if (stats.IsError)
+        {
+            spdlog::debug("No stats available for Channel {} / Stream {}, skipping", channelId, streamId);
+            continue;
+        }
+        const auto keyframe = stream->GetKeyframe();
+        if (keyframe.IsError)
+        {
+            spdlog::debug("No keyframe available for Channel {} / Stream {}, skipping", channelId, streamId);
+            continue;
+        }
         returnVal.emplace_back(std::make_pair(stream->GetChannelId(), stream->GetStreamId()),
-            std::make_pair(stream->GetStats(), stream->GetKeyframe()));
+            std::make_pair(stats.Value, keyframe.Value));
     }
     return returnVal;
 }
@@ -200,7 +214,7 @@ Result<FtlStreamStats> FtlServer::GetStats(ftl_channel_id_t channelId,
         const std::shared_ptr<FtlStream>& stream = pair.second.Stream;
         if ((stream->GetChannelId() == channelId) && (stream->GetStreamId() == streamId))
         {
-            return Result<FtlStreamStats>::Success(stream->GetStats());
+            return stream->GetStats();
         }
     }
     return Result<FtlStreamStats>::Error("Stream does not exist.");
@@ -554,6 +568,7 @@ void FtlServer::eventStreamIdAssigned(std::shared_ptr<FtlServerStreamIdAssignedE
 
             Result<void> streamStartResult = stream->StartMediaConnection(
                 std::move(mediaTransport),
+                mediaPort,
                 event->Metadata,
                 [rtpPacketSink](const std::vector<std::byte> packet)
                 {

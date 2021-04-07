@@ -37,6 +37,7 @@ public:
         NetworkSocketConnectionKind kind,
         int socketHandle,
         std::optional<sockaddr_in> targetAddr = std::nullopt);
+    virtual ~NetworkSocketConnectionTransport();
 
     /* ConnectionTransport Implementation */
     std::optional<sockaddr_in> GetAddr() override;

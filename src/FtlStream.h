@@ -17,6 +17,7 @@
 #include <functional>
 #include <list>
 #include <map>
+#include <optional>
 #include <set>
 #include <shared_mutex>
 #include <unordered_map>
@@ -44,6 +45,7 @@ public:
     /* Public methods */
     Result<void> StartMediaConnection(
         std::unique_ptr<ConnectionTransport> mediaTransport,
+        const uint16_t mediaPort,
         const MediaMetadata mediaMetadata,
         const FtlMediaConnection::RtpPacketCallback onRtpPacket
     );
@@ -53,8 +55,8 @@ public:
     /* Getters/Setters */
     ftl_channel_id_t GetChannelId() const;
     ftl_stream_id_t GetStreamId() const;
-    FtlStreamStats GetStats();
-    FtlKeyframe GetKeyframe();
+    Result<FtlStreamStats> GetStats();
+    Result<FtlKeyframe> GetKeyframe();
 
 private:
     /* Private members */

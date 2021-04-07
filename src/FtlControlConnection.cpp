@@ -117,7 +117,7 @@ void FtlControlConnection::threadBody(std::stop_token stopToken)
     {
         auto result = transport->Read(buffer);
         if (result.IsError) {
-            // TODO spdlog
+            spdlog::error("Failed to read from control connection transport: {}", result.ErrorMessage);
             break;
         }
 
@@ -126,7 +126,18 @@ void FtlControlConnection::threadBody(std::stop_token stopToken)
         }
     }
 
-    stopConnection();
+    // First, stop the transport to let the client know the stream has ended
+    transport->Stop();
+    
+    // Notify that we've stopped
+    if (ftlStream != nullptr)
+    {
+        ftlStream->ControlConnectionStopped(this);
+    }
+    else if (ftlServer != nullptr)
+    {
+        ftlServer->ControlConnectionStopped(this);
+    }
 }
 
 void FtlControlConnection::onTransportBytesReceived(const std::vector<std::byte>& bytes)
@@ -174,30 +185,17 @@ void FtlControlConnection::onTransportBytesReceived(const std::vector<std::byte>
 
 void FtlControlConnection::writeToTransport(const std::string& str)
 {
-    std::vector<std::byte> writeBytes;
-    writeBytes.reserve(str.size());
+    std::vector<std::byte> bytes(str.size());
     for (const char& c : str)
     {
-        writeBytes.push_back(static_cast<std::byte>(c));
+        bytes.push_back(static_cast<std::byte>(c));
     }
-    transport->Write(writeBytes);
+    transport->Write(bytes);
 }
 
 void FtlControlConnection::stopConnection()
 {
-    // First, stop the transport
-    transport->Stop();
-    
-    // Notify that we've stopped -  we will not receive an OnConnectionClosed from the transport
-    // if we call Stop ourselves
-    if (ftlStream != nullptr)
-    {
-        ftlStream->ControlConnectionStopped(this);
-    }
-    else if (ftlServer != nullptr)
-    {
-        ftlServer->ControlConnectionStopped(this);
-    }
+    thread.request_stop();
 }
 
 void FtlControlConnection::processCommand(const std::string& command)

@@ -53,6 +53,11 @@ NetworkSocketConnectionTransport::NetworkSocketConnectionTransport(
         //         Util::ErrnoToString(error)));
     }
 }
+
+NetworkSocketConnectionTransport::~NetworkSocketConnectionTransport()
+{
+    Stop();
+}
 #pragma endregion Constructor/Destructor
 
 #pragma region ConnectionTransport Implementation
@@ -69,7 +74,7 @@ std::optional<sockaddr_in6> NetworkSocketConnectionTransport::GetAddr6()
 
 Result<ssize_t> NetworkSocketConnectionTransport::Read(std::vector<std::byte>& buffer)
 {
-    std::unique_lock lock(readMutex);
+    std::scoped_lock lock(readMutex);
 
     if (isStopped)
     {
@@ -203,7 +208,7 @@ Result<ssize_t> NetworkSocketConnectionTransport::Read(std::vector<std::byte>& b
 
 Result<void> NetworkSocketConnectionTransport::Write(const std::span<std::byte>& bytes)
 {
-    std::unique_lock lock(writeMutex);
+    std::scoped_lock lock(writeMutex);
 
     if (isStopped)
     {
@@ -215,8 +220,7 @@ Result<void> NetworkSocketConnectionTransport::Write(const std::span<std::byte>&
 
 void NetworkSocketConnectionTransport::Stop()
 {
-    std::unique_lock readLock(readMutex);
-    std::unique_lock writeLock(writeMutex);
+    std::scoped_lock lock(readMutex, writeMutex);
 
     if (!isStopped)
     {

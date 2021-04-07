@@ -51,7 +51,7 @@ public:
 
     /* Getters/Setters */
     FtlStreamStats GetStats();
-    FtlKeyframe GetKeyframe();
+    Result<FtlKeyframe> GetKeyframe();
 
 private:
     /* Private types */

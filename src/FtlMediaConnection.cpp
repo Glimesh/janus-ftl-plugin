@@ -58,9 +58,7 @@ FtlMediaConnection::FtlMediaConnection(
 #pragma region Public methods
 void FtlMediaConnection::Stop()
 {
-    // Stop our media transport
-    transport->Stop();
-    onClosed(*this);
+    thread.request_stop();
 }
 
 FtlStreamStats FtlMediaConnection::GetStats()
@@ -87,18 +85,17 @@ FtlStreamStats FtlMediaConnection::GetStats()
     return stats;
 }
 
-FtlKeyframe FtlMediaConnection::GetKeyframe()
+Result<FtlKeyframe> FtlMediaConnection::GetKeyframe()
 {
     std::shared_lock lock(dataMutex);
     FtlKeyframe keyframe { mediaMetadata.VideoCodec };
     // Return the last available keyframe for the default video ssrc
     if (ssrcData.count(mediaMetadata.VideoSsrc) <= 0)
     {
-        spdlog::error("No ssrc data available for video ssrc {}", mediaMetadata.VideoSsrc);
-        return keyframe;
+        return Result<FtlKeyframe>::Error(fmt::format("No ssrc data available for video ssrc {}", mediaMetadata.VideoSsrc));
     }
     keyframe.Packets = ssrcData.at(mediaMetadata.VideoSsrc).CurrentKeyframePackets;
-    return keyframe;
+    return Result<FtlKeyframe>::Success(keyframe);
 }
 #pragma endregion
 
@@ -111,8 +108,7 @@ void FtlMediaConnection::threadBody(std::stop_token stopToken)
     {
         auto result = transport->Read(buffer);
         if (result.IsError) {
-            spdlog::error("Error reading {}", result.ErrorMessage);
-            // TODO spdlog
+            spdlog::error("Failed to read from media connection transport: {}", result.ErrorMessage);
             break;
         }
 
@@ -121,7 +117,12 @@ void FtlMediaConnection::threadBody(std::stop_token stopToken)
         }
     }
 
-    Stop();
+    
+    // Stop our media transport
+    transport->Stop();
+
+    // Tell our parent we're shutting down
+    onClosed(*this);
 }
 
 void FtlMediaConnection::onBytesReceived(const std::vector<std::byte>& bytes)
@@ -197,7 +198,6 @@ std::set<rtp_sequence_num_t> FtlMediaConnection::insertPacketInSequenceOrder(
 
 void FtlMediaConnection::processRtpPacket(const std::vector<std::byte>& rtpPacket)
 {
-    std::unique_lock lock(dataMutex);
     const Rtp::RtpHeader* rtpHeader = Rtp::GetRtpHeader(rtpPacket);
     rtp_ssrc_t ssrc = ntohl(rtpHeader->Ssrc);
 
@@ -205,6 +205,8 @@ void FtlMediaConnection::processRtpPacket(const std::vector<std::byte>& rtpPacke
     if ((ssrc == mediaMetadata.AudioSsrc) || 
         (ssrc == mediaMetadata.VideoSsrc))
     {
+        std::unique_lock lock(dataMutex);
+
         processRtpPacketSequencing(rtpPacket, lock);
         processAudioVideoRtpPacket(rtpPacket, lock);
     }
