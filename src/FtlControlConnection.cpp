@@ -126,6 +126,8 @@ void FtlControlConnection::threadBody(std::stop_token stopToken)
         }
     }
 
+    spdlog::debug("Stopping control connection thread for Channel {} / Stream {}", channelId, streamId);
+
     // First, stop the transport to let the client know the stream has ended
     transport->Stop();
     

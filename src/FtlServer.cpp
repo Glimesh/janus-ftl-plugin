@@ -196,6 +196,7 @@ std::list<std::pair<std::pair<ftl_channel_id_t, ftl_stream_id_t>,
         const auto keyframe = stream->GetKeyframe();
         if (keyframe.IsError)
         {
+            // TODO don't skip
             spdlog::debug("No keyframe available for Channel {} / Stream {}, skipping", channelId, streamId);
             continue;
         }

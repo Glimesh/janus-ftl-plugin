@@ -115,11 +115,8 @@ void FtlMediaConnection::threadBody(std::stop_token stopToken)
         }
     }
 
-    
-    // Stop our media transport
+    spdlog::debug("Stopping media connection thread for Channel {} / Stream {}", channelId, streamId);
     transport->Stop();
-
-    // Tell our parent we're shutting down
     if (onClosed)
     {
         onClosed(*this);
