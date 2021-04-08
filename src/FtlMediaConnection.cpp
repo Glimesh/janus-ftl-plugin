@@ -38,14 +38,12 @@ FtlMediaConnection::FtlMediaConnection(
     channelId(channelId),
     streamId(streamId),
     onClosed(onClosed),
-    onRtpPacket(onRtpPacket)
+    onRtpPacket(onRtpPacket),
+    thread(std::jthread(std::bind(&FtlMediaConnection::threadBody, this, std::placeholders::_1)))
 {
     // Prepare stream data stores to accept packets from SSRCs specified by control handshake
     ssrcData.try_emplace(mediaMetadata.AudioSsrc);
     ssrcData.try_emplace(mediaMetadata.VideoSsrc);
-
-    // Start active read thread
-    thread = std::jthread(std::bind(&FtlMediaConnection::threadBody, this, std::placeholders::_1));
 
     // Record start time
     startTime = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
