@@ -42,7 +42,7 @@ Result<void> FtlStream::StartMediaConnection(
         const MediaMetadata mediaMetadata,
         const FtlMediaConnection::RtpPacketCallback onRtpPacket)
 {
-    std::lock_guard lock(mutex);
+    std::scoped_lock lock(mutex);
 
     if (mediaConnection)
     {
@@ -66,7 +66,7 @@ Result<void> FtlStream::StartMediaConnection(
 
 void FtlStream::Stop()
 {
-    std::lock_guard lock(mutex);
+    std::scoped_lock lock(mutex);
 
     spdlog::info("Stopping FTL channel {} / stream {}...",
         controlConnection->GetChannelId(),
@@ -84,7 +84,7 @@ void FtlStream::Stop()
 
 void FtlStream::ControlConnectionStopped(FtlControlConnection* connection)
 {
-    std::lock_guard lock(mutex);
+    std::scoped_lock lock(mutex);
  
     // Stop our media connection if we have one
     if (mediaConnection)
@@ -111,7 +111,7 @@ ftl_stream_id_t FtlStream::GetStreamId() const
 
 Result<FtlStreamStats> FtlStream::GetStats()
 {
-    std::lock_guard lock(mutex);
+    std::scoped_lock lock(mutex);
 
     if (mediaConnection)
     {
@@ -125,7 +125,7 @@ Result<FtlStreamStats> FtlStream::GetStats()
 
 Result<FtlKeyframe> FtlStream::GetKeyframe()
 {
-    std::lock_guard lock(mutex);
+    std::scoped_lock lock(mutex);
     
     if (mediaConnection)
     {
