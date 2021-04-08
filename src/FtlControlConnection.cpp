@@ -185,7 +185,7 @@ void FtlControlConnection::onTransportBytesReceived(const std::vector<std::byte>
 
 void FtlControlConnection::writeToTransport(const std::string& str)
 {
-    std::vector<std::byte> bytes(str.size());
+    std::vector<std::byte> bytes;
     for (const char& c : str)
     {
         bytes.push_back(static_cast<std::byte>(c));
