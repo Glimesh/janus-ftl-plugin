@@ -146,7 +146,6 @@ void FtlStream::onMediaConnectionClosed()
     spdlog::error(
         "Media connection closed unexpectedly for channel {} / stream {}",
         GetChannelId(), streamId);
-
     controlConnection->Stop();
     onClosed(this);
 }
