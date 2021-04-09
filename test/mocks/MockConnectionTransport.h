@@ -12,6 +12,14 @@
 class MockConnectionTransport : public ConnectionTransport
 {
 public:
+    MockConnectionTransport()
+    { }
+
+    MockConnectionTransport(std::function<void(const std::vector<std::byte>&)> onWrite,
+        std::function<void(const std::vector<std::byte>&)> onBytesReceived) : 
+        onWrite(onWrite), onBytesReceived(onBytesReceived)
+    { }
+
     /* Mock methods */
     void InjectReceivedBytes(const std::vector<std::byte>& bytes)
     {
@@ -19,6 +27,11 @@ public:
         {
             onBytesReceived(bytes);
         }
+    }
+
+    void SetOnWrite(std::function<void(const std::vector<std::byte>&)> onWrite)
+    {
+        this->onWrite = onWrite;
     }
 
     /* ConnectionTransport Implementation */
@@ -38,19 +51,18 @@ public:
     }
 
     void Stop(bool noBlock = false) override
-    {
-
-    }
+    { }
 
     void Write(const std::vector<std::byte>& bytes) override
     {
-
+        if (onWrite)
+        {
+            onWrite(bytes);
+        }
     }
 
     void SetOnConnectionClosed(std::function<void(void)> onConnectionClosed) override
-    {
-
-    }
+    { }
 
     void SetOnBytesReceived(
         std::function<void(const std::vector<std::byte>&)> onBytesReceived) override
@@ -59,5 +71,6 @@ public:
     }
 
 private:
+    std::function<void(const std::vector<std::byte>&)> onWrite;
     std::function<void(const std::vector<std::byte>&)> onBytesReceived;
 };

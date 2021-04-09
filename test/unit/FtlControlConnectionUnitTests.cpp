@@ -11,6 +11,7 @@
 #include <utility>
 
 #include "../../src/FtlControlConnection.h"
+#include "../../src/Utilities/Util.h"
 #include "../mocks/MockConnectionTransport.h"
 #include "../mocks/MockFtlControlConnectionManager.h"
 
@@ -99,7 +100,8 @@ private:
         ftl_channel_id_t channelId)
     {
         controlConnections[connection].HmacKeyRequest =
-            FtlControlConnectionHmacKeyRequest {
+            FtlControlConnectionHmacKeyRequest
+            {
                 .ChannelId = channelId
             };
     }
@@ -108,7 +110,8 @@ private:
         ftl_channel_id_t channelId, MediaMetadata mediaMetadata, in_addr targetAddr)
     {
         controlConnections[connection].MediaPortRequest =
-            FtlControlConnectionMediaPortRequest {
+            FtlControlConnectionMediaPortRequest
+            {
                 .ChannelId = channelId,
                 .MediaMetadataInfo = mediaMetadata,
                 .TargetAddr = targetAddr
@@ -119,19 +122,47 @@ private:
 TEST_CASE_METHOD(FtlControlConnectionUnitTestsFixture,
     "FtlControlConnection can negotiate valid control connections")
 {
+    // Come up with a stream HMAC key
+    std::vector<std::byte> hmacKey = 
+    {
+        std::byte(0x00), std::byte(0x01), std::byte(0x02), std::byte(0x03),
+        std::byte(0x04), std::byte(0x05), std::byte(0x06), std::byte(0x07),
+        std::byte(0x08), std::byte(0x09), std::byte(0x0A), std::byte(0x0B),
+        std::byte(0x0C), std::byte(0x0D), std::byte(0x0E), std::byte(0x0F),
+    };
+
+    // Connect!
     auto [controlConnection, mockTransportPtr] = ConnectMockControlConnection();
 
     // Expect control connection to not yet have reported anything to the
     // FtlControlConnectionManager
     REQUIRE(GetFtlControlConnectionState(controlConnection.get()) == std::nullopt);
 
+    // Record every payload that was written to the mock transport connection
+    std::vector<std::byte> lastPayloadReceived;
+    mockTransportPtr->SetOnWrite(
+        [&lastPayloadReceived](const std::vector<std::byte>& bytes)
+        {
+            lastPayloadReceived = bytes;
+        });
+
     // Start our FTL handshake
     std::vector<std::byte> hmacMessage = 
-        {
-            std::byte('H'),  std::byte('M'),  std::byte('A'),  std::byte('C'),
-            std::byte('\r'), std::byte('\n'), std::byte('\r'), std::byte('\n'),
-        };
+    {
+        std::byte('H'),  std::byte('M'),  std::byte('A'),  std::byte('C'),
+        std::byte('\r'), std::byte('\n'), std::byte('\r'), std::byte('\n'),
+    };
     mockTransportPtr->InjectReceivedBytes(hmacMessage);
-    // TODO: Mock transport needs to receive HMAC payload here
-    // ...
+    // We receive a response payload immediately on the same thread via
+    // MockConnectionTransport::Write
+    REQUIRE(lastPayloadReceived.size() > 4);
+    std::string responseCode(reinterpret_cast<char*>(lastPayloadReceived.data()),
+        (reinterpret_cast<char*>(lastPayloadReceived.data()) + 3));
+    REQUIRE(responseCode == "200");
+    std::string hmacPayloadString(reinterpret_cast<char*>((lastPayloadReceived.data()) + 4),
+        (reinterpret_cast<char*>(lastPayloadReceived.data()) + lastPayloadReceived.size() - 1));
+    std::vector<std::byte> hmacPayloadBytes = Util::HexStringToByteArray(hmacPayloadString);
+
+    // Generate our HMAC response
+    
 }
