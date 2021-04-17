@@ -45,18 +45,12 @@ jobs:
         path: janus-ftl-plugin
         submodules: true
     - name: Build FTL
-      run: cd janus-ftl-plugin && CC=gcc-10 CXX=g++-10 meson --buildtype=debugoptimized build/ && cd build/ && ninja
+      run: cd janus-ftl-plugin && CC=gcc-10 CXX=g++-10 meson --buildtype=debugoptimized build/ && ninja -C build/
     - name: Upload Build Artifact
       uses: actions/upload-artifact@v2
       with:
         name: libjanus_ftl
         path: janus-ftl-plugin/build/libjanus_ftl.so
-        if-no-files-found: error
-    - name: Upload Test Artifact
-      uses: actions/upload-artifact@v2
-      with:
-        name: janus-ftl-plugin-test
-        path: janus-ftl-plugin/build/janus-ftl-plugin-test
         if-no-files-found: error
 
   test:
@@ -69,4 +63,4 @@ jobs:
       with:
         name: janus-ftl-plugin-test
     - name: Run Tests
-      run: chmod +x janus-ftl-plugin-test && ./janus-ftl-plugin-test
+      run: ninja test -C build/
