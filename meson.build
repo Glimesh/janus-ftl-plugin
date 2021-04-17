@@ -28,8 +28,8 @@ sources = files([
     # Utilities
     'src/Utilities/Rtp.cpp',
     'src/Utilities/Watchdog.cpp',
-    # Preview Generators
-    'src/PreviewGenerators/H264PreviewGenerator.cpp',
+    # Video Decoders
+    'src/VideoDecoders/H264VideoDecoder.cpp',
     # Service Connections
     'src/ServiceConnections/DummyServiceConnection.cpp',
     'src/ServiceConnections/EdgeNodeServiceConnection.cpp',

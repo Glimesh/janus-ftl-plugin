@@ -488,7 +488,7 @@ void FtlMediaConnection::processNacks(const rtp_ssrc_t ssrc,
         {
             auto it = data.NackQueue.begin();
             rtp_sequence_num_t firstSeq = *it;
-            uint16_t extraPacketBitmast = 0;
+            uint16_t followingLostPacketsBitmask = 0;
             spdlog::debug("FIRST SEQ {}", firstSeq);
             it++;
             while (true)
@@ -504,35 +504,42 @@ void FtlMediaConnection::processNacks(const rtp_ssrc_t ssrc,
                     break;
                 }
                 spdlog::debug("SUB SEQ {}", nextSeq);
-                extraPacketBitmast |= (0x1 << ((nextSeq - firstSeq) - 1));
+                followingLostPacketsBitmask |= (0x1 << ((nextSeq - firstSeq) - 1));
                 it = data.NackQueue.erase(it);
             }
             data.NackQueue.erase(firstSeq);
 
-            // See https://tools.ietf.org/html/rfc4585 Section 6.1
-            // for information on how the nack packet is formed
-            char nackBuffer[16] { 0 };
-            auto rtcpPacket = reinterpret_cast<Rtp::RtcpFeedbackPacket*>(nackBuffer);
-            rtcpPacket->Header.Version = 2;
-            rtcpPacket->Header.Padding = 0;
-            rtcpPacket->Header.Rc = Rtp::RtcpFeedbackMessageType::NACK;
-            rtcpPacket->Header.Type = Rtp::RtcpType::RTPFB;
-            rtcpPacket->Header.Length = htons(3);
-            rtcpPacket->Ssrc = htonl(ssrc);
-            rtcpPacket->Media = htonl(ssrc);
-            auto rtcpNack = 
-                reinterpret_cast<Rtp::RtcpFeedbackPacketNackControlInfo*>(rtcpPacket->Fci);
-            rtcpNack->Pid = htons(firstSeq);
-            rtcpNack->Blp = htons(extraPacketBitmast);
-            std::vector<std::byte> nackBytes(reinterpret_cast<std::byte*>(nackBuffer),
-                reinterpret_cast<std::byte*>(nackBuffer) + sizeof(nackBuffer));
-            transport->Write(nackBytes);
-
-            spdlog::debug(
-                "SENT {}",
-                spdlog::to_hex(nackBytes.begin(), nackBytes.end()));
+            sendNack(ssrc, firstSeq, followingLostPacketsBitmask, dataLock);
         }
     }
+}
+
+void FtlMediaConnection::sendNack(const rtp_ssrc_t ssrc, const rtp_sequence_num_t packetId,
+        const uint16_t followingLostPacketsBitmask,
+        const std::unique_lock<std::shared_mutex>& dataLock)
+{
+    // See https://tools.ietf.org/html/rfc4585#section-6.2.1
+    // for information on how the nack packet is formed
+    char nackBuffer[16] { 0 };
+    auto rtcpPacket = reinterpret_cast<Rtp::RtcpFeedbackPacket*>(nackBuffer);
+    rtcpPacket->Header.Version = 2;
+    rtcpPacket->Header.Padding = 0;
+    rtcpPacket->Header.Rc = Rtp::RtcpFeedbackMessageType::NACK;
+    rtcpPacket->Header.Type = Rtp::RtcpType::RTPFB;
+    rtcpPacket->Header.Length = htons(3);
+    rtcpPacket->Ssrc = htonl(ssrc);
+    rtcpPacket->Media = htonl(ssrc);
+    auto rtcpNack = 
+        reinterpret_cast<Rtp::RtcpFeedbackPacketNackControlInfo*>(rtcpPacket->Fci);
+    rtcpNack->Pid = htons(packetId);
+    rtcpNack->Blp = htons(followingLostPacketsBitmask);
+    std::vector<std::byte> nackBytes(reinterpret_cast<std::byte*>(nackBuffer),
+        reinterpret_cast<std::byte*>(nackBuffer) + sizeof(nackBuffer));
+    transport->Write(nackBytes);
+
+    spdlog::debug(
+        "SENT {}",
+        spdlog::to_hex(nackBytes.begin(), nackBytes.end()));
 }
 
 void FtlMediaConnection::processAudioVideoRtpPacket(const std::vector<std::byte>& rtpPacket,

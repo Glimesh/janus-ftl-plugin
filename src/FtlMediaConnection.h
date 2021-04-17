@@ -110,6 +110,9 @@ private:
     bool isSequenceNewer(rtp_sequence_num_t newSeq, rtp_sequence_num_t oldSeq,
         size_t margin = PACKET_BUFFER_SIZE);
     void processNacks(const rtp_ssrc_t ssrc, const std::unique_lock<std::shared_mutex>& dataLock);
+    void sendNack(const rtp_ssrc_t ssrc, const rtp_sequence_num_t packetId,
+        const uint16_t followingLostPacketsBitmask,
+        const std::unique_lock<std::shared_mutex>& dataLock);
     void processAudioVideoRtpPacket(const std::vector<std::byte>& rtpPacket,
         std::unique_lock<std::shared_mutex>& dataLock);
     void handlePing(const std::vector<std::byte>& rtpPacket);

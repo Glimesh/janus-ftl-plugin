@@ -1,19 +1,38 @@
 /**
- * @file H264PreviewGenerator.cpp
+ * @file H264VideoDecoder.cpp
  * @author Hayden McAfee (hayden@outlook.com)
  * @version 0.1
  * @date 2020-10-13
- * 
+ *
  * @copyright Copyright (c) 2020 Hayden McAfee
- * 
+ *
  */
 
-#include "H264PreviewGenerator.h"
+#include "H264VideoDecoder.h"
 
 #include "../Utilities/Rtp.h"
 
 #pragma region PreviewGenerator
-std::vector<uint8_t> H264PreviewGenerator::GenerateJpegImage(
+std::vector<uint8_t> H264VideoDecoder::GenerateJpegImage(
+    const std::list<std::vector<std::byte>>& keyframePackets)
+{
+    AVFramePtr frame = readFramePtr(keyframePackets);
+
+    // Now encode it to a JPEG
+    std::vector<uint8_t> returnVal = encodeToJpeg(std::move(frame));
+    return returnVal;
+}
+
+std::pair<uint16_t, uint16_t> H264VideoDecoder::ReadVideoDimensions(
+    const std::list<std::vector<std::byte>>& keyframePackets)
+{
+    AVFramePtr frame = readFramePtr(keyframePackets);
+    return std::make_pair(frame->width, frame->height);
+}
+#pragma endregion
+
+#pragma region Private methods
+AVFramePtr H264VideoDecoder::readFramePtr(
     const std::list<std::vector<std::byte>>& keyframePackets)
 {
     std::vector<char> keyframeDataBuffer;
@@ -47,7 +66,7 @@ std::vector<uint8_t> H264PreviewGenerator::GenerateJpegImage(
                 keyframeDataBuffer.push_back(0x01);
 
                 // Write the re-constructed header
-                char firstByte = (static_cast<uint8_t>(payload[0]) & 0b11100000) | 
+                char firstByte = (static_cast<uint8_t>(payload[0]) & 0b11100000) |
                     (static_cast<uint8_t>(payload[1]) & 0b00011111);
                 keyframeDataBuffer.push_back(firstByte);
             }
@@ -71,7 +90,7 @@ std::vector<uint8_t> H264PreviewGenerator::GenerateJpegImage(
                 keyframeDataBuffer.push_back(static_cast<char>(payload[i]));
             }
         }
-        
+
     }
 
     // Decode time
@@ -116,15 +135,10 @@ std::vector<uint8_t> H264PreviewGenerator::GenerateJpegImage(
         throw PreviewGenerationFailedException("Error receiving decoded frame.");
     }
 
-    // Now encode it to a JPEG
-    std::vector<uint8_t> returnVal = encodeToJpeg(std::move(frame));
-
-    return returnVal;
+    return frame;
 }
-#pragma endregion
 
-#pragma region Private methods
-std::vector<uint8_t> H264PreviewGenerator::encodeToJpeg(AVFramePtr frame)
+std::vector<uint8_t> H264VideoDecoder::encodeToJpeg(AVFramePtr frame)
 {
     int ret;
     const AVCodec* jpegCodec = avcodec_find_encoder(AV_CODEC_ID_MJPEG);
