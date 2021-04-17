@@ -57,15 +57,12 @@ jobs:
       if: failure()
       with:
         name: Meson_Testlog
-        path: builddir/meson-logs/testlog.txt
-      working-directory: janus-ftl-plugin
+        path: janus-ftl-plugin/builddir/meson-logs/testlog.txt
     - name: Build FTL
       run: ninja -C builddir/
     - name: Upload Build Artifact
       uses: actions/upload-artifact@v2
       with:
         name: libjanus_ftl
-        path: builddir/libjanus_ftl.so
+        path: janus-ftl-plugin/builddir/libjanus_ftl.so
         if-no-files-found: error
-      working-directory: janus-ftl-plugin
-
