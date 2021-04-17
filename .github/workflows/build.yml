@@ -49,19 +49,23 @@ jobs:
       env:
         CC: gcc
         CXX: g++-10
+      working-directory: janus-ftl-plugin
     - name: Test FTL
       run: meson test -C builddir/ -v
+      working-directory: janus-ftl-plugin
     - uses: actions/upload-artifact@v1
       if: failure()
       with:
         name: Meson_Testlog
         path: builddir/meson-logs/testlog.txt
+      working-directory: janus-ftl-plugin
     - name: Build FTL
       run: ninja -C builddir/
     - name: Upload Build Artifact
       uses: actions/upload-artifact@v2
       with:
         name: libjanus_ftl
-        path: janus-ftl-plugin/builddir/libjanus_ftl.so
+        path: builddir/libjanus_ftl.so
         if-no-files-found: error
+      working-directory: janus-ftl-plugin
 
