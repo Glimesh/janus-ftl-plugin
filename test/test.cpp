@@ -5,12 +5,5 @@
  * @copyright Copyright (c) 2020 Hayden McAfee
  */
 
-#define CATCH_CONFIG_RUNNER // This tells Catch that we'll be providing the main entrypoint
+#define CATCH_CONFIG_MAIN
 #include <catch2/catch.hpp>
-
-int main(int argc, char* argv[])
-{
-    // Test!
-    int result = Catch::Session().run(argc, argv);
-    return result;
-}
