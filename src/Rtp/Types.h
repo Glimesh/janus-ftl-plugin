@@ -1,8 +1,8 @@
 /**
  * @file Types.h
- * @author Daniel Stiner (danstiner@gmail.com)
- * @date 2021-04-17
- * @copyright Copyright (c) 2021 Daniel Stiner
+ * @author Hayden McAfee (hayden@outlook.com)
+ * @date 2021-01-30
+ * @copyright Copyright (c) 2021 Hayden McAfee
  */
 
 #pragma once
