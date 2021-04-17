@@ -26,12 +26,12 @@ installdir = get_variable('INSTALL_PATH', (januspath + '/lib/janus/plugins'))
 
 sources = files([
     # Utilities
-    'src/Utilities/Rtp.cpp',
     'src/Utilities/Watchdog.cpp',
     # Video Decoders
     'src/VideoDecoders/H264VideoDecoder.cpp',
     # RTP Utilities
     'src/Rtp/ExtendedSequenceCounter.cpp',
+    'src/Rtp/RtpPacket.cpp',
     # Service Connections
     'src/ServiceConnections/DummyServiceConnection.cpp',
     'src/ServiceConnections/EdgeNodeServiceConnection.cpp',
@@ -90,7 +90,7 @@ incdir = include_directories(
     is_system: true,
 )
 
-shared_library(
+lib = shared_library(
     'janus_ftl',
     sources,
     cpp_pch: 'pch/janus_ftl_pch.h',
@@ -100,37 +100,4 @@ shared_library(
     install_dir: installdir
 )
 
-#
-# Test binary
-#
-
-test_sources = files([
-    # RTP Utilities
-    'src/Rtp/ExtendedSequenceCounter.cpp',
-    # Entrypoint
-    'test/test.cpp',
-    # Unit tests
-    'test/unit/Rtp/ExtendedSequenceCounterTest.cpp',
-])
-
-test_incdirs = include_directories(
-    './vendor/eventpp/include',
-    is_system: true,
-)
-
-test_deps = [
-    dependency('libssl'),
-    dependency('libcrypto'),
-    fmt_wrap.get_variable('fmt_dep'),
-    spdlog_wrap.get_variable('spdlog_dep'),
-    catch2_wrap.get_variable('catch2_dep'),
-]
-
-test_exe = executable(
-    'janus-ftl-plugin-test',
-    test_sources,
-    cpp_pch: 'pch/janus_ftl_test_pch.h',
-    dependencies: test_deps,
-    include_directories: test_incdirs,
-)
-test('janus-ftl-plugin-test', test_exe)
+subdir('test')

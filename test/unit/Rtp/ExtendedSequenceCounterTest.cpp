@@ -2,7 +2,7 @@
 
 #include <catch2/catch.hpp>
 
-#include "../../src/Rtp/ExtendedSequenceCounter.h"
+#include "../../../src/Rtp/ExtendedSequenceCounter.h"
 
 const rtp_sequence_num_t MAX_SEQ_NUM = std::numeric_limits<rtp_sequence_num_t>::max();
 
