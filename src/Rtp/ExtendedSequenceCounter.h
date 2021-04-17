@@ -1,3 +1,10 @@
+/**
+ * @file ExtendedSequenceCounterTest.cpp
+ * @author Daniel Stiner (danstiner@gmail.com)
+ * @date 2021-04-17
+ * @copyright Copyright (c) 2021 Daniel Stiner
+ */
+
 #pragma once
 
 #include "Types.h"
@@ -7,7 +14,7 @@
 typedef uint64_t rtp_extended_sequence_num_t;
 
 /**
- * @brief
+ * @brief Stateful counter to handle wrapping of two-byte RTP sequence numbers by extending them.
  * 
  * @see https://www.rfc-editor.org/rfc/rfc3550.html#appendix-A.1
  */

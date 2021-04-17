@@ -1,5 +1,5 @@
 /**
- * @file Rtp.h
+ * @file RtpPacket.h
  * @author Hayden McAfee (hayden@outlook.com)
  * @date 2021-01-30
  * @copyright Copyright (c) 2021 Hayden McAfee

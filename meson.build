@@ -90,7 +90,7 @@ incdir = include_directories(
     is_system: true,
 )
 
-lib = shared_library(
+shared_library(
     'janus_ftl',
     sources,
     cpp_pch: 'pch/janus_ftl_pch.h',
