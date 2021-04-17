@@ -44,23 +44,24 @@ jobs:
       with:
         path: janus-ftl-plugin
         submodules: true
+    - name: Setup FTL
+      run: meson setup --buildtype=debugoptimized builddir/
+      env:
+        CC: gcc
+        CXX: g++-10
+    - name: Test FTL
+      run: meson test -C builddir/ -v
+    - uses: actions/upload-artifact@v1
+      if: failure()
+      with:
+        name: Meson_Testlog
+        path: builddir/meson-logs/testlog.txt
     - name: Build FTL
-      run: cd janus-ftl-plugin && CC=gcc-10 CXX=g++-10 meson --buildtype=debugoptimized build/ && ninja -C build/
+      run: ninja -C builddir/
     - name: Upload Build Artifact
       uses: actions/upload-artifact@v2
       with:
         name: libjanus_ftl
-        path: janus-ftl-plugin/build/libjanus_ftl.so
+        path: janus-ftl-plugin/builddir/libjanus_ftl.so
         if-no-files-found: error
 
-  test:
-    name: Test
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-    - name: Download Artifacts
-      uses: actions/download-artifact@v2
-      with:
-        name: janus-ftl-plugin-test
-    - name: Run Tests
-      run: ninja test -C build/
