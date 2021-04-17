@@ -558,16 +558,16 @@ void FtlStream::sendNack(const rtp_ssrc_t ssrc, const rtp_sequence_num_t packetI
     // See https://tools.ietf.org/html/rfc4585#section-6.2.1
     // for information on how the nack packet is formed
     char nackBuffer[16] { 0 };
-    auto rtcpPacket = reinterpret_cast<Rtp::RtcpFeedbackPacket*>(nackBuffer);
+    auto rtcpPacket = reinterpret_cast<RtcpFeedbackPacket*>(nackBuffer);
     rtcpPacket->Header.Version = 2;
     rtcpPacket->Header.Padding = 0;
-    rtcpPacket->Header.Rc = Rtp::RtcpFeedbackMessageType::NACK;
-    rtcpPacket->Header.Type = Rtp::RtcpType::RTPFB;
+    rtcpPacket->Header.Rc = RtcpFeedbackMessageType::NACK;
+    rtcpPacket->Header.Type = RtcpType::RTPFB;
     rtcpPacket->Header.Length = htons(3);
     rtcpPacket->Ssrc = htonl(ssrc);
     rtcpPacket->Media = htonl(ssrc);
     auto rtcpNack = 
-        reinterpret_cast<Rtp::RtcpFeedbackPacketNackControlInfo*>(rtcpPacket->Fci);
+        reinterpret_cast<RtcpFeedbackPacketNackControlInfo*>(rtcpPacket->Fci);
     rtcpNack->Pid = htons(packetId);
     rtcpNack->Blp = htons(followingLostPacketsBitmask);
     std::vector<std::byte> nackBytes(reinterpret_cast<std::byte*>(nackBuffer),
