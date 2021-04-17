@@ -7,7 +7,7 @@
 
 #include "FtlControlConnection.h"
 
-#include "ConnectionTransports/ConnectionTransport.h"
+#include "ConnectionTransports/NetworkSocketConnectionTransport.h"
 #include "FtlServer.h"
 #include "Utilities/Util.h"
 
@@ -115,7 +115,7 @@ void FtlControlConnection::threadBody(std::stop_token stopToken)
 
     while (!stopToken.stop_requested())
     {
-        auto result = transport->Read(buffer);
+        auto result = transport->Read(buffer, NetworkSocketConnectionTransport::DEFAULT_READ_TIMEOUT);
         if (result.IsError) {
             spdlog::error("Failed to read from control connection transport: {}", result.ErrorMessage);
             break;

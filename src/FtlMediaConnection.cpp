@@ -10,7 +10,7 @@
 
 #include "FtlMediaConnection.h"
 
-#include "ConnectionTransports/ConnectionTransport.h"
+#include "ConnectionTransports/NetworkSocketConnectionTransport.h"
 #include "FtlControlConnection.h"
 #include "JanusSession.h"
 #include "Utilities/Rtp.h"
@@ -104,7 +104,7 @@ void FtlMediaConnection::threadBody(std::stop_token stopToken)
 
     while (!stopToken.stop_requested())
     {
-        auto result = transport->Read(buffer);
+        auto result = transport->Read(buffer, NetworkSocketConnectionTransport::DEFAULT_READ_TIMEOUT);
         if (result.IsError) {
             spdlog::error("Failed to read from media connection transport: {}", result.ErrorMessage);
             break;

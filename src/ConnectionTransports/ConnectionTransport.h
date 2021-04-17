@@ -9,6 +9,7 @@
 
 #include "../Utilities/Result.h"
 
+#include <chrono>
 #include <functional>
 #include <netinet/in.h>
 #include <optional>
@@ -48,7 +49,7 @@ public:
         Read a set of bytes from the transport into the given buffer.
         Will timeout if there is nothing to read and return zero bytes.
      */
-    virtual Result<ssize_t> Read(std::vector<std::byte>& bytes) = 0;
+    virtual Result<ssize_t> Read(std::vector<std::byte>& bytes, std::chrono::milliseconds timeout) = 0;
 
     /**
      * @brief Write a set of bytes to the transport

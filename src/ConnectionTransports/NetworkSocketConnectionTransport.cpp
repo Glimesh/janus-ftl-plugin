@@ -75,7 +75,7 @@ std::optional<sockaddr_in6> NetworkSocketConnectionTransport::GetAddr6()
     return std::nullopt;
 }
 
-Result<ssize_t> NetworkSocketConnectionTransport::Read(std::vector<std::byte>& buffer)
+Result<ssize_t> NetworkSocketConnectionTransport::Read(std::vector<std::byte>& buffer, std::chrono::milliseconds timeout)
 {
     std::scoped_lock lock(readMutex);
 
@@ -94,7 +94,7 @@ Result<ssize_t> NetworkSocketConnectionTransport::Read(std::vector<std::byte>& b
         },
     };
 
-    poll(pollFds, 1, READ_TIMEOUT_MS);
+    poll(pollFds, 1, timeout.count());
 
     // Did the socket get closed?
     if (((pollFds[0].revents & POLLERR) > 0) || 
