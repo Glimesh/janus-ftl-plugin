@@ -141,6 +141,8 @@ Result<FtlKeyframe> FtlStream::GetKeyframe()
 #pragma region Private methods
 void FtlStream::onMediaConnectionClosed()
 {
+    std::scoped_lock lock(mutex);
+
     // Somehow our media connection closed - since this transport is usually stateless, we don't
     // expect this to ever happen. Shut everything down nonetheless.
     spdlog::error(
