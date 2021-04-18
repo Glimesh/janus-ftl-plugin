@@ -14,6 +14,9 @@
 #include <algorithm>
 #include <openssl/hmac.h>
 
+const std::regex FtlControlConnection::CONNECT_PATTERN = std::regex(R"~(CONNECT ([0-9]+) \$([0-9a-f]+))~");
+const std::regex FtlControlConnection::ATTRIBUTE_PATTERN = std::regex(R"~((.+): (.+))~");
+
 #pragma region Constructor/Destructor
 FtlControlConnection::FtlControlConnection(
     FtlServer* ftlServer,
@@ -153,18 +156,18 @@ void FtlControlConnection::onTransportBytesReceived(const std::vector<std::byte>
     // (we only search backwards a little bit, since we've presumably already searched through
     // the previous payloads)
     int startDelimiterSearchIndex = std::max(0,
-        static_cast<int>(commandBuffer.size() - bytes.size() - delimiterSequence.size()));
+        static_cast<int>(commandBuffer.size() - bytes.size() - DELIMITER_SEQUENCE.size()));
     size_t delimiterCharactersRead = 0;
     for (size_t i = startDelimiterSearchIndex; i < commandBuffer.size();)
     {
-        if (commandBuffer.at(i) == delimiterSequence.at(delimiterCharactersRead))
+        if (commandBuffer.at(i) == DELIMITER_SEQUENCE.at(delimiterCharactersRead))
         {
             ++delimiterCharactersRead;
-            if (delimiterCharactersRead >= delimiterSequence.size())
+            if (delimiterCharactersRead >= DELIMITER_SEQUENCE.size())
             {
                 // We've read a command, split it into its own string (minus the delimiter seq)
                 std::string command(commandBuffer.begin(),
-                    (commandBuffer.begin() + i + 1 - delimiterSequence.size()));
+                    (commandBuffer.begin() + i + 1 - DELIMITER_SEQUENCE.size()));
 
                 // Delete the processed portion of the buffer (including the delimiter seq)
                 commandBuffer.erase(commandBuffer.begin(), (commandBuffer.begin() + i + 1));
@@ -206,7 +209,7 @@ void FtlControlConnection::processCommand(const std::string& command)
     {
         processConnectCommand(command);
     }
-    else if (std::regex_match(command, attributePattern))
+    else if (std::regex_match(command, ATTRIBUTE_PATTERN))
     {
         processAttributeCommand(command);
     }
@@ -238,8 +241,7 @@ void FtlControlConnection::processConnectCommand(const std::string& command)
 {
     std::smatch matches;
 
-    if (std::regex_search(command, matches, connectPattern) &&
-        (matches.size() >= 3))
+    if (std::regex_search(command, matches, CONNECT_PATTERN) && matches.size() == 3)
     {
         std::string channelIdStr = matches[1].str();
         std::string hmacHashStr = matches[2].str();
@@ -297,7 +299,7 @@ void FtlControlConnection::processAttributeCommand(const std::string& command)
 
     std::smatch matches;
 
-    if (std::regex_match(command, matches, attributePattern) &&
+    if (std::regex_match(command, matches, ATTRIBUTE_PATTERN) &&
         matches.size() >= 3)
     {
         std::string key = matches[1].str();

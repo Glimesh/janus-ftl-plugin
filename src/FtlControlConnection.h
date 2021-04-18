@@ -71,8 +71,10 @@ public:
 
 private:
     /* Constants */
-    static constexpr std::array<char, 4> delimiterSequence = { '\r', '\n', '\r', '\n' };
+    static constexpr std::array<char, 4> DELIMITER_SEQUENCE = { '\r', '\n', '\r', '\n' };
     static constexpr int HMAC_PAYLOAD_SIZE = 128;
+    static const std::regex CONNECT_PATTERN;
+    static const std::regex ATTRIBUTE_PATTERN;
 
     /* Private fields */
     FtlServer* const ftlServer;
@@ -88,8 +90,6 @@ private:
     std::jthread thread;
     // Command processing
     std::string commandBuffer;
-    const std::regex connectPattern = std::regex(R"~(CONNECT ([0-9]+) \$([0-9a-f]+))~");
-    const std::regex attributePattern = std::regex(R"~((.+): (.+))~");
 
     /* Private functions */
     void threadBody(std::stop_token stopToken);
