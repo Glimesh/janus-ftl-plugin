@@ -131,14 +131,12 @@ Result<ssize_t> NetworkSocketConnectionTransport::Read(std::vector<std::byte>& b
             socketHandle,
             buffer.data(),
             buffer.size(),
-            0,
+            MSG_DONTWAIT,
             reinterpret_cast<sockaddr*>(&recvFromAddr),
             &recvFromAddrLen);
 
         if (bytesRead == -1)
         {
-            buffer.resize(0);
-
             int error = errno;
             if (error == EINVAL)
             {
@@ -148,11 +146,13 @@ Result<ssize_t> NetworkSocketConnectionTransport::Read(std::vector<std::byte>& b
             else if ((error == EAGAIN) || (error == EWOULDBLOCK))
             {
                 // No data was read.
+                buffer.resize(0);
                 return Result<ssize_t>::Success(0);
             }
             else
             {
                 // Unexpected error!
+                buffer.resize(0);
                 return Result<ssize_t>::Error(fmt::format(
                     "Couldn't read from socket. Error {}: {}",
                     error,
@@ -161,23 +161,21 @@ Result<ssize_t> NetworkSocketConnectionTransport::Read(std::vector<std::byte>& b
         }
         else if (bytesRead == 0)
         {
-            buffer.resize(bytesRead);
-
             // Our peer has closed the connection.
             // Unless we're a UDP connection, in which case 0 length is a-okay.
             if (connectionKind != NetworkSocketConnectionKind::Udp)
             {
+                buffer.resize(0);
                 return Result<ssize_t>::Error("TCP socket closed, read zero bytes");
             }
             else
             {
+                buffer.resize(0);
                 return Result<ssize_t>::Success(0);
             }
         }
         else if (bytesRead > 0)
         {
-            buffer.resize(bytesRead);
-
             bool bytesAreFromExpectedAddr = true;
             if ((connectionKind == NetworkSocketConnectionKind::Udp) && targetAddr.has_value())
             {
@@ -198,6 +196,7 @@ Result<ssize_t> NetworkSocketConnectionTransport::Read(std::vector<std::byte>& b
 
             if (bytesAreFromExpectedAddr)
             {
+                buffer.resize(bytesRead);
                 return Result<ssize_t>::Success(bytesRead);
             }
             else
@@ -214,12 +213,14 @@ Result<ssize_t> NetworkSocketConnectionTransport::Read(std::vector<std::byte>& b
         else
         {
             // TODO
+            buffer.resize(0);
             return Result<ssize_t>::Error("Invalid read");
         }
     }
     else
     {
         // No data available to read
+        buffer.resize(0);
         return Result<ssize_t>::Success(0);
     }
 }
