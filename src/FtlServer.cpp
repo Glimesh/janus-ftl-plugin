@@ -316,14 +316,14 @@ void FtlServer::removeStreamRecord(FtlStream* stream,
     activeStreams.erase(stream);
 }
 
-void FtlServer::onNewControlConnection(ConnectionTransport* connection)
+void FtlServer::onNewControlConnection(std::unique_ptr<ConnectionTransport>&& connection)
 {
     spdlog::debug("FtlServer::onNewControlConnection queueing NewControlConnection event");
     eventQueue.enqueue(FtlServerEventKind::NewControlConnection,
         std::shared_ptr<FtlServerNewControlConnectionEvent>(
             new FtlServerNewControlConnectionEvent
             {
-                .Connection = connection
+                .Connection = std::move(connection)
             }));
 }
 
@@ -369,7 +369,7 @@ void FtlServer::eventStopStream(std::shared_ptr<FtlServerStopStreamEvent> event)
 void FtlServer::eventNewControlConnection(std::shared_ptr<FtlServerNewControlConnectionEvent> event)
 {
     spdlog::debug("FtlServer::eventNewControlConnection processing NewControlConnection event...");
-    auto connection = std::unique_ptr<ConnectionTransport>(event->Connection);
+    auto connection = std::move(event->Connection);
     std::unique_lock lock(streamDataMutex); // TODO: Remove locks when all calls are funneled through message pump
     std::string addrString = connection->GetAddr().has_value() ? 
         Util::AddrToString(connection->GetAddr().value().sin_addr) : "UNKNOWN";

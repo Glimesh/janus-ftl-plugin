@@ -27,14 +27,16 @@ enum class NetworkSocketConnectionKind
 };
 
 /**
- * @brief ConnectionTransport implementation for a TCP/UDP socket connection
+ * @brief Implementation of ConnectionTransport for a TCP/UDP socket connection
  */
 class NetworkSocketConnectionTransport : public ConnectionTransport
 {
 public:
+    /* Public Members */
     static constexpr std::chrono::milliseconds DEFAULT_READ_TIMEOUT{200};
 
-    static NetworkSocketConnectionTransport Create(
+    // Factory method that also sets the socket to non-blocking mode
+    static Result<std::unique_ptr<NetworkSocketConnectionTransport>> Nonblocking(
         NetworkSocketConnectionKind kind,
         int socketHandle,
         std::optional<sockaddr_in> targetAddr = std::nullopt);

@@ -17,6 +17,50 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+void closeSocket(int handle)
+{
+    if (handle != 0)
+    {
+        shutdown(handle, SHUT_RDWR);
+        close(handle);
+    }
+}
+
+#pragma region Public Members
+Result<std::unique_ptr<NetworkSocketConnectionTransport>> NetworkSocketConnectionTransport::Nonblocking(
+    NetworkSocketConnectionKind kind,
+    int socketHandle,
+    std::optional<sockaddr_in> targetAddr)
+{
+    // First, set the socket to non-blocking IO mode
+    int socketFlags = fcntl(socketHandle, F_GETFL, 0);
+    if (socketFlags == -1)
+    {
+        int error = errno;
+        closeSocket(socketHandle);
+        return Result<std::unique_ptr<NetworkSocketConnectionTransport>>::Error(fmt::format(
+                "Could not retrieve socket flags. Error {}: {}",
+                error,
+                Util::ErrnoToString(error)));
+    }
+
+    socketFlags = socketFlags | O_NONBLOCK;
+    if (fcntl(socketHandle, F_SETFL, socketFlags) != 0)
+    {
+        int error = errno;
+        closeSocket(socketHandle);
+        return Result<std::unique_ptr<NetworkSocketConnectionTransport>>::Error(
+            fmt::format(
+                "Could not set socket to non-blocking mode. Error {}: {}",
+                error,
+                Util::ErrnoToString(error)));
+    }
+
+    return Result<std::unique_ptr<NetworkSocketConnectionTransport>>::Success(
+        std::make_unique<NetworkSocketConnectionTransport>(kind, socketHandle, targetAddr)
+    );
+}
+#pragma endregion Public Members
 
 #pragma region Constructor/Destructor
 NetworkSocketConnectionTransport::NetworkSocketConnectionTransport(
@@ -27,34 +71,6 @@ NetworkSocketConnectionTransport::NetworkSocketConnectionTransport(
     socketHandle(socketHandle),
     targetAddr(targetAddr)
 {
-    
-    // First, set the socket to non-blocking IO mode
-    int socketFlags = fcntl(socketHandle, F_GETFL, 0);
-    if (socketFlags == -1)
-    {
-        int error = errno;
-        Stop();
-        // TODO throw
-        spdlog::error("error: {}", error);
-        // return Result<void>::Error(fmt::format(
-        //         "Could not retrieve socket flags. Error {}: {}",
-        //         error,
-        //         Util::ErrnoToString(error)));
-    }
-
-    socketFlags = socketFlags | O_NONBLOCK;
-    if (fcntl(socketHandle, F_SETFL, socketFlags) != 0)
-    {
-        int error = errno;
-        Stop();
-        // TODO throw
-        spdlog::error("error: {}", error);
-        // return Result<void>::Error(
-        //     fmt::format(
-        //         "Could not set socket to non-blocking mode. Error {}: {}",
-        //         error,
-        //         Util::ErrnoToString(error)));
-    }
 }
 
 NetworkSocketConnectionTransport::~NetworkSocketConnectionTransport()
@@ -227,12 +243,7 @@ void NetworkSocketConnectionTransport::Stop()
 
     if (!isStopped)
     {
-        // We haven't already been asked to close, so shutdown gracefully if possible
-        if (socketHandle != 0)
-        {
-            shutdown(socketHandle, SHUT_RDWR);
-            close(socketHandle);
-        }
+        closeSocket(socketHandle);
     }
 
     // Once we reach this point, we know the socket has finished closing.

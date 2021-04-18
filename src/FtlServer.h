@@ -143,7 +143,7 @@ private:
     };
     struct FtlServerNewControlConnectionEvent : public FtlServerEvent
     {
-        ConnectionTransport* Connection;
+        std::unique_ptr<ConnectionTransport> Connection;
     };
     struct FtlServerControlConnectionClosedEvent : public FtlServerEvent
     {
@@ -243,7 +243,7 @@ private:
     Result<uint16_t> reserveMediaPort(const std::unique_lock<std::shared_mutex>& dataLock);
     void removeStreamRecord(FtlStream* stream, const std::unique_lock<std::shared_mutex>& dataLock);
     // Callback handlers
-    void onNewControlConnection(ConnectionTransport* connection);
+    void onNewControlConnection(std::unique_ptr<ConnectionTransport>&& connection);
     void onStreamClosed(FtlStream* stream);
     void onStreamRtpPacket(ftl_channel_id_t channelId, ftl_stream_id_t streamId,
         const std::vector<std::byte>& packet);

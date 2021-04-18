@@ -53,9 +53,11 @@ std::unique_ptr<ConnectionTransport> UdpConnectionCreator::CreateConnection(
         .sin_port = htons(port),
         .sin_addr = targetAddr,
     };
-    return std::make_unique<NetworkSocketConnectionTransport>(
-        NetworkSocketConnectionKind::Udp,
-        socketHandle,
-        target);
+    auto result = NetworkSocketConnectionTransport::Nonblocking(NetworkSocketConnectionKind::Udp, socketHandle, target);
+    if (result.IsError)
+    {
+        throw std::runtime_error(result.ErrorMessage);
+    }
+    return std::move(result.Value);
 }
 #pragma endregion ConnectionCreator implementation

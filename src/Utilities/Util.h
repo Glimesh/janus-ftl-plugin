@@ -82,6 +82,17 @@ public:
         return std::string(str);
     }
 
+    static std::vector<std::byte> StringToByteVector(const std::string& str)
+    {
+        std::vector<std::byte> bytes;
+        bytes.reserve(str.size());
+        for (const char& c : str)
+        {
+            bytes.push_back(static_cast<std::byte>(c));
+        }
+        return bytes;
+    }
+
 private:
     inline static std::default_random_engine randomEngine { std::random_device()() };
 };
