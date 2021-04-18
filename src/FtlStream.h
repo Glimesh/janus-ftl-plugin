@@ -60,8 +60,8 @@ public:
 
 private:
     /* Private members */
-    const std::shared_ptr<FtlControlConnection> controlConnection;
     std::unique_ptr<FtlMediaConnection> mediaConnection;
+    const std::shared_ptr<FtlControlConnection> controlConnection;
     const ftl_stream_id_t streamId;
     const ClosedCallback onClosed;
     std::mutex mutex;
