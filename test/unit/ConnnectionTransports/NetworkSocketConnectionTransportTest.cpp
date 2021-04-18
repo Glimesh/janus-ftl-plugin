@@ -57,8 +57,8 @@ TEST_CASE( "UDP transport can receive packets", "[udp][transport]" )
 
     INFO( "when making two packets available to read" )
     {
-        REQUIRE(write(c.mockSocketPairFd, firstPacket.data(), firstPacket.size()) == firstPacket.size());
-        REQUIRE(write(c.mockSocketPairFd, secondPacket.data(), secondPacket.size()) == secondPacket.size());
+        REQUIRE(write(c.mockSocketPairFd, firstPacket.data(), firstPacket.size()) == (ssize_t)firstPacket.size());
+        REQUIRE(write(c.mockSocketPairFd, secondPacket.data(), secondPacket.size()) == (ssize_t)secondPacket.size());
     }
 
     INFO( "then the first read gets the first packet" )
@@ -69,7 +69,7 @@ TEST_CASE( "UDP transport can receive packets", "[udp][transport]" )
             FAIL("ErrorMessage: " << result.ErrorMessage);
         }
         CHECK_THAT( buffer, Catch::Equals( firstPacket ) );
-        CHECK( result.Value == firstPacket.size() );
+        CHECK( result.Value == (ssize_t)firstPacket.size() );
     }
 
     INFO( "then the second read gets the second packet" )
@@ -81,7 +81,7 @@ TEST_CASE( "UDP transport can receive packets", "[udp][transport]" )
         }
         CHECK( result.IsError == false);
         CHECK_THAT( buffer, Catch::Equals( secondPacket ) );
-        CHECK( result.Value == secondPacket.size() );
+        CHECK( result.Value == (ssize_t)secondPacket.size() );
     }
 
     INFO( "then the third read gets no packet" )
