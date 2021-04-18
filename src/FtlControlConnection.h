@@ -87,9 +87,10 @@ private:
     std::vector<std::byte> hmacPayload;
     std::vector<std::byte> clientHmacHash;
     MediaMetadata mediaMetadata {};
-    std::jthread thread;
     // Command processing
     std::string commandBuffer;
+    // Thread to read and process data from the connection, must be initialized last
+    std::jthread thread;
 
     /* Private functions */
     void threadBody(std::stop_token stopToken);

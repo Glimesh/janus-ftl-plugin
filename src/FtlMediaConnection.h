@@ -87,12 +87,13 @@ private:
     const ftl_stream_id_t streamId;
     const ClosedCallback onClosed;
     const RtpPacketCallback onRtpPacket;
-    std::jthread thread;
     // Stream data
     std::shared_mutex dataMutex;
     time_t startTime { 0 };
     std::chrono::time_point<std::chrono::steady_clock> steadyStartTime;
     std::unordered_map<rtp_ssrc_t, SsrcData> ssrcData;
+    // Thread to read and process packets from the connection, must be initialized last
+    std::jthread thread;
 
     /* Private methods */
     void threadBody(std::stop_token stopToken);
