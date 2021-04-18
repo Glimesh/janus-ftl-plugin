@@ -57,10 +57,10 @@ public:
     {
         std::vector<std::byte> payload;
         payload.reserve(size);
-        std::uniform_int_distribution<uint8_t> uniformDistribution(0x00, 0xFF);
+        std::uniform_int_distribution<uint8_t> uniformDistribution;
         for (unsigned int i = 0; i < size; ++i)
         {
-            payload[i] = std::byte{ uniformDistribution(randomEngine) };
+            payload.emplace_back(std::byte{ uniformDistribution(randomEngine) });
         }
         return payload;
     }
@@ -94,5 +94,5 @@ public:
     }
 
 private:
-    inline static std::default_random_engine randomEngine { std::random_device()() };
+    inline static thread_local std::default_random_engine randomEngine { std::random_device()() };
 };
