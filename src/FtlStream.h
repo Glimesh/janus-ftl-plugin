@@ -64,6 +64,7 @@ private:
     const std::shared_ptr<FtlControlConnection> controlConnection;
     const ftl_stream_id_t streamId;
     const ClosedCallback onClosed;
+    bool closed = false;
     std::mutex mutex;
 
     /* Private methods */

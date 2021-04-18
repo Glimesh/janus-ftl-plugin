@@ -12,6 +12,7 @@
 #include "JanusSession.h"
 #include "Utilities/Rtp.h"
 
+#include <assert.h>
 #include <algorithm>
 #include <fstream>
 #include <iostream>
@@ -68,35 +69,41 @@ void FtlStream::Stop()
 {
     std::scoped_lock lock(mutex);
 
+    if (closed)
+    {
+        return;
+    }
+
     spdlog::info("Stopping FTL channel {} / stream {}...",
         controlConnection->GetChannelId(),
         streamId);
 
-    // Stop our media connection if we have one
+    // Stop our media connection if one is active
     if (mediaConnection)
     {
         mediaConnection->Stop();
     }
 
-    // Stop the control connection
-    controlConnection->Stop();
-}
-
-void FtlStream::ControlConnectionStopped(FtlControlConnection* connection)
-{
-    std::scoped_lock lock(mutex);
- 
-    // Stop our media connection if we have one
-    if (mediaConnection)
+    // Stop the control connection if one is active
+    if (controlConnection)
     {
-        mediaConnection->Stop();
+        controlConnection->Stop();
     }
 
-    // Indicate that we've been stopped
+    // Indicate that we've been closed
     if (onClosed)
     {
         onClosed(this);
     }
+
+    // Record that we have closed
+    closed = true;
+}
+
+void FtlStream::ControlConnectionStopped(FtlControlConnection* connection)
+{
+    assert(connection == controlConnection.get());
+    Stop();
 }
 
 ftl_channel_id_t FtlStream::GetChannelId() const
@@ -141,15 +148,20 @@ Result<FtlKeyframe> FtlStream::GetKeyframe()
 #pragma region Private methods
 void FtlStream::onMediaConnectionClosed()
 {
-    std::scoped_lock lock(mutex);
+    {
+        std::scoped_lock lock(mutex);
+        if (!closed)
+        {
+            // Somehow our media connection closed before we told it too. We
+            // don't expect this to ever happen for a UDP connection so we
+            // log and error but shut everything down nonetheless.
+            spdlog::error(
+                "Media connection closed unexpectedly for channel {} / stream {}",
+                GetChannelId(), streamId);
+        }
+    }
 
-    // Somehow our media connection closed - since this transport is usually stateless, we don't
-    // expect this to ever happen. Shut everything down nonetheless.
-    spdlog::error(
-        "Media connection closed unexpectedly for channel {} / stream {}",
-        GetChannelId(), streamId);
-    controlConnection->Stop();
-    onClosed(this);
+    Stop();
 }
 
 #pragma endregion
