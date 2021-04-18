@@ -29,6 +29,16 @@ public:
         }
     }
 
+    void InjectReceivedBytes(const std::string& str)
+    {
+        if (onBytesReceived)
+        {
+            onBytesReceived(std::vector<std::byte>(
+                reinterpret_cast<const std::byte*>(str.data()),
+                reinterpret_cast<const std::byte*>(str.data()) + str.size()));
+        }
+    }
+
     void SetOnWrite(std::function<void(const std::vector<std::byte>&)> onWrite)
     {
         this->onWrite = onWrite;
