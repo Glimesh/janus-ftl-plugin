@@ -9,9 +9,9 @@
 #include <arpa/inet.h>
 #include <iomanip>
 #include <random>
+#include <span>
 #include <sstream>
 #include <string>
-#include <string.h>
 #include <vector>
 
 class Util
@@ -91,6 +91,13 @@ public:
             bytes.push_back(static_cast<std::byte>(c));
         }
         return bytes;
+    }
+
+    static std::string BytesToString(const std::span<std::byte>& bytes)
+    {
+        return std::string(
+            reinterpret_cast<char*>(bytes.data()),
+            reinterpret_cast<char*>(bytes.data() + bytes.size()));
     }
 
 private:
