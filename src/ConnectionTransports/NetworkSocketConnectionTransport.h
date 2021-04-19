@@ -33,8 +33,6 @@ class NetworkSocketConnectionTransport : public ConnectionTransport
 {
 public:
     /* Public Members */
-    static constexpr std::chrono::milliseconds DEFAULT_READ_TIMEOUT{200};
-
     // Factory method that also sets the socket to non-blocking mode
     static Result<std::unique_ptr<NetworkSocketConnectionTransport>> Nonblocking(
         NetworkSocketConnectionKind kind,
@@ -52,7 +50,7 @@ public:
     std::optional<sockaddr_in> GetAddr() override;
     std::optional<sockaddr_in6> GetAddr6() override;
     void Stop() override;
-    Result<ssize_t> Read(std::vector<std::byte>& bytes, std::chrono::milliseconds timeout) override;
+    Result<ssize_t> Read(std::vector<std::byte>& buffer, std::chrono::milliseconds timeout) override;
     Result<void> Write(const std::span<std::byte>& bytes) override;
 
 private:

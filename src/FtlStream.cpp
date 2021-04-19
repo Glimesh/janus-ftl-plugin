@@ -9,7 +9,6 @@
 
 #include "ConnectionTransports/ConnectionTransport.h"
 #include "FtlControlConnection.h"
-#include "JanusSession.h"
 #include "Utilities/Rtp.h"
 
 #include <assert.h>
@@ -65,7 +64,7 @@ Result<void> FtlStream::StartMediaConnection(
     return Result<void>::Success();
 }
 
-void FtlStream::Stop()
+void FtlStream::RequestStop()
 {
     std::scoped_lock lock(mutex);
 
@@ -81,13 +80,13 @@ void FtlStream::Stop()
     // Stop our media connection if one is active
     if (mediaConnection)
     {
-        mediaConnection->Stop();
+        mediaConnection->RequestStop();
     }
 
     // Stop the control connection if one is active
     if (controlConnection)
     {
-        controlConnection->Stop();
+        controlConnection->TerminateWithResponse();
     }
 
     // Indicate that we've been closed
@@ -103,7 +102,7 @@ void FtlStream::Stop()
 void FtlStream::ControlConnectionStopped(FtlControlConnection* connection)
 {
     assert(connection == controlConnection.get());
-    Stop();
+    RequestStop();
 }
 
 ftl_channel_id_t FtlStream::GetChannelId() const
@@ -161,7 +160,7 @@ void FtlStream::onMediaConnectionClosed()
         }
     }
 
-    Stop();
+    RequestStop();
 }
 
 #pragma endregion

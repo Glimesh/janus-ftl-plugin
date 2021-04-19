@@ -49,7 +49,7 @@ public:
         const MediaMetadata mediaMetadata,
         const FtlMediaConnection::RtpPacketCallback onRtpPacket
     );
-    void Stop();
+    void RequestStop();
     void ControlConnectionStopped(FtlControlConnection* controlConnection);
 
     /* Getters/Setters */

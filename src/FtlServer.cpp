@@ -112,12 +112,12 @@ void FtlServer::Stop()
     std::unique_lock lock(streamDataMutex);
     for (const auto& pendingPair : pendingControlConnections)
     {
-        pendingPair.second.first->Stop();
+        pendingPair.second.first->TerminateWithResponse();
     }
     pendingControlConnections.clear();
     for (const auto& activePair : activeStreams)
     {
-        activePair.second.Stream->Stop();
+        activePair.second.Stream->RequestStop();
     }
 }
 
@@ -262,7 +262,7 @@ void FtlServer::eventQueueThreadBody()
                 dispatchAsyncCall(
                     [connection = std::move(expiredControlConnection)]() mutable
                     {
-                        connection->Stop();
+                        connection->TerminateWithResponse();
                     });
             }
             else
@@ -354,7 +354,7 @@ void FtlServer::eventStopStream(std::shared_ptr<FtlServerStopStreamEvent> event)
             dispatchAsyncCall(
                 [streamRef = std::move(streamRef)]() mutable
                 {
-                    streamRef->Stop();
+                    streamRef->RequestStop();
                 });
             streamFound = true;
             break;
@@ -462,7 +462,7 @@ void FtlServer::eventTerminateControlConnection(
     dispatchAsyncCall(
         [event, control = std::move(control)]() mutable
         {
-            control->Stop(event->ResponseCode);
+            control->TerminateWithResponse(event->ResponseCode);
         });
 }
 

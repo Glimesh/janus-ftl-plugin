@@ -47,7 +47,7 @@ public:
         const bool nackLostPackets = true);
 
     /* Public methods */
-    void Stop();
+    void RequestStop();
 
     /* Getters/Setters */
     FtlStreamStats GetStats();
@@ -79,6 +79,7 @@ private:
     static constexpr size_t              MAX_PACKETS_BEFORE_NACK        = 16;
     static constexpr size_t              NACK_TIMEOUT_SEQUENCE_DELTA    = 128;
     static constexpr uint32_t            ROLLING_SIZE_AVERAGE_MS        = 2000;
+    static constexpr std::chrono::milliseconds READ_TIMEOUT{200};
 
     /* Private members */
     const std::unique_ptr<ConnectionTransport> transport;

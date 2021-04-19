@@ -5,24 +5,23 @@
  * @copyright Copyright (c) 2021 Hayden McAfee
  */
 
-#include "FtlControlConnection.h"
-
-#include "ConnectionTransports/NetworkSocketConnectionTransport.h"
-#include "FtlServer.h"
-#include "Utilities/Util.h"
-
 #include <algorithm>
 #include <openssl/hmac.h>
+
+#include "ConnectionTransports/ConnectionTransport.h"
+#include "FtlControlConnection.h"
+#include "FtlStream.h"
+#include "Utilities/Util.h"
 
 const std::regex FtlControlConnection::CONNECT_PATTERN = std::regex(R"~(CONNECT ([0-9]+) \$([0-9a-f]+))~");
 const std::regex FtlControlConnection::ATTRIBUTE_PATTERN = std::regex(R"~((.+): (.+))~");
 
 #pragma region Constructor/Destructor
 FtlControlConnection::FtlControlConnection(
-    FtlServer* ftlServer,
+    FtlControlConnectionManager* connectionManager,
     std::unique_ptr<ConnectionTransport> transport)
 :
-    ftlServer(ftlServer),
+    connectionManager(connectionManager),
     transport(std::move(transport)),
     thread(std::bind(&FtlControlConnection::threadBody, this, std::placeholders::_1))
 {
@@ -84,7 +83,7 @@ void FtlControlConnection::ProvideHmacKey(const std::vector<std::byte>& hmacKey)
     {
         spdlog::info("Client provided invalid HMAC hash for channel {}, disconnecting...",
             channelId);
-        stopConnection();
+        requestStop();
         return;
     }
 }
@@ -101,12 +100,10 @@ void FtlControlConnection::StartMediaPort(uint16_t mediaPort)
         mediaPort));
 }
 
-void FtlControlConnection::Stop(FtlResponseCode responseCode)
+void FtlControlConnection::TerminateWithResponse(FtlResponseCode responseCode)
 {
     writeToTransport(fmt::format("{}\n", responseCode));
-
-    // Stop the transport, but don't fire OnConnectionClosed
-    transport->Stop();
+    requestStop();
 }
 #pragma endregion Public functions
 
@@ -118,7 +115,7 @@ void FtlControlConnection::threadBody(std::stop_token stopToken)
 
     while (!stopToken.stop_requested())
     {
-        auto result = transport->Read(buffer, NetworkSocketConnectionTransport::DEFAULT_READ_TIMEOUT);
+        auto result = transport->Read(buffer, READ_TIMEOUT);
         if (result.IsError) {
             spdlog::error("Failed to read from control connection transport: {}", result.ErrorMessage);
             break;
@@ -139,9 +136,9 @@ void FtlControlConnection::threadBody(std::stop_token stopToken)
     {
         ftlStream->ControlConnectionStopped(this);
     }
-    else if (ftlServer != nullptr)
+    else if (connectionManager != nullptr)
     {
-        ftlServer->ControlConnectionStopped(this);
+        connectionManager->ControlConnectionStopped(this);
     }
 }
 
@@ -191,10 +188,14 @@ void FtlControlConnection::onTransportBytesReceived(const std::vector<std::byte>
 void FtlControlConnection::writeToTransport(const std::string& str)
 {
     auto bytes = Util::StringToByteVector(str);
-    transport->Write(bytes);
+    auto result = transport->Write(bytes);
+    if (result.IsError)
+    {
+        spdlog::error("Failed to write to transport: {}", result.ErrorMessage);
+    }
 }
 
-void FtlControlConnection::stopConnection()
+void FtlControlConnection::requestStop()
 {
     thread.request_stop();
 }
@@ -255,13 +256,13 @@ void FtlControlConnection::processConnectCommand(const std::string& command)
         {
             spdlog::warn("Client provided invalid channel ID value, disconnecting: {}",
                 channelIdStr);
-            stopConnection();
+            requestStop();
             return;
         }
         if (hmacRequested)
         {
             spdlog::error("Control connection attempted multiple CONNECT handshakes");
-            stopConnection();
+            requestStop();
             return;
         }
 
@@ -269,14 +270,15 @@ void FtlControlConnection::processConnectCommand(const std::string& command)
         channelId = requestedChannelId;
         clientHmacHash = Util::HexStringToByteArray(hmacHashStr);
 
-        // Let the FtlServer know that we need an hmac key to calculate our own hash!
+        // Let the FtlControlConnectionManager know that we need an hmac key
+        // to calculate our own hash!
         hmacRequested = true;
-        ftlServer->ControlConnectionRequestedHmacKey(this, requestedChannelId);
+        connectionManager->ControlConnectionRequestedHmacKey(this, requestedChannelId);
     }
     else
     {
         spdlog::info("Malformed CONNECT request, disconnecting: {}", command);
-        stopConnection();
+        requestStop();
         return;
     }
 }
@@ -286,14 +288,14 @@ void FtlControlConnection::processAttributeCommand(const std::string& command)
     if (!isAuthenticated)
     {
         spdlog::info("Client attempted to send attributes before auth. Disconnecting...");
-        stopConnection();
+        requestStop();
         return;
     }
     if (isStreaming)
     {
         
         spdlog::info("Client attempted to send attributes after stream started. Disconnecting...");
-        stopConnection();
+        requestStop();
         return;
     }
 
@@ -412,14 +414,14 @@ void FtlControlConnection::processDotCommand()
     if (!isAuthenticated)
     {
         spdlog::warn("Client attempted to start stream without valid authentication.");
-        stopConnection();
+        requestStop();
         return;
     }
     else if (!mediaMetadata.HasAudio && !mediaMetadata.HasVideo)
     {
         spdlog::warn(
             "Client attempted to start stream without HasAudio and HasVideo attributes set.");
-        stopConnection();
+        requestStop();
         return;
     }
     else if (mediaMetadata.HasAudio && 
@@ -429,7 +431,7 @@ void FtlControlConnection::processDotCommand()
     {
         spdlog::warn("Client attempted to start audio stream without valid AudioPayloadType/"
             "AudioIngestSSRC/AudioCodec.");
-        stopConnection();
+        requestStop();
         return;
     }
     else if (mediaMetadata.HasVideo && 
@@ -439,15 +441,14 @@ void FtlControlConnection::processDotCommand()
     {
         spdlog::warn("Client attempted to start video stream without valid VideoPayloadType/"
             "VideoIngestSSRC/VideoCodec.");
-        stopConnection();
+        requestStop();
         return;
     }
 
     // HACK: We assume GetAddr() returns a value here.
-    // Tell the FtlServer we want a media port!
-    ftlServer->ControlConnectionRequestedMediaPort(this, channelId, mediaMetadata,
+    // Tell the FtlControlConnectionManager we want a media port!
+    connectionManager->ControlConnectionRequestedMediaPort(this, channelId, mediaMetadata,
         transport->GetAddr().value().sin_addr);
-    
 }
 
 void FtlControlConnection::processPingCommand()

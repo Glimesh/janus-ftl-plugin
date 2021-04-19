@@ -12,7 +12,6 @@
 
 #include "ConnectionTransports/NetworkSocketConnectionTransport.h"
 #include "FtlControlConnection.h"
-#include "JanusSession.h"
 #include "Utilities/Rtp.h"
 
 #include <algorithm>
@@ -54,7 +53,7 @@ FtlMediaConnection::FtlMediaConnection(
 #pragma endregion
 
 #pragma region Public methods
-void FtlMediaConnection::Stop()
+void FtlMediaConnection::RequestStop()
 {
     thread.request_stop();
 }
@@ -104,7 +103,7 @@ void FtlMediaConnection::threadBody(std::stop_token stopToken)
 
     while (!stopToken.stop_requested())
     {
-        auto result = transport->Read(buffer, NetworkSocketConnectionTransport::DEFAULT_READ_TIMEOUT);
+        auto result = transport->Read(buffer, READ_TIMEOUT);
         if (result.IsError) {
             spdlog::error("Failed to read from media connection transport: {}", result.ErrorMessage);
             break;

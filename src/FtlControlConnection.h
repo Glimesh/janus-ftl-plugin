@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include "FtlControlConnectionManager.h"
 #include "Utilities/FtlTypes.h"
 #include "Utilities/Result.h"
 
@@ -20,7 +21,6 @@
 
 // Forward declarations
 class ConnectionTransport;
-class FtlServer;
 class FtlStream;
 
 /**
@@ -56,7 +56,7 @@ public:
 
     /* Constructor/Destructor */
     FtlControlConnection(
-        FtlServer* ftlServer,
+        FtlControlConnectionManager* connectionManager,
         std::unique_ptr<ConnectionTransport> transport);
 
     /* Getters/Setters */
@@ -67,17 +67,18 @@ public:
     /* Public functions */
     void ProvideHmacKey(const std::vector<std::byte>& hmacKey);
     void StartMediaPort(uint16_t mediaPort);
-    void Stop(FtlResponseCode responseCode = FtlResponseCode::FTL_INGEST_RESP_SERVER_TERMINATE);
+    void TerminateWithResponse(FtlResponseCode responseCode = FtlResponseCode::FTL_INGEST_RESP_SERVER_TERMINATE);
 
 private:
     /* Constants */
     static constexpr std::array<char, 4> DELIMITER_SEQUENCE = { '\r', '\n', '\r', '\n' };
     static constexpr int HMAC_PAYLOAD_SIZE = 128;
+    static constexpr std::chrono::milliseconds READ_TIMEOUT{200};
     static const std::regex CONNECT_PATTERN;
     static const std::regex ATTRIBUTE_PATTERN;
 
     /* Private fields */
-    FtlServer* const ftlServer;
+    FtlControlConnectionManager* const connectionManager;
     const std::unique_ptr<ConnectionTransport> transport;
     FtlStream* ftlStream = nullptr;
     bool hmacRequested = false;
@@ -97,7 +98,7 @@ private:
     void onTransportBytesReceived(const std::vector<std::byte>& bytes);
     void onTransportClosed();
     void writeToTransport(const std::string& str);
-    void stopConnection();
+    void requestStop();
     // Command processing
     void processCommand(const std::string& command);
     void processHmacCommand();
