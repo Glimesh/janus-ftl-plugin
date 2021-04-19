@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include "FtlControlConnectionManager.h"
 #include "Utilities/FtlTypes.h"
 #include "Utilities/Result.h"
 
@@ -19,7 +20,6 @@
 
 // Forward declarations
 class ConnectionTransport;
-class FtlServer;
 class FtlStream;
 
 /**
@@ -55,7 +55,7 @@ public:
 
     /* Constructor/Destructor */
     FtlControlConnection(
-        FtlServer* ftlServer,
+        FtlControlConnectionManager* connectionManager,
         std::unique_ptr<ConnectionTransport> transport);
 
     /* Getters/Setters */
@@ -75,7 +75,7 @@ private:
     static constexpr int HMAC_PAYLOAD_SIZE = 128;
 
     /* Private fields */
-    FtlServer* const ftlServer;
+    FtlControlConnectionManager* const connectionManager;
     const std::unique_ptr<ConnectionTransport> transport;
     FtlStream* ftlStream = nullptr;
     bool hmacRequested = false;

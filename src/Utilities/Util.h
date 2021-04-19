@@ -60,7 +60,7 @@ public:
         std::uniform_int_distribution<uint8_t> uniformDistribution(0x00, 0xFF);
         for (unsigned int i = 0; i < size; ++i)
         {
-            payload[i] = std::byte{ uniformDistribution(randomEngine) };
+            payload.emplace_back(std::byte{ uniformDistribution(randomEngine) });
         }
         return payload;
     }
