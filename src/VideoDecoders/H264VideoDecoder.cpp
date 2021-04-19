@@ -10,7 +10,7 @@
 
 #include "H264VideoDecoder.h"
 
-#include "../Utilities/Rtp.h"
+#include "../Rtp/RtpPacket.h"
 
 #pragma region PreviewGenerator
 std::vector<uint8_t> H264VideoDecoder::GenerateJpegImage(
@@ -41,7 +41,7 @@ AVFramePtr H264VideoDecoder::readFramePtr(
     for (const auto& packet : keyframePackets)
     {
         // Grab the payload out of the RTP packet
-        const std::span<const std::byte> payload = Rtp::GetRtpPayload(packet);
+        const std::span<const std::byte> payload = RtpPacket::GetRtpPayload(packet);
         if (payload.size() < 2)
         {
             // Invalid packet payload

@@ -9,7 +9,7 @@
 
 #include "ConnectionTransports/ConnectionTransport.h"
 #include "FtlControlConnection.h"
-#include "Utilities/Rtp.h"
+#include "Rtp/RtpPacket.h"
 
 #include <algorithm>
 #include <fstream>
@@ -178,7 +178,7 @@ std::set<rtp_sequence_num_t> FtlStream::insertPacketInSequenceOrder(
     std::list<std::vector<std::byte>>& packetList, const std::vector<std::byte>& packet)
 {
     std::set<rtp_sequence_num_t> missingSequences;
-    const Rtp::RtpHeader* rtpHeader = Rtp::GetRtpHeader(packet);
+    const RtpHeader* rtpHeader = RtpPacket::GetRtpHeader(packet);
     const rtp_sequence_num_t seqNum = ntohs(rtpHeader->SequenceNumber);
     // If the list is empty, just add it and we're done.
     if (packetList.size() == 0)
@@ -191,7 +191,7 @@ std::set<rtp_sequence_num_t> FtlStream::insertPacketInSequenceOrder(
     for (auto it = packetList.rbegin(); it != packetList.rend(); it++)
     {
         const std::vector<std::byte>& cachedPacket = *it;
-        const Rtp::RtpHeader* cachedRtpHeader = Rtp::GetRtpHeader(cachedPacket);
+        const RtpHeader* cachedRtpHeader = RtpPacket::GetRtpHeader(cachedPacket);
         const rtp_sequence_num_t cachedSeqNum = ntohs(cachedRtpHeader->SequenceNumber);
 
         if (isSequenceNewer(seqNum, cachedSeqNum))
@@ -216,7 +216,7 @@ std::set<rtp_sequence_num_t> FtlStream::insertPacketInSequenceOrder(
     {
         // The packet's sequence number was older than the whole list - insert at the very front.
         const std::vector<std::byte>& firstPacket = packetList.front();
-        const Rtp::RtpHeader* firstRtpHeader = Rtp::GetRtpHeader(firstPacket);
+        const RtpHeader* firstRtpHeader = RtpPacket::GetRtpHeader(firstPacket);
         const rtp_sequence_num_t firstSeqNum = ntohs(firstRtpHeader->SequenceNumber);
 
         // Mark in-between packets missing.
@@ -234,7 +234,7 @@ std::set<rtp_sequence_num_t> FtlStream::insertPacketInSequenceOrder(
 void FtlStream::processRtpPacket(const std::vector<std::byte>& rtpPacket)
 {
     std::unique_lock lock(dataMutex);
-    const Rtp::RtpHeader* rtpHeader = Rtp::GetRtpHeader(rtpPacket);
+    const RtpHeader* rtpHeader = RtpPacket::GetRtpHeader(rtpPacket);
     rtp_ssrc_t ssrc = ntohl(rtpHeader->Ssrc);
 
     // Process audio/video packets
@@ -271,7 +271,7 @@ void FtlStream::processRtpPacket(const std::vector<std::byte>& rtpPacket)
 void FtlStream::processRtpPacketSequencing(const std::vector<std::byte>& rtpPacket,
     const std::unique_lock<std::shared_mutex>& dataLock)
 {
-    const Rtp::RtpHeader* rtpHeader = Rtp::GetRtpHeader(rtpPacket);
+    const RtpHeader* rtpHeader = RtpPacket::GetRtpHeader(rtpPacket);
     const rtp_ssrc_t ssrc = ntohl(rtpHeader->Ssrc);
     const rtp_sequence_num_t seqNum = ntohs(rtpHeader->SequenceNumber);
 
@@ -339,7 +339,7 @@ void FtlStream::processRtpPacketSequencing(const std::vector<std::byte>& rtpPack
     // seeing massive amounts of "lost" packets.
     // https://github.com/Glimesh/janus-ftl-plugin/issues/95
     // // Calculate which packets are missing and should be NACK'd
-    // rtp_sequence_num_t latestSequence = Rtp::GetRtpSequence(data.CircularPacketBuffer.back());
+    // rtp_sequence_num_t latestSequence = RtpPacket::GetRtpSequence(data.CircularPacketBuffer.back());
     // if (missingSequences.size() == 0)
     // {
     //     data.PacketsSinceLastMissedSequence++;
@@ -377,7 +377,7 @@ void FtlStream::processRtpPacketSequencing(const std::vector<std::byte>& rtpPack
 void FtlStream::processRtpPacketKeyframe(const std::vector<std::byte>& rtpPacket,
     const std::unique_lock<std::shared_mutex>& dataLock)
 {
-    const Rtp::RtpHeader* rtpHeader = Rtp::GetRtpHeader(rtpPacket);
+    const RtpHeader* rtpHeader = RtpPacket::GetRtpHeader(rtpPacket);
     // Is this a video packet?
     if (ntohl(rtpHeader->Ssrc) == mediaMetadata.VideoSsrc)
     {
@@ -397,7 +397,7 @@ void FtlStream::processRtpPacketKeyframe(const std::vector<std::byte>& rtpPacket
 void FtlStream::processRtpH264PacketKeyframe(const std::vector<std::byte>& rtpPacket,
     const std::unique_lock<std::shared_mutex>& dataLock)
 {
-    const Rtp::RtpHeader* rtpHeader = Rtp::GetRtpHeader(rtpPacket);
+    const RtpHeader* rtpHeader = RtpPacket::GetRtpHeader(rtpPacket);
     const rtp_ssrc_t ssrc = ntohl(rtpHeader->Ssrc);
     if (ssrcData.count(ssrc) <= 0)
     {
@@ -407,7 +407,7 @@ void FtlStream::processRtpH264PacketKeyframe(const std::vector<std::byte>& rtpPa
     SsrcData& data = ssrcData.at(ssrc);
 
     // Is this packet part of a keyframe?
-    std::span<const std::byte> packetPayload = Rtp::GetRtpPayload(rtpPacket);
+    std::span<const std::byte> packetPayload = RtpPacket::GetRtpPayload(rtpPacket);
     if (packetPayload.size() < 2)
     {
         return;
@@ -448,7 +448,7 @@ void FtlStream::processRtpH264PacketKeyframe(const std::vector<std::byte>& rtpPa
     else
     {
         std::vector<std::byte>& firstPacket = data.PendingKeyframePackets.front();
-        const Rtp::RtpHeader* firstHeader = Rtp::GetRtpHeader(firstPacket);
+        const RtpHeader* firstHeader = RtpPacket::GetRtpHeader(firstPacket);
         rtp_timestamp_t lastTimestamp = ntohl(firstHeader->Timestamp);
         rtp_timestamp_t currentTimestamp = ntohl(rtpHeader->Timestamp);
         if (lastTimestamp == currentTimestamp)
@@ -490,7 +490,7 @@ void FtlStream::processNacks(const rtp_ssrc_t ssrc,
         return;
     }
     SsrcData& data = ssrcData.at(ssrc);
-    rtp_sequence_num_t latestSequence = Rtp::GetRtpSequence(data.CircularPacketBuffer.back());
+    rtp_sequence_num_t latestSequence = RtpPacket::GetRtpSequence(data.CircularPacketBuffer.back());
     
     // First, toss any old NACK'd packets that we haven't received and mark them lost.
     for (auto it = data.NackedSequences.begin(); it != data.NackedSequences.end();)
@@ -557,16 +557,16 @@ void FtlStream::sendNack(const rtp_ssrc_t ssrc, const rtp_sequence_num_t packetI
     // See https://tools.ietf.org/html/rfc4585#section-6.2.1
     // for information on how the nack packet is formed
     char nackBuffer[16] { 0 };
-    auto rtcpPacket = reinterpret_cast<Rtp::RtcpFeedbackPacket*>(nackBuffer);
+    auto rtcpPacket = reinterpret_cast<RtcpFeedbackPacket*>(nackBuffer);
     rtcpPacket->Header.Version = 2;
     rtcpPacket->Header.Padding = 0;
-    rtcpPacket->Header.Rc = Rtp::RtcpFeedbackMessageType::NACK;
-    rtcpPacket->Header.Type = Rtp::RtcpType::RTPFB;
+    rtcpPacket->Header.Rc = RtcpFeedbackMessageType::NACK;
+    rtcpPacket->Header.Type = RtcpType::RTPFB;
     rtcpPacket->Header.Length = htons(3);
     rtcpPacket->Ssrc = htonl(ssrc);
     rtcpPacket->Media = htonl(ssrc);
     auto rtcpNack = 
-        reinterpret_cast<Rtp::RtcpFeedbackPacketNackControlInfo*>(rtcpPacket->Fci);
+        reinterpret_cast<RtcpFeedbackPacketNackControlInfo*>(rtcpPacket->Fci);
     rtcpNack->Pid = htons(packetId);
     rtcpNack->Blp = htons(followingLostPacketsBitmask);
     std::vector<std::byte> nackBytes(reinterpret_cast<std::byte*>(nackBuffer),

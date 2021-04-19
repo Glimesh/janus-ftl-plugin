@@ -1,33 +1,33 @@
 /**
- * @file Rtp.cpp
+ * @file RtpPacket.cpp
  * @author Hayden McAfee (hayden@outlook.com)
  * @date 2021-01-30
  * @copyright Copyright (c) 2021 Hayden McAfee
  */
 
-#include "Rtp.h"
+#include "RtpPacket.h"
 
 #include <netinet/in.h>
 
 #pragma region Utility methods
-const Rtp::RtpHeader* Rtp::GetRtpHeader(const std::vector<std::byte>& rtpPacket)
+const RtpHeader* RtpPacket::GetRtpHeader(const std::vector<std::byte>& rtpPacket)
 {
     return reinterpret_cast<const RtpHeader*>(rtpPacket.data());
 }
 
-const rtp_sequence_num_t Rtp::GetRtpSequence(const std::vector<std::byte>& rtpPacket)
+const rtp_sequence_num_t RtpPacket::GetRtpSequence(const std::vector<std::byte>& rtpPacket)
 {
-    return ntohs(Rtp::GetRtpHeader(rtpPacket)->SequenceNumber);
+    return ntohs(GetRtpHeader(rtpPacket)->SequenceNumber);
 }
 
-const std::span<const std::byte> Rtp::GetRtpPayload(const std::vector<std::byte>& rtpPacket)
+const std::span<const std::byte> RtpPacket::GetRtpPayload(const std::vector<std::byte>& rtpPacket)
 {
     if (rtpPacket.size() < 12)
     {
         return std::span<std::byte>();
     }
 
-    const Rtp::RtpHeader* rtpHeader = Rtp::GetRtpHeader(rtpPacket);
+    const RtpHeader* rtpHeader = GetRtpHeader(rtpPacket);
     if (rtpHeader->Version != 2)
     {
         return std::span<std::byte>();
