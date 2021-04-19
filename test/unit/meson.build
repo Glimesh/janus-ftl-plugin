@@ -4,13 +4,15 @@ sources = files([
     # Unit tests
     'ConnectionTransports/NetworkSocketConnectionTransportTests.cpp',
     'FtlControlConnectionUnitTests.cpp',
+    'Rtp/ExtendedSequenceCounterTests.cpp',
     'Utilities/UtilTest.cpp',
     # Project sources
     '../../src/ConnectionTransports/NetworkSocketConnectionTransport.cpp',
     '../../src/FtlControlConnection.cpp',
     '../../src/FtlMediaConnection.cpp',
     '../../src/FtlStream.cpp',
-    '../../src/Utilities/Rtp.cpp',
+    '../../src/Rtp/ExtendedSequenceCounter.cpp',
+    '../../src/Rtp/RtpPacket.cpp',
 ])
 
 incdirs = include_directories(

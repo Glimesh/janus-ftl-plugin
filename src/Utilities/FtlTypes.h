@@ -19,16 +19,13 @@
 #include <string>
 #include <vector>
 
+#include "../Rtp/Types.h"
+
 #pragma region Typedefs for various number values
 /* FTL data types */
 typedef uint32_t ftl_channel_id_t;
 typedef uint32_t ftl_stream_id_t;
 
-/* RTP data types */
-typedef uint8_t rtp_payload_type_t;
-typedef uint16_t rtp_sequence_num_t;
-typedef uint32_t rtp_ssrc_t;
-typedef uint32_t rtp_timestamp_t;
 #pragma endregion Typedefs for various number values
 
 #pragma region Codecs

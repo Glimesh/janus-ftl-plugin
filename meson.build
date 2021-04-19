@@ -26,10 +26,12 @@ installdir = get_variable('INSTALL_PATH', (januspath + '/lib/janus/plugins'))
 
 sources = files([
     # Utilities
-    'src/Utilities/Rtp.cpp',
     'src/Utilities/Watchdog.cpp',
     # Video Decoders
     'src/VideoDecoders/H264VideoDecoder.cpp',
+    # RTP Utilities
+    'src/Rtp/ExtendedSequenceCounter.cpp',
+    'src/Rtp/RtpPacket.cpp',
     # Service Connections
     'src/ServiceConnections/DummyServiceConnection.cpp',
     'src/ServiceConnections/EdgeNodeServiceConnection.cpp',

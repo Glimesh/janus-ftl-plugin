@@ -9,7 +9,7 @@
 
 #include "ConnectionTransports/ConnectionTransport.h"
 #include "FtlControlConnection.h"
-#include "Utilities/Rtp.h"
+#include "Rtp/RtpPacket.h"
 
 #include <assert.h>
 #include <algorithm>
