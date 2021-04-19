@@ -30,7 +30,8 @@ bool ExtendedSequenceCounter::UpdateState(rtp_sequence_num_t seq)
     * Source is not considered stable until MIN_SEQUENTIAL packets with
     * sequential sequence numbers have been received.
     */
-    if (probation > 0) {
+    if (probation > 0)
+    {
         /* packet is in sequence */
         if (seq == maxSeq + 1)
         {
@@ -104,6 +105,11 @@ void ExtendedSequenceCounter::Reset(rtp_sequence_num_t seq)
 
 std::ostream& operator<<(std::ostream & os, const ExtendedSequenceCounter& c)
 {
-    os << "ExtendedSequenceCounter { maxSeq:" << c.maxSeq << ", cycles:" << c.cycles << ", baseSeq:" << c.baseSeq << ", received:" << c.received << " }";
+    os << "ExtendedSequenceCounter { " <<
+        "maxSeq:"   << c.maxSeq   << ", " <<
+        "cycles:"   << c.cycles   << ", " <<
+        "baseSeq:"  << c.baseSeq  << ", " <<
+        "received:" << c.received <<
+        " }";
     return os;
 }
