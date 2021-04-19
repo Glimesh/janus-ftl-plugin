@@ -27,8 +27,10 @@ public:
             NetworkSocketConnectionKind::Udp,
             sockets[0],
             std::nullopt);
-        INFO("ErrorMessage: " << result.ErrorMessage);
-        REQUIRE(result.IsError == false);
+        if (result.IsError)
+        {
+            FAIL("ErrorMessage: " << result.ErrorMessage);
+        }
         transport = std::move(result.Value);
         mockSocketPairFd = sockets[1];
     }
