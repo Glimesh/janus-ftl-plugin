@@ -45,3 +45,21 @@ TEST_CASE("Sequence that wraps is valid")
         extend(counter, extended, extended);
     }
 }
+
+TEST_CASE("A skip less than MAX_DROPOUT is treated as valid")
+{
+    ExtendedSequenceCounter counter;
+    rtp_extended_sequence_num_t extended = MAX_SEQ_NUM - 50;
+    for (int i = 0; i < 10; ++i, ++extended)
+    {
+        extend(counter, extended, extended);
+    }
+
+    // Skip ahead less than MIN_DROPOUT
+    extended += 100;
+
+    for (int i = 0; i < 10; ++i, ++extended)
+    {
+        extend(counter, extended, extended);
+    }
+}
