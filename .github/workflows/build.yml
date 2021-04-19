@@ -68,21 +68,3 @@ jobs:
         name: libjanus_ftl
         path: janus-ftl-plugin/builddir/libjanus_ftl.so
         if-no-files-found: error
-    - name: Upload Test Artifact
-      uses: actions/upload-artifact@v2
-      with:
-        name: janus-ftl-plugin-test
-        path: janus-ftl-plugin/build/janus-ftl-plugin-test
-        if-no-files-found: error
-
-  test:
-    name: Test
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-    - name: Download Artifacts
-      uses: actions/download-artifact@v2
-      with:
-        name: janus-ftl-plugin-test
-    - name: Run Tests
-      run: chmod +x janus-ftl-plugin-test && ./janus-ftl-plugin-test
