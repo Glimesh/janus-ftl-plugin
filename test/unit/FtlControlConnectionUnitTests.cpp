@@ -320,11 +320,15 @@ TEST_CASE_METHOD(FtlControlConnectionUnitTestsFixture,
     // Assign a media port
     controlConnection->StartMediaPort(mediaPort);
 
-    // Verify we received a response
-    REQUIRE(lastPayloadReceived.size() > 0);
-    std::string mediaPortMessage = std::string(
-        reinterpret_cast<char*>(lastPayloadReceived.data()),
-        (reinterpret_cast<char*>(lastPayloadReceived.data()) + lastPayloadReceived.size()));
-    std::string expectedMediaPortMessage = fmt::format("{} hi. Use UDP port {}\n", 200, mediaPort);
-    REQUIRE(mediaPortMessage == expectedMediaPortMessage);
+    // Wait until we receive a response payload
+    REQUIRE(WaitFor([&](){ return !lastPayloadReceived.empty(); }));
+
+    // Verify the received response
+    {
+        std::scoped_lock lock(mutex);
+        REQUIRE(lastPayloadReceived.size() > 0);
+        std::string response = Util::BytesToString(lastPayloadReceived);
+        REQUIRE(response == fmt::format("{} hi. Use UDP port {}\n", 200, mediaPort));
+        lastPayloadReceived.clear();
+    }
 }
