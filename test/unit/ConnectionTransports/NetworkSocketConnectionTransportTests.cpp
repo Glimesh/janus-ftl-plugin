@@ -13,8 +13,9 @@
 #include "../../../src/ConnectionTransports/NetworkSocketConnectionTransport.h"
 #include "../../../src/Utilities/Util.h"
 
-struct UdpTestContext {
-    UdpTestContext()
+class UdpTestFixture {
+public:
+    UdpTestFixture()
     {
         int sockets[2];
         if (socketpair(AF_LOCAL, SOCK_DGRAM, 0, sockets) == -1)
@@ -36,14 +37,13 @@ struct UdpTestContext {
     int mockSocketPairFd; // Tests may interactive with this, the transport holds the other half of the pair
 };
 
-TEST_CASE( "UDP transport can receive packets", "[udp][transport]" )
+TEST_CASE_METHOD(UdpTestFixture, "UDP transport can receive packets")
 {
-    UdpTestContext c;
     std::vector<std::byte> buffer;
 
     SECTION( "when no packets are available to read, reading does not block" )
     {
-        auto result = c.transport->Read(buffer, std::chrono::milliseconds(0));
+        auto result = transport->Read(buffer, std::chrono::milliseconds(0));
         if (result.IsError)
         {
             FAIL("ErrorMessage: " << result.ErrorMessage);
@@ -57,13 +57,13 @@ TEST_CASE( "UDP transport can receive packets", "[udp][transport]" )
 
     INFO( "when making two packets available to read" )
     {
-        REQUIRE(write(c.mockSocketPairFd, firstPacket.data(), firstPacket.size()) == (ssize_t)firstPacket.size());
-        REQUIRE(write(c.mockSocketPairFd, secondPacket.data(), secondPacket.size()) == (ssize_t)secondPacket.size());
+        REQUIRE(write(mockSocketPairFd, firstPacket.data(), firstPacket.size()) == (ssize_t)firstPacket.size());
+        REQUIRE(write(mockSocketPairFd, secondPacket.data(), secondPacket.size()) == (ssize_t)secondPacket.size());
     }
 
     INFO( "then the first read gets the first packet" )
     {
-        auto result = c.transport->Read(buffer, std::chrono::milliseconds(0));
+        auto result = transport->Read(buffer, std::chrono::milliseconds(0));
         if (result.IsError)
         {
             FAIL("ErrorMessage: " << result.ErrorMessage);
@@ -74,7 +74,7 @@ TEST_CASE( "UDP transport can receive packets", "[udp][transport]" )
 
     INFO( "then the second read gets the second packet" )
     {
-        auto result = c.transport->Read(buffer, std::chrono::milliseconds(0));
+        auto result = transport->Read(buffer, std::chrono::milliseconds(0));
         if (result.IsError)
         {
             FAIL("ErrorMessage: " << result.ErrorMessage);
@@ -86,7 +86,7 @@ TEST_CASE( "UDP transport can receive packets", "[udp][transport]" )
 
     INFO( "then the third read gets no packet" )
     {
-        auto result = c.transport->Read(buffer, std::chrono::milliseconds(0));
+        auto result = transport->Read(buffer, std::chrono::milliseconds(0));
         if (result.IsError)
         {
             FAIL("ErrorMessage: " << result.ErrorMessage);
