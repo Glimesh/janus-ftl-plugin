@@ -5,21 +5,20 @@
  * @copyright Copyright (c) 2021 Hayden McAfee
  */
 
-#include "FtlControlConnection.h"
-
-#include "ConnectionTransports/ConnectionTransport.h"
-#include "FtlServer.h"
-#include "Utilities/Util.h"
-
 #include <algorithm>
 #include <openssl/hmac.h>
 
+#include "ConnectionTransports/ConnectionTransport.h"
+#include "FtlControlConnection.h"
+#include "FtlStream.h"
+#include "Utilities/Util.h"
+
 #pragma region Constructor/Destructor
 FtlControlConnection::FtlControlConnection(
-    FtlServer* ftlServer,
+    FtlControlConnectionManager* connectionManager,
     std::unique_ptr<ConnectionTransport> transport)
 :
-    ftlServer(ftlServer),
+    connectionManager(connectionManager),
     transport(std::move(transport))
 {
     // Bind to transport events
@@ -169,9 +168,9 @@ void FtlControlConnection::onTransportClosed()
     {
         ftlStream->ControlConnectionStopped(this);
     }
-    else if (ftlServer != nullptr)
+    else if (connectionManager != nullptr)
     {
-        ftlServer->ControlConnectionStopped(this);
+        connectionManager->ControlConnectionStopped(this);
     }
 }
 
@@ -200,9 +199,9 @@ void FtlControlConnection::stopConnection()
     {
         ftlStream->ControlConnectionStopped(this);
     }
-    else if (ftlServer != nullptr)
+    else if (connectionManager != nullptr)
     {
-        ftlServer->ControlConnectionStopped(this);
+        connectionManager->ControlConnectionStopped(this);
     }
 }
 
@@ -277,9 +276,10 @@ void FtlControlConnection::processConnectCommand(const std::string& command)
         channelId = requestedChannelId;
         clientHmacHash = Util::HexStringToByteArray(hmacHashStr);
 
-        // Let the FtlServer know that we need an hmac key to calculate our own hash!
+        // Let the FtlControlConnectionManager know that we need an hmac key
+        // to calculate our own hash!
         hmacRequested = true;
-        ftlServer->ControlConnectionRequestedHmacKey(this, requestedChannelId);
+        connectionManager->ControlConnectionRequestedHmacKey(this, requestedChannelId);
     }
     else
     {
@@ -452,10 +452,9 @@ void FtlControlConnection::processDotCommand()
     }
 
     // HACK: We assume GetAddr() returns a value here.
-    // Tell the FtlServer we want a media port!
-    ftlServer->ControlConnectionRequestedMediaPort(this, channelId, mediaMetadata,
+    // Tell the FtlControlConnectionManager we want a media port!
+    connectionManager->ControlConnectionRequestedMediaPort(this, channelId, mediaMetadata,
         transport->GetAddr().value().sin_addr);
-    
 }
 
 void FtlControlConnection::processPingCommand()

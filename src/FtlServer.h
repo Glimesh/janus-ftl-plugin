@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include "FtlControlConnectionManager.h"
 #include "FtlControlConnection.h"
 #include "FtlStream.h"
 #include "RtpPacketSink.h"
@@ -35,7 +36,7 @@ class ConnectionTransport;
  * @brief FtlServer manages ingest control and media connections, exposing the relevant stream
  * data for consumers to use.
  */
-class FtlServer
+class FtlServer : public FtlControlConnectionManager
 {
 public:
     /* Public types */
@@ -72,22 +73,12 @@ public:
      */
     void Stop();
 
-    /**
-     * @brief Called by FtlControlConnection when the control connection has stopped.
-     */
-    void ControlConnectionStopped(FtlControlConnection* connection);
-
-    /**
-     * @brief Called by FtlControlConnection when it wants an HMAC key for a channel
-     */
+    /* FtlControlConnectionManager implementation */
+    void ControlConnectionStopped(FtlControlConnection* connection) override;
     void ControlConnectionRequestedHmacKey(FtlControlConnection* connection,
-        ftl_channel_id_t channelId);
-
-    /**
-     * @brief Called by FtlControlConnection when it needs a media port assigned
-     */
+        ftl_channel_id_t channelId) override;
     void ControlConnectionRequestedMediaPort(FtlControlConnection* connection,
-        ftl_channel_id_t channelId, MediaMetadata mediaMetadata, in_addr targetAddr);
+        ftl_channel_id_t channelId, MediaMetadata mediaMetadata, in_addr targetAddr) override;
 
     /**
      * @brief Stops the stream with the specified channel ID and stream ID.
