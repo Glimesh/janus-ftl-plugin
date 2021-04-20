@@ -13,19 +13,19 @@
 #include "FtlStream.h"
 #include "Utilities/Util.h"
 
+const std::regex FtlControlConnection::CONNECT_PATTERN =
+    std::regex(R"~(CONNECT ([0-9]+) \$([0-9a-f]+))~");
+const std::regex FtlControlConnection::ATTRIBUTE_PATTERN = std::regex(R"~((.+): (.+))~");
+
 #pragma region Constructor/Destructor
 FtlControlConnection::FtlControlConnection(
     FtlControlConnectionManager* connectionManager,
     std::unique_ptr<ConnectionTransport> transport)
 :
     connectionManager(connectionManager),
-    transport(std::move(transport))
+    transport(std::move(transport)),
+    thread(std::bind(&FtlControlConnection::threadBody, this, std::placeholders::_1))
 {
-    // Bind to transport events
-    this->transport->SetOnBytesReceived(std::bind(
-        &FtlControlConnection::onTransportBytesReceived, this, std::placeholders::_1));
-    this->transport->SetOnConnectionClosed(std::bind(
-        &FtlControlConnection::onTransportClosed, this));
 }
 #pragma endregion Constructor/Destructor
 
@@ -84,7 +84,7 @@ void FtlControlConnection::ProvideHmacKey(const std::vector<std::byte>& hmacKey)
     {
         spdlog::info("Client provided invalid HMAC hash for channel {}, disconnecting...",
             channelId);
-        stopConnection();
+        requestStop();
         return;
     }
 }
@@ -101,24 +101,48 @@ void FtlControlConnection::StartMediaPort(uint16_t mediaPort)
         mediaPort));
 }
 
-Result<void> FtlControlConnection::StartAsync()
+void FtlControlConnection::TerminateWithResponse(FtlResponseCode responseCode)
 {
-    return transport->StartAsync();
-}
-
-void FtlControlConnection::Stop(FtlResponseCode responseCode)
-{
-    // BUG: Right now, the transport will halt the connection before these bytes
-    // can make it out the door.
-    // https://github.com/Glimesh/janus-ftl-plugin/issues/79
     writeToTransport(fmt::format("{}\n", responseCode));
-
-    // Stop the transport, but don't fire OnConnectionClosed
-    transport->Stop();
+    requestStop();
 }
 #pragma endregion Public functions
 
 #pragma region Private functions
+
+void FtlControlConnection::threadBody(std::stop_token stopToken)
+{
+    std::vector<std::byte> buffer;
+
+    while (!stopToken.stop_requested())
+    {
+        auto result = transport->Read(buffer, READ_TIMEOUT);
+        if (result.IsError) {
+            spdlog::error("Failed to read from control connection transport: {}", result.ErrorMessage);
+            break;
+        }
+
+        if (result.Value > 0) {
+            onTransportBytesReceived(buffer);
+        }
+    }
+
+    spdlog::debug("Stopping control connection thread for Channel {}", channelId);
+
+    // First, stop the transport to let the client know the stream has ended
+    transport->Stop();
+    
+    // Notify that we've stopped
+    if (ftlStream != nullptr)
+    {
+        ftlStream->ControlConnectionStopped(this);
+    }
+    else if (connectionManager != nullptr)
+    {
+        connectionManager->ControlConnectionStopped(this);
+    }
+}
+
 void FtlControlConnection::onTransportBytesReceived(const std::vector<std::byte>& bytes)
 {
     // Tack the new bytes onto the end of our running buffer
@@ -130,18 +154,18 @@ void FtlControlConnection::onTransportBytesReceived(const std::vector<std::byte>
     // (we only search backwards a little bit, since we've presumably already searched through
     // the previous payloads)
     int startDelimiterSearchIndex = std::max(0,
-        static_cast<int>(commandBuffer.size() - bytes.size() - delimiterSequence.size()));
+        static_cast<int>(commandBuffer.size() - bytes.size() - DELIMITER_SEQUENCE.size()));
     size_t delimiterCharactersRead = 0;
     for (size_t i = startDelimiterSearchIndex; i < commandBuffer.size();)
     {
-        if (commandBuffer.at(i) == delimiterSequence.at(delimiterCharactersRead))
+        if (commandBuffer.at(i) == DELIMITER_SEQUENCE.at(delimiterCharactersRead))
         {
             ++delimiterCharactersRead;
-            if (delimiterCharactersRead >= delimiterSequence.size())
+            if (delimiterCharactersRead >= DELIMITER_SEQUENCE.size())
             {
                 // We've read a command, split it into its own string (minus the delimiter seq)
                 std::string command(commandBuffer.begin(),
-                    (commandBuffer.begin() + i + 1 - delimiterSequence.size()));
+                    (commandBuffer.begin() + i + 1 - DELIMITER_SEQUENCE.size()));
 
                 // Delete the processed portion of the buffer (including the delimiter seq)
                 commandBuffer.erase(commandBuffer.begin(), (commandBuffer.begin() + i + 1));
@@ -162,47 +186,19 @@ void FtlControlConnection::onTransportBytesReceived(const std::vector<std::byte>
     }
 }
 
-void FtlControlConnection::onTransportClosed()
-{
-    if (ftlStream != nullptr)
-    {
-        ftlStream->ControlConnectionStopped(this);
-    }
-    else if (connectionManager != nullptr)
-    {
-        connectionManager->ControlConnectionStopped(this);
-    }
-}
-
 void FtlControlConnection::writeToTransport(const std::string& str)
 {
-    std::vector<std::byte> writeBytes;
-    writeBytes.reserve(str.size());
-    for (const char& c : str)
+    auto bytes = Util::StringToByteVector(str);
+    auto result = transport->Write(bytes);
+    if (result.IsError)
     {
-        writeBytes.push_back(static_cast<std::byte>(c));
+        spdlog::error("Failed to write to transport: {}", result.ErrorMessage);
     }
-    transport->Write(writeBytes);
 }
 
-void FtlControlConnection::stopConnection()
+void FtlControlConnection::requestStop()
 {
-    // First, stop the transport
-    // The first parameter indicates that the transport shouldn't wait for its read thread
-    // to end - this is important to prevent deadlocks, as we are likely calling from that same
-    // thread.
-    transport->Stop(true);
-    
-    // Notify that we've stopped -  we will not receive an OnConnectionClosed from the transport
-    // if we call Stop ourselves
-    if (ftlStream != nullptr)
-    {
-        ftlStream->ControlConnectionStopped(this);
-    }
-    else if (connectionManager != nullptr)
-    {
-        connectionManager->ControlConnectionStopped(this);
-    }
+    thread.request_stop();
 }
 
 void FtlControlConnection::processCommand(const std::string& command)
@@ -215,7 +211,7 @@ void FtlControlConnection::processCommand(const std::string& command)
     {
         processConnectCommand(command);
     }
-    else if (std::regex_match(command, attributePattern))
+    else if (std::regex_match(command, ATTRIBUTE_PATTERN))
     {
         processAttributeCommand(command);
     }
@@ -247,8 +243,7 @@ void FtlControlConnection::processConnectCommand(const std::string& command)
 {
     std::smatch matches;
 
-    if (std::regex_search(command, matches, connectPattern) &&
-        (matches.size() >= 3))
+    if (std::regex_search(command, matches, CONNECT_PATTERN) && matches.size() == 3)
     {
         std::string channelIdStr = matches[1].str();
         std::string hmacHashStr = matches[2].str();
@@ -262,13 +257,13 @@ void FtlControlConnection::processConnectCommand(const std::string& command)
         {
             spdlog::warn("Client provided invalid channel ID value, disconnecting: {}",
                 channelIdStr);
-            stopConnection();
+            requestStop();
             return;
         }
         if (hmacRequested)
         {
             spdlog::error("Control connection attempted multiple CONNECT handshakes");
-            stopConnection();
+            requestStop();
             return;
         }
 
@@ -284,7 +279,7 @@ void FtlControlConnection::processConnectCommand(const std::string& command)
     else
     {
         spdlog::info("Malformed CONNECT request, disconnecting: {}", command);
-        stopConnection();
+        requestStop();
         return;
     }
 }
@@ -294,20 +289,20 @@ void FtlControlConnection::processAttributeCommand(const std::string& command)
     if (!isAuthenticated)
     {
         spdlog::info("Client attempted to send attributes before auth. Disconnecting...");
-        stopConnection();
+        requestStop();
         return;
     }
     if (isStreaming)
     {
         
         spdlog::info("Client attempted to send attributes after stream started. Disconnecting...");
-        stopConnection();
+        requestStop();
         return;
     }
 
     std::smatch matches;
 
-    if (std::regex_match(command, matches, attributePattern) &&
+    if (std::regex_match(command, matches, ATTRIBUTE_PATTERN) &&
         matches.size() >= 3)
     {
         std::string key = matches[1].str();
@@ -420,14 +415,14 @@ void FtlControlConnection::processDotCommand()
     if (!isAuthenticated)
     {
         spdlog::warn("Client attempted to start stream without valid authentication.");
-        stopConnection();
+        requestStop();
         return;
     }
     else if (!mediaMetadata.HasAudio && !mediaMetadata.HasVideo)
     {
         spdlog::warn(
             "Client attempted to start stream without HasAudio and HasVideo attributes set.");
-        stopConnection();
+        requestStop();
         return;
     }
     else if (mediaMetadata.HasAudio && 
@@ -437,7 +432,7 @@ void FtlControlConnection::processDotCommand()
     {
         spdlog::warn("Client attempted to start audio stream without valid AudioPayloadType/"
             "AudioIngestSSRC/AudioCodec.");
-        stopConnection();
+        requestStop();
         return;
     }
     else if (mediaMetadata.HasVideo && 
@@ -447,7 +442,7 @@ void FtlControlConnection::processDotCommand()
     {
         spdlog::warn("Client attempted to start video stream without valid VideoPayloadType/"
             "VideoIngestSSRC/VideoCodec.");
-        stopConnection();
+        requestStop();
         return;
     }
 

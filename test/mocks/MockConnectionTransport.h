@@ -7,6 +7,8 @@
 
 #pragma once
 
+#include <list>
+
 #include "../../src/ConnectionTransports/ConnectionTransport.h"
 
 class MockConnectionTransport : public ConnectionTransport
@@ -15,31 +17,17 @@ public:
     MockConnectionTransport()
     { }
 
-    MockConnectionTransport(std::function<void(const std::vector<std::byte>&)> onWrite,
-        std::function<void(const std::vector<std::byte>&)> onBytesReceived) : 
-        onWrite(onWrite), onBytesReceived(onBytesReceived)
-    { }
-
-    /* Mock methods */
     void InjectReceivedBytes(const std::vector<std::byte>& bytes)
     {
-        if (onBytesReceived)
-        {
-            onBytesReceived(bytes);
-        }
+        receivedBytes.emplace_back(bytes);
     }
-
+    
     void InjectReceivedBytes(const std::string& str)
     {
-        if (onBytesReceived)
-        {
-            onBytesReceived(std::vector<std::byte>(
-                reinterpret_cast<const std::byte*>(str.data()),
-                reinterpret_cast<const std::byte*>(str.data()) + str.size()));
-        }
+        receivedBytes.emplace_back(Util::StringToByteVector(str));
     }
 
-    void SetOnWrite(std::function<void(const std::vector<std::byte>&)> onWrite)
+    void SetOnWrite(std::function<Result<void>(const std::span<const std::byte>& bytes)> onWrite)
     {
         this->onWrite = onWrite;
     }
@@ -55,32 +43,36 @@ public:
         return sockaddr_in6 { 0 };
     }
 
-    Result<void> StartAsync() override
-    {
-        return Result<void>::Success();
-    }
-
-    void Stop(bool noBlock = false) override
+    void Stop() override
     { }
 
-    void Write(const std::vector<std::byte>& bytes) override
+    Result<ssize_t> Read(std::vector<std::byte>& buffer, std::chrono::milliseconds timeout) override
     {
-        if (onWrite)
+        if (receivedBytes.empty())
         {
-            onWrite(bytes);
+            return Result<ssize_t>::Success(0);
+        }
+        else
+        {
+            buffer = std::move(receivedBytes.front());
+            receivedBytes.pop_front();
+            return Result<ssize_t>::Success(buffer.size());
         }
     }
 
-    void SetOnConnectionClosed(std::function<void(void)> onConnectionClosed) override
-    { }
-
-    void SetOnBytesReceived(
-        std::function<void(const std::vector<std::byte>&)> onBytesReceived) override
+    Result<void> Write(const std::span<const std::byte>& bytes) override
     {
-        this->onBytesReceived = onBytesReceived;
+        if (onWrite)
+        {
+            return onWrite(bytes);
+        }
+        else
+        {
+            return Result<void>::Error("No mock onWrite function supplied");
+        }
     }
 
 private:
-    std::function<void(const std::vector<std::byte>&)> onWrite;
-    std::function<void(const std::vector<std::byte>&)> onBytesReceived;
+    std::list<std::vector<std::byte>> receivedBytes;
+    std::function<Result<void>(const std::span<const std::byte>& bytes)> onWrite;
 };

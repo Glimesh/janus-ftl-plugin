@@ -9,9 +9,9 @@
 #include <arpa/inet.h>
 #include <iomanip>
 #include <random>
+#include <span>
 #include <sstream>
 #include <string>
-#include <string.h>
 #include <vector>
 
 class Util
@@ -57,7 +57,7 @@ public:
     {
         std::vector<std::byte> payload;
         payload.reserve(size);
-        std::uniform_int_distribution<uint8_t> uniformDistribution(0x00, 0xFF);
+        std::uniform_int_distribution<uint8_t> uniformDistribution;
         for (unsigned int i = 0; i < size; ++i)
         {
             payload.emplace_back(std::byte{ uniformDistribution(randomEngine) });
@@ -82,6 +82,24 @@ public:
         return std::string(str);
     }
 
+    static std::vector<std::byte> StringToByteVector(const std::string& str)
+    {
+        std::vector<std::byte> bytes;
+        bytes.reserve(str.size());
+        for (const char& c : str)
+        {
+            bytes.push_back(static_cast<std::byte>(c));
+        }
+        return bytes;
+    }
+
+    static std::string BytesToString(const std::span<std::byte>& bytes)
+    {
+        return std::string(
+            reinterpret_cast<char*>(bytes.data()),
+            reinterpret_cast<char*>(bytes.data() + bytes.size()));
+    }
+
 private:
-    inline static std::default_random_engine randomEngine { std::random_device()() };
+    inline static thread_local std::default_random_engine randomEngine { std::random_device()() };
 };

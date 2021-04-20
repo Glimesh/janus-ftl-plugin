@@ -110,11 +110,18 @@ void TcpConnectionListener::Listen(std::promise<void>&& readyPromise)
             if (onNewConnection)
             {
                 // Create a ConnectionTransport for this new connection
-                auto transport = new NetworkSocketConnectionTransport(
+                auto result = NetworkSocketConnectionTransport::Nonblocking(
                     NetworkSocketConnectionKind::Tcp,
                     connectionHandle,
                     acceptAddress);
-                onNewConnection(transport);
+                if (result.IsError)
+                {
+                    spdlog::error(
+                        "Failed to create transport for accepted socket: {}",
+                        result.ErrorMessage);
+                    break;
+                }
+                onNewConnection(std::move(result.Value));
             }
             else
             {
@@ -130,7 +137,7 @@ void TcpConnectionListener::StopListening()
 }
 
 void TcpConnectionListener::SetOnNewConnection(
-    std::function<void(ConnectionTransport*)> onNewConnection)
+    std::function<void(std::unique_ptr<ConnectionTransport>)> onNewConnection)
 {
     this->onNewConnection = onNewConnection;
 }

@@ -5,6 +5,7 @@
  * @copyright Copyright (c) 2021 Hayden McAfee
  */
 
+#include <chrono>
 #include <memory>
 #include <openssl/hmac.h>
 #include <optional>
@@ -75,7 +76,7 @@ public:
      * @brief Retrieves the current state (if it exists) of the FtlControlConnection as reported
      * by the FtlControlConnectionManager
      */
-    std::optional<FtlControlConnectionState> GetFtlControlConnectionState(
+    std::optional<FtlControlConnectionState> GetControlConnectionState(
         FtlControlConnection* connection)
     {
         if (controlConnections.count(connection) <= 0)
@@ -84,6 +85,28 @@ public:
         }
 
         return controlConnections.at(connection);
+    }
+
+    /**
+     * @brief Waits for the condition to return true, or returns false if timeout is hit
+     */
+    bool WaitFor(
+        std::function<bool()> condition,
+        std::chrono::milliseconds timeout = std::chrono::milliseconds{100})
+    {
+        std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
+
+        while(!condition())
+        {
+            if (std::chrono::steady_clock::now() - begin > timeout)
+            {
+                INFO("Timed out waiting for condition");
+                return false;
+            }
+            std::this_thread::sleep_for(std::chrono::microseconds(1));
+        }
+
+        return true;
     }
 
 protected:
@@ -157,31 +180,44 @@ TEST_CASE_METHOD(FtlControlConnectionUnitTestsFixture,
 
     // Connect!
     auto [controlConnection, mockTransportPtr] = ConnectMockControlConnection();
+    FtlControlConnection* controlConnectionPtr = controlConnection.get();
 
     // Expect control connection to not yet have reported anything to the
     // FtlControlConnectionManager
-    REQUIRE(GetFtlControlConnectionState(controlConnection.get()) == std::nullopt);
+    REQUIRE(GetControlConnectionState(controlConnectionPtr) == std::nullopt);
 
     // Record every payload that was written to the mock transport connection
     std::vector<std::byte> lastPayloadReceived;
+    std::mutex mutex;
     mockTransportPtr->SetOnWrite(
-        [&lastPayloadReceived](const std::vector<std::byte>& bytes)
+        [&](const std::span<const std::byte>& bytes)
         {
-            lastPayloadReceived = bytes;
+            std::scoped_lock lock(mutex);
+            lastPayloadReceived.assign(bytes.begin(), bytes.end());
+            return Result<void>::Success();
         });
 
     // Start our FTL handshake
     mockTransportPtr->InjectReceivedBytes("HMAC\r\n\r\n");
-    // We receive a response payload immediately on the same thread via
-    // MockConnectionTransport::Write
-    REQUIRE(lastPayloadReceived.size() > 4);
-    std::string responseCode(reinterpret_cast<char*>(lastPayloadReceived.data()),
-        (reinterpret_cast<char*>(lastPayloadReceived.data()) + 3));
-    REQUIRE(responseCode == "200");
-    std::string hmacPayloadString(reinterpret_cast<char*>((lastPayloadReceived.data()) + 4),
-        (reinterpret_cast<char*>(lastPayloadReceived.data()) + lastPayloadReceived.size() - 1));
-    std::vector<std::byte> hmacPayloadBytes = Util::HexStringToByteArray(hmacPayloadString);
-    lastPayloadReceived.clear();
+
+    // Wait until we receive a response payload
+    REQUIRE(WaitFor([&](){ return !lastPayloadReceived.empty(); }));
+
+    // Parse response payload
+    std::vector<std::byte> hmacPayloadBytes;
+    {
+        std::scoped_lock lock(mutex);
+        REQUIRE(lastPayloadReceived.size() > 4);
+        std::string response = Util::BytesToString(lastPayloadReceived);
+        
+        REQUIRE(response.substr(0, 4) == "200 ");
+        REQUIRE(response.substr(response.length() - 1) == "\n");
+
+        hmacPayloadBytes = Util::HexStringToByteArray(
+            response.substr(4, response.length() - 4 - 1));
+
+        lastPayloadReceived.clear();
+    }
 
     // Generate our HMAC response
     std::byte hmacBuffer[512];
@@ -198,9 +234,11 @@ TEST_CASE_METHOD(FtlControlConnectionUnitTestsFixture,
     std::string connectMessage = fmt::format("CONNECT {} ${}\r\n\r\n", channelId, hmacBufferString);
     mockTransportPtr->InjectReceivedBytes(connectMessage);
 
+    // Wait until we see a control connection
+    REQUIRE(WaitFor([&](){ return GetControlConnectionState(controlConnectionPtr).has_value(); }));
+
     // Verify that the control connection has requested an HMAC key for this channel
-    std::optional<FtlControlConnectionState> controlState = 
-        GetFtlControlConnectionState(controlConnection.get());
+    auto controlState = GetControlConnectionState(controlConnectionPtr);
     REQUIRE(controlState.has_value());
     REQUIRE(controlState.value().HmacKeyRequest.has_value());
     REQUIRE(controlState.value().HmacKeyRequest.value().ChannelId == channelId);
@@ -208,12 +246,17 @@ TEST_CASE_METHOD(FtlControlConnectionUnitTestsFixture,
     // Provide the HMAC key to the control connection
     controlConnection->ProvideHmacKey(hmacKey);
 
-    // Verify we received a response
-    REQUIRE(lastPayloadReceived.size() == 4);
-    responseCode = std::string(reinterpret_cast<char*>(lastPayloadReceived.data()),
-        (reinterpret_cast<char*>(lastPayloadReceived.data()) + 3));
-    REQUIRE(responseCode == "200");
-    lastPayloadReceived.clear();
+    // Wait until we receive a response payload
+    REQUIRE(WaitFor([&](){ return !lastPayloadReceived.empty(); }));
+
+    // Verify the received response
+    {
+        std::scoped_lock lock(mutex);
+        REQUIRE(lastPayloadReceived.size() == 4);
+        std::string response = Util::BytesToString(lastPayloadReceived);
+        REQUIRE(response == "200\n");
+        lastPayloadReceived.clear();
+    }
 
     // Send metadata
     mockTransportPtr->InjectReceivedBytes(fmt::format(
@@ -249,13 +292,19 @@ TEST_CASE_METHOD(FtlControlConnectionUnitTestsFixture,
 
     // Connect
     mockTransportPtr->InjectReceivedBytes(".\r\n\r\n");
+    
+    // Wait for media port request
+    REQUIRE(WaitFor([&]()
+        {
+            controlState = GetControlConnectionState(controlConnectionPtr);
+            return controlState && controlState.value().MediaPortRequest.has_value();
+        }));
 
-    // Verify that a media port has been requested and metadata has been reported correctly
-    controlState = GetFtlControlConnectionState(controlConnection.get());
-    REQUIRE(controlState.has_value());
-    REQUIRE(controlState.value().MediaPortRequest.has_value());
-    REQUIRE(controlState.value().MediaPortRequest.value().ChannelId == channelId);
-    MediaMetadata requestMetadata = controlState.value().MediaPortRequest.value().MediaMetadataInfo;
+    // Verify that the control connection has requested an HMAC key for this channel
+    auto mediaPortRequest = controlState.value().MediaPortRequest;
+    REQUIRE(mediaPortRequest.has_value());
+    REQUIRE(mediaPortRequest.value().ChannelId == channelId);
+    MediaMetadata requestMetadata = mediaPortRequest.value().MediaMetadataInfo;
     REQUIRE(requestMetadata.VendorName == metadata.VendorName);
     REQUIRE(requestMetadata.VendorVersion == metadata.VendorVersion);
     REQUIRE(requestMetadata.HasVideo == metadata.HasVideo);
@@ -272,12 +321,15 @@ TEST_CASE_METHOD(FtlControlConnectionUnitTestsFixture,
     // Assign a media port
     controlConnection->StartMediaPort(mediaPort);
 
-    // Verify we received a response
-    REQUIRE(lastPayloadReceived.size() > 0);
-    std::string mediaPortMessage = std::string(
-        reinterpret_cast<char*>(lastPayloadReceived.data()),
-        (reinterpret_cast<char*>(lastPayloadReceived.data()) + lastPayloadReceived.size()));
-    std::string expectedMediaPortMessage = fmt::format("{} hi. Use UDP port {}\n", 200, mediaPort);
-    REQUIRE(mediaPortMessage == expectedMediaPortMessage);
-    lastPayloadReceived.clear();
+    // Wait until we receive a response payload
+    REQUIRE(WaitFor([&](){ return !lastPayloadReceived.empty(); }));
+
+    // Verify the received response
+    {
+        std::scoped_lock lock(mutex);
+        REQUIRE(lastPayloadReceived.size() > 0);
+        std::string response = Util::BytesToString(lastPayloadReceived);
+        REQUIRE(response == fmt::format("{} hi. Use UDP port {}\n", 200, mediaPort));
+        lastPayloadReceived.clear();
+    }
 }

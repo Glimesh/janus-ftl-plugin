@@ -17,6 +17,7 @@
 #include <netinet/in.h>
 #include <regex>
 #include <sstream>
+#include <thread>
 
 // Forward declarations
 class ConnectionTransport;
@@ -66,13 +67,15 @@ public:
     /* Public functions */
     void ProvideHmacKey(const std::vector<std::byte>& hmacKey);
     void StartMediaPort(uint16_t mediaPort);
-    Result<void> StartAsync();
-    void Stop(FtlResponseCode responseCode = FtlResponseCode::FTL_INGEST_RESP_SERVER_TERMINATE);
+    void TerminateWithResponse(FtlResponseCode responseCode = FtlResponseCode::FTL_INGEST_RESP_SERVER_TERMINATE);
 
 private:
     /* Constants */
-    static constexpr std::array<char, 4> delimiterSequence = { '\r', '\n', '\r', '\n' };
+    static constexpr std::array<char, 4> DELIMITER_SEQUENCE = { '\r', '\n', '\r', '\n' };
     static constexpr int HMAC_PAYLOAD_SIZE = 128;
+    static constexpr std::chrono::milliseconds READ_TIMEOUT{200};
+    static const std::regex CONNECT_PATTERN;
+    static const std::regex ATTRIBUTE_PATTERN;
 
     /* Private fields */
     FtlControlConnectionManager* const connectionManager;
@@ -87,14 +90,15 @@ private:
     MediaMetadata mediaMetadata {};
     // Command processing
     std::string commandBuffer;
-    const std::regex connectPattern = std::regex(R"~(CONNECT ([0-9]+) \$([0-9a-f]+))~");
-    const std::regex attributePattern = std::regex(R"~((.+): (.+))~");
+    // Thread to read and process data from the connection, must be initialized last
+    std::jthread thread;
 
     /* Private functions */
+    void threadBody(std::stop_token stopToken);
     void onTransportBytesReceived(const std::vector<std::byte>& bytes);
     void onTransportClosed();
     void writeToTransport(const std::string& str);
-    void stopConnection();
+    void requestStop();
     // Command processing
     void processCommand(const std::string& command);
     void processHmacCommand();

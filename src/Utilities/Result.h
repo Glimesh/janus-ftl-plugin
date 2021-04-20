@@ -29,10 +29,22 @@ struct Result : public CommonResult<T>
     /**
      * @brief Generate a Result object indicating success and returning a value.
      */
-    static Result<T> Success(T value)
+    static Result<T> Success(const T& value)
     {
         auto r = Result<T>();
         r.Value = value;
+        r.IsError = false;
+        r.ErrorMessage = "";
+        return r;
+    }
+
+    /**
+     * @brief Generate a Result object indicating success and returning a value.
+     */
+    static Result<T> Success(T&& value)
+    {
+        auto r = Result<T>();
+        r.Value = std::move(value);
         r.IsError = false;
         r.ErrorMessage = "";
         return r;

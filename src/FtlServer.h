@@ -90,13 +90,13 @@ public:
      * @brief Retrieves stats for all active streams
      */
     std::list<std::pair<std::pair<ftl_channel_id_t, ftl_stream_id_t>,
-        std::pair<FtlStream::FtlStreamStats, FtlStream::FtlKeyframe>>>
+        std::pair<FtlStreamStats, FtlKeyframe>>>
         GetAllStatsAndKeyframes();
 
     /**
      * @brief Retrieves stats for the given stream
      */
-    Result<FtlStream::FtlStreamStats> GetStats(ftl_channel_id_t channelId,
+    Result<FtlStreamStats> GetStats(ftl_channel_id_t channelId,
         ftl_stream_id_t streamId);
 
 private:
@@ -134,7 +134,7 @@ private:
     };
     struct FtlServerNewControlConnectionEvent : public FtlServerEvent
     {
-        ConnectionTransport* Connection;
+        std::unique_ptr<ConnectionTransport> Connection;
     };
     struct FtlServerControlConnectionClosedEvent : public FtlServerEvent
     {
@@ -234,7 +234,7 @@ private:
     Result<uint16_t> reserveMediaPort(const std::unique_lock<std::shared_mutex>& dataLock);
     void removeStreamRecord(FtlStream* stream, const std::unique_lock<std::shared_mutex>& dataLock);
     // Callback handlers
-    void onNewControlConnection(ConnectionTransport* connection);
+    void onNewControlConnection(std::unique_ptr<ConnectionTransport>&& connection);
     void onStreamClosed(FtlStream* stream);
     void onStreamRtpPacket(ftl_channel_id_t channelId, ftl_stream_id_t streamId,
         const std::vector<std::byte>& packet);

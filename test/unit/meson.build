@@ -2,10 +2,14 @@ sources = files([
     # Entrypoint
     '../test.cpp',
     # Unit tests
+    'ConnectionTransports/NetworkSocketConnectionTransportTests.cpp',
     'FtlControlConnectionUnitTests.cpp',
     'Rtp/ExtendedSequenceCounterTests.cpp',
+    'Utilities/UtilTest.cpp',
     # Project sources
+    '../../src/ConnectionTransports/NetworkSocketConnectionTransport.cpp',
     '../../src/FtlControlConnection.cpp',
+    '../../src/FtlMediaConnection.cpp',
     '../../src/FtlStream.cpp',
     '../../src/Rtp/ExtendedSequenceCounter.cpp',
     '../../src/Rtp/RtpPacket.cpp',

@@ -161,6 +161,23 @@ struct RtpRelayPacket
     RtpRelayPacketKind type;
     uint64_t channelId;
 };
+
+struct FtlStreamStats
+{
+    time_t StartTime;
+    uint32_t DurationSeconds;
+    uint32_t RollingAverageBitrateBps;
+    uint32_t PacketsReceived;
+    uint32_t PacketsNacked;
+    uint32_t PacketsLost;
+};
+
+struct FtlKeyframe
+{
+    VideoCodecKind Codec;
+    std::list<std::vector<std::byte>> Packets;
+};
+
 #pragma endregion FTL/RTP Types
 
 #pragma region Exceptions

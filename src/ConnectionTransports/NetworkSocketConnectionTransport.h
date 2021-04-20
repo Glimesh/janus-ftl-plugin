@@ -27,49 +27,48 @@ enum class NetworkSocketConnectionKind
 };
 
 /**
- * @brief ConnectionTransport implementation for a TCP/UDP socket connection
+ * @brief Implementation of ConnectionTransport for a TCP/UDP socket connection
  */
 class NetworkSocketConnectionTransport : public ConnectionTransport
 {
 public:
+    /* Public Members */
+    // Factory method that also sets the socket to non-blocking mode
+    static Result<std::unique_ptr<NetworkSocketConnectionTransport>> Nonblocking(
+        NetworkSocketConnectionKind kind,
+        int socketHandle,
+        std::optional<sockaddr_in> targetAddr = std::nullopt);
+
     /* Constructor/Destructor */
     NetworkSocketConnectionTransport(
         NetworkSocketConnectionKind kind,
         int socketHandle,
         std::optional<sockaddr_in> targetAddr = std::nullopt);
+    virtual ~NetworkSocketConnectionTransport();
 
     /* ConnectionTransport Implementation */
     std::optional<sockaddr_in> GetAddr() override;
     std::optional<sockaddr_in6> GetAddr6() override;
-    Result<void> StartAsync() override;
-    void Stop(bool noBlock = false) override;
-    void Write(const std::vector<std::byte>& bytes) override;
-    void SetOnConnectionClosed(std::function<void(void)> onConnectionClosed) override;
-    void SetOnBytesReceived(
-        std::function<void(const std::vector<std::byte>&)> onBytesReceived) override;
+    void Stop() override;
+    Result<ssize_t> Read(
+        std::vector<std::byte>& buffer,
+        std::chrono::milliseconds timeout) override;
+    Result<void> Write(const std::span<const std::byte>& bytes) override;
 
 private:
     /* Static members */
     static constexpr int BUFFER_SIZE = 2048;
+    static void closeSocket(int handle);
 
     /* Private fields */
     const NetworkSocketConnectionKind connectionKind;
     const int socketHandle = 0;
     std::optional<sockaddr_in> targetAddr = std::nullopt;
-    std::mutex stoppingMutex;
-    bool isStopping = false; // Indicates that the socket has been requested to close
-    bool isStopped = false;  // Indicates that the socket has finished closing
-    std::thread connectionThread;
-    std::future<void> connectionThreadEndedFuture;
+    bool isStopped = false;
+    std::mutex readMutex;
     std::mutex writeMutex;
-    int writePipeFds[2]; // We use pipes to write to the socket via poll
-    std::list<std::vector<std::byte>> datagramsPendingWrite;
-    // Callbacks
-    std::function<void(void)> onConnectionClosed;
-    std::function<void(const std::vector<std::byte>&)> onBytesReceived;
 
     /* Private methods */
-    void connectionThreadBody(std::promise<void>&& connectionThreadEndedPromise);
-    Result<void> sendData(const std::vector<std::byte>& data);
+    Result<void> sendData(const std::span<const std::byte>& data);
     void closeConnection();
 };
