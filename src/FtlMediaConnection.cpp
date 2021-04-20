@@ -557,11 +557,8 @@ void FtlMediaConnection::processAudioVideoRtpPacket(const std::vector<std::byte>
 
 void FtlMediaConnection::handlePing(const std::vector<std::byte>& rtpPacket)
 {
-    // These pings are useless - FTL tries to determine 'ping' by having a timestamp
-    // sent across and compared against the remote's clock. This assumes that there is
-    // no time difference between the client and server, which is practically never true.
-
-    // We'll just ignore these pings, since they wouldn't give us any useful information anyway.
+    // FTL client is trying to measure round trip time (RTT), pong back the same packet
+    mediaTransport->Write(rtpPacket);
 }
 
 void FtlMediaConnection::handleSenderReport(const std::vector<std::byte>& rtpPacket)
