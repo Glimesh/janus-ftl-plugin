@@ -45,7 +45,7 @@ public:
     std::string GetOrchestratorRegionCode();
     ServiceConnectionKind GetServiceConnectionKind();
     std::chrono::milliseconds GetServiceConnectionMetadataReportInterval();
-    uint32_t GetMaxAllowedBitsPerSecond(); 
+    uint32_t GetMaxAllowedBitsPerSecond();
     bool IsNackLostPacketsEnabled();
 
     // Dummy Service Connection Values
