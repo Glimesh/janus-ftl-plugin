@@ -49,7 +49,9 @@ public:
         Read a set of bytes from the transport into the given buffer.
         Will timeout if there is nothing to read and return zero bytes.
      */
-    virtual Result<ssize_t> Read(std::vector<std::byte>& buffer, std::chrono::milliseconds timeout) = 0;
+    virtual Result<ssize_t> Read(
+        std::vector<std::byte>& buffer, 
+        std::chrono::milliseconds timeout) = 0;
 
     /**
      * @brief Write a set of bytes to the transport

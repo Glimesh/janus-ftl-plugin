@@ -33,7 +33,8 @@ std::unique_ptr<ConnectionTransport> UdpConnectionCreator::CreateConnection(
     {
         int error = errno;
         throw std::runtime_error(fmt::format(
-            "Couldn't create UDP socket. Error {}: {}", error, Util::ErrnoToString(error)));
+            "Couldn't create UDP socket. Error {}: {}",
+            error, Util::ErrnoToString(error)));
     }
 
     int bindResult = bind(
@@ -44,7 +45,8 @@ std::unique_ptr<ConnectionTransport> UdpConnectionCreator::CreateConnection(
     {
         int error = errno;
         throw std::runtime_error(fmt::format(
-            "Couldn't bind UDP socket. Error {}: {}", error, Util::ErrnoToString(error)));
+            "Couldn't bind UDP socket. Error {}: {}",
+            error, Util::ErrnoToString(error)));
     }
 
     sockaddr_in target
@@ -53,7 +55,8 @@ std::unique_ptr<ConnectionTransport> UdpConnectionCreator::CreateConnection(
         .sin_port = htons(port),
         .sin_addr = targetAddr,
     };
-    auto result = NetworkSocketConnectionTransport::Nonblocking(NetworkSocketConnectionKind::Udp, socketHandle, target);
+    auto result = NetworkSocketConnectionTransport::Nonblocking(
+        NetworkSocketConnectionKind::Udp, socketHandle, target);
     if (result.IsError)
     {
         throw std::runtime_error(result.ErrorMessage);

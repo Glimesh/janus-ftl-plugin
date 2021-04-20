@@ -36,7 +36,7 @@ public:
     }
 
     std::unique_ptr<NetworkSocketConnectionTransport> transport;
-    int mockSocketPairFd; // Tests may interactive with this, the transport holds the other half of the pair
+    int mockSocketPairFd; // One half of a socket pair, the transport holds the other half
 };
 
 TEST_CASE_METHOD(UdpTestFixture, "UDP transport can receive packets")
@@ -54,13 +54,13 @@ TEST_CASE_METHOD(UdpTestFixture, "UDP transport can receive packets")
         REQUIRE( buffer.size() == 0 );
     }
 
-    std::vector<std::byte> firstPacket = Util::StringToByteVector("First Packet");
-    std::vector<std::byte> secondPacket = Util::StringToByteVector("Second Packet");
+    std::vector<std::byte> packet1 = Util::StringToByteVector("First Packet");
+    std::vector<std::byte> packet2 = Util::StringToByteVector("Second Packet");
 
     INFO( "when making two packets available to read" )
     {
-        REQUIRE(write(mockSocketPairFd, firstPacket.data(), firstPacket.size()) == (ssize_t)firstPacket.size());
-        REQUIRE(write(mockSocketPairFd, secondPacket.data(), secondPacket.size()) == (ssize_t)secondPacket.size());
+        REQUIRE(write(mockSocketPairFd, packet1.data(), packet1.size()) == (ssize_t)packet1.size());
+        REQUIRE(write(mockSocketPairFd, packet2.data(), packet2.size()) == (ssize_t)packet2.size());
     }
 
     INFO( "then the first read gets the first packet" )
@@ -70,8 +70,8 @@ TEST_CASE_METHOD(UdpTestFixture, "UDP transport can receive packets")
         {
             FAIL("ErrorMessage: " << result.ErrorMessage);
         }
-        CHECK_THAT( buffer, Catch::Equals( firstPacket ) );
-        CHECK( result.Value == (ssize_t)firstPacket.size() );
+        CHECK_THAT( buffer, Catch::Equals( packet1 ) );
+        CHECK( result.Value == (ssize_t)packet1.size() );
     }
 
     INFO( "then the second read gets the second packet" )
@@ -82,8 +82,8 @@ TEST_CASE_METHOD(UdpTestFixture, "UDP transport can receive packets")
             FAIL("ErrorMessage: " << result.ErrorMessage);
         }
         CHECK( result.IsError == false);
-        CHECK_THAT( buffer, Catch::Equals( secondPacket ) );
-        CHECK( result.Value == (ssize_t)secondPacket.size() );
+        CHECK_THAT( buffer, Catch::Equals( packet2 ) );
+        CHECK( result.Value == (ssize_t)packet2.size() );
     }
 
     INFO( "then the third read gets no packet" )

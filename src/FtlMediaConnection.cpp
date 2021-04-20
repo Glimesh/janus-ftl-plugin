@@ -89,7 +89,8 @@ Result<FtlKeyframe> FtlMediaConnection::GetKeyframe()
     // Return the last available keyframe for the default video ssrc
     if (ssrcData.count(mediaMetadata.VideoSsrc) <= 0)
     {
-        return Result<FtlKeyframe>::Error(fmt::format("No ssrc data available for video ssrc {}", mediaMetadata.VideoSsrc));
+        return Result<FtlKeyframe>::Error(
+            fmt::format("No ssrc data available for video ssrc {}", mediaMetadata.VideoSsrc));
     }
     keyframe.Packets = ssrcData.at(mediaMetadata.VideoSsrc).CurrentKeyframePackets;
     return Result<FtlKeyframe>::Success(keyframe);
@@ -105,7 +106,8 @@ void FtlMediaConnection::threadBody(std::stop_token stopToken)
     {
         auto result = transport->Read(buffer, READ_TIMEOUT);
         if (result.IsError) {
-            spdlog::error("Failed to read from media connection transport: {}", result.ErrorMessage);
+            spdlog::error("Failed to read from media connection transport: {}",
+                result.ErrorMessage);
             break;
         }
 
@@ -114,7 +116,8 @@ void FtlMediaConnection::threadBody(std::stop_token stopToken)
         }
     }
 
-    spdlog::debug("Stopping media connection thread for Channel {} / Stream {}", channelId, streamId);
+    spdlog::debug("Stopping media connection thread for Channel {} / Stream {}",
+        channelId, streamId);
     transport->Stop();
     if (onClosed)
     {

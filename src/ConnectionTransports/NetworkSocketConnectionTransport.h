@@ -50,12 +50,15 @@ public:
     std::optional<sockaddr_in> GetAddr() override;
     std::optional<sockaddr_in6> GetAddr6() override;
     void Stop() override;
-    Result<ssize_t> Read(std::vector<std::byte>& buffer, std::chrono::milliseconds timeout) override;
+    Result<ssize_t> Read(
+        std::vector<std::byte>& buffer,
+        std::chrono::milliseconds timeout) override;
     Result<void> Write(const std::span<std::byte>& bytes) override;
 
 private:
     /* Static members */
     static constexpr int BUFFER_SIZE = 2048;
+    static void closeSocket(int handle);
 
     /* Private fields */
     const NetworkSocketConnectionKind connectionKind;

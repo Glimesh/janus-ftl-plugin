@@ -116,7 +116,9 @@ void TcpConnectionListener::Listen(std::promise<void>&& readyPromise)
                     acceptAddress);
                 if (result.IsError)
                 {
-                    spdlog::error("Failed to create transport for accepted socket: {}", result.ErrorMessage);
+                    spdlog::error(
+                        "Failed to create transport for accepted socket: {}",
+                        result.ErrorMessage);
                     break;
                 }
                 onNewConnection(std::move(result.Value));

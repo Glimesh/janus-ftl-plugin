@@ -76,7 +76,7 @@ public:
      * @brief Retrieves the current state (if it exists) of the FtlControlConnection as reported
      * by the FtlControlConnectionManager
      */
-    std::optional<FtlControlConnectionState> GetFtlControlConnectionState(
+    std::optional<FtlControlConnectionState> GetControlConnectionState(
         FtlControlConnection* connection)
     {
         if (controlConnections.count(connection) <= 0)
@@ -184,7 +184,7 @@ TEST_CASE_METHOD(FtlControlConnectionUnitTestsFixture,
 
     // Expect control connection to not yet have reported anything to the
     // FtlControlConnectionManager
-    REQUIRE(GetFtlControlConnectionState(controlConnectionPtr) == std::nullopt);
+    REQUIRE(GetControlConnectionState(controlConnectionPtr) == std::nullopt);
 
     // Record every payload that was written to the mock transport connection
     std::vector<std::byte> lastPayloadReceived;
@@ -213,7 +213,8 @@ TEST_CASE_METHOD(FtlControlConnectionUnitTestsFixture,
         REQUIRE(response.substr(0, 4) == "200 ");
         REQUIRE(response.substr(response.length() - 1) == "\n");
 
-        hmacPayloadBytes = Util::HexStringToByteArray(response.substr(4, response.length() - 4 - 1));
+        hmacPayloadBytes = Util::HexStringToByteArray(
+            response.substr(4, response.length() - 4 - 1));
 
         lastPayloadReceived.clear();
     }
@@ -234,10 +235,10 @@ TEST_CASE_METHOD(FtlControlConnectionUnitTestsFixture,
     mockTransportPtr->InjectReceivedBytes(connectMessage);
 
     // Wait until we see a control connection
-    REQUIRE(WaitFor([&](){ return GetFtlControlConnectionState(controlConnectionPtr).has_value(); }));
+    REQUIRE(WaitFor([&](){ return GetControlConnectionState(controlConnectionPtr).has_value(); }));
 
     // Verify that the control connection has requested an HMAC key for this channel
-    auto controlState = GetFtlControlConnectionState(controlConnectionPtr);
+    auto controlState = GetControlConnectionState(controlConnectionPtr);
     REQUIRE(controlState.has_value());
     REQUIRE(controlState.value().HmacKeyRequest.has_value());
     REQUIRE(controlState.value().HmacKeyRequest.value().ChannelId == channelId);
@@ -295,15 +296,15 @@ TEST_CASE_METHOD(FtlControlConnectionUnitTestsFixture,
     // Wait for media port request
     REQUIRE(WaitFor([&]()
         {
-            auto controlState = GetFtlControlConnectionState(controlConnectionPtr);
+            controlState = GetControlConnectionState(controlConnectionPtr);
             return controlState && controlState.value().MediaPortRequest.has_value();
         }));
 
     // Verify that the control connection has requested an HMAC key for this channel
-    controlState = GetFtlControlConnectionState(controlConnectionPtr);
-    REQUIRE(controlState.value().MediaPortRequest.has_value());
-    REQUIRE(controlState.value().MediaPortRequest.value().ChannelId == channelId);
-    MediaMetadata requestMetadata = controlState.value().MediaPortRequest.value().MediaMetadataInfo;
+    auto mediaPortRequest = controlState.value().MediaPortRequest;
+    REQUIRE(mediaPortRequest.has_value());
+    REQUIRE(mediaPortRequest.value().ChannelId == channelId);
+    MediaMetadata requestMetadata = mediaPortRequest.value().MediaMetadataInfo;
     REQUIRE(requestMetadata.VendorName == metadata.VendorName);
     REQUIRE(requestMetadata.VendorVersion == metadata.VendorVersion);
     REQUIRE(requestMetadata.HasVideo == metadata.HasVideo);

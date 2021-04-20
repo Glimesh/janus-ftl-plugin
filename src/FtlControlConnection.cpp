@@ -13,7 +13,8 @@
 #include "FtlStream.h"
 #include "Utilities/Util.h"
 
-const std::regex FtlControlConnection::CONNECT_PATTERN = std::regex(R"~(CONNECT ([0-9]+) \$([0-9a-f]+))~");
+const std::regex FtlControlConnection::CONNECT_PATTERN =
+    std::regex(R"~(CONNECT ([0-9]+) \$([0-9a-f]+))~");
 const std::regex FtlControlConnection::ATTRIBUTE_PATTERN = std::regex(R"~((.+): (.+))~");
 
 #pragma region Constructor/Destructor

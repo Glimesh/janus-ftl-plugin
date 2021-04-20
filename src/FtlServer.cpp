@@ -190,14 +190,16 @@ std::list<std::pair<std::pair<ftl_channel_id_t, ftl_stream_id_t>,
         const auto stats = stream->GetStats();
         if (stats.IsError)
         {
-            spdlog::debug("No stats available for Channel {} / Stream {}, skipping", channelId, streamId);
+            spdlog::debug("No stats available for Channel {} / Stream {}, skipping",
+                channelId, streamId);
             continue;
         }
         const auto keyframe = stream->GetKeyframe();
         if (keyframe.IsError)
         {
             // TODO don't skip
-            spdlog::debug("No keyframe available for Channel {} / Stream {}, skipping", channelId, streamId);
+            spdlog::debug("No keyframe available for Channel {} / Stream {}, skipping",
+                channelId, streamId);
             continue;
         }
         returnVal.emplace_back(std::make_pair(stream->GetChannelId(), stream->GetStreamId()),

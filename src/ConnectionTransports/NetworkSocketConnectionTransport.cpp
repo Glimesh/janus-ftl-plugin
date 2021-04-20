@@ -10,21 +10,11 @@
 #include "../Utilities/Util.h"
 
 #include <fcntl.h>
-#include <fmt/core.h>
 #include <poll.h>
 #include <spdlog/spdlog.h>
 #include <stdexcept>
 #include <sys/socket.h>
 #include <unistd.h>
-
-void closeSocket(int handle)
-{
-    if (handle != 0)
-    {
-        shutdown(handle, SHUT_RDWR);
-        close(handle);
-    }
-}
 
 #pragma region Public Members
 Result<std::unique_ptr<NetworkSocketConnectionTransport>> NetworkSocketConnectionTransport::Nonblocking(
@@ -91,7 +81,8 @@ std::optional<sockaddr_in6> NetworkSocketConnectionTransport::GetAddr6()
     return std::nullopt;
 }
 
-Result<ssize_t> NetworkSocketConnectionTransport::Read(std::vector<std::byte>& buffer, std::chrono::milliseconds timeout)
+Result<ssize_t> NetworkSocketConnectionTransport::Read(
+    std::vector<std::byte>& buffer, std::chrono::milliseconds timeout)
 {
     std::scoped_lock lock(readMutex);
 
@@ -253,6 +244,16 @@ void NetworkSocketConnectionTransport::Stop()
 #pragma endregion ConnectionTransport Implementation
 
 #pragma region Private methods
+void NetworkSocketConnectionTransport::closeSocket(int handle)
+{
+    if (handle != 0)
+    {
+        shutdown(handle, SHUT_RDWR);
+        close(handle);
+    }
+}
+
+
 Result<void> NetworkSocketConnectionTransport::sendData(const std::span<std::byte>& data)
 {
     sockaddr_in sendToAddr{};
