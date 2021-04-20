@@ -558,7 +558,7 @@ void FtlMediaConnection::processAudioVideoRtpPacket(const std::vector<std::byte>
 void FtlMediaConnection::handlePing(const std::vector<std::byte>& rtpPacket)
 {
     // FTL client is trying to measure round trip time (RTT), pong back the same packet
-    mediaTransport->Write(rtpPacket);
+    transport->Write(rtpPacket);
 }
 
 void FtlMediaConnection::handleSenderReport(const std::vector<std::byte>& rtpPacket)

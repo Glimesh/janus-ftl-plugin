@@ -217,7 +217,7 @@ Result<ssize_t> NetworkSocketConnectionTransport::Read(
 }
 
 
-Result<void> NetworkSocketConnectionTransport::Write(const std::span<std::byte>& bytes)
+Result<void> NetworkSocketConnectionTransport::Write(const std::span<const std::byte>& bytes)
 {
     std::scoped_lock lock(writeMutex);
 
@@ -254,7 +254,7 @@ void NetworkSocketConnectionTransport::closeSocket(int handle)
 }
 
 
-Result<void> NetworkSocketConnectionTransport::sendData(const std::span<std::byte>& data)
+Result<void> NetworkSocketConnectionTransport::sendData(const std::span<const std::byte>& data)
 {
     sockaddr_in sendToAddr{};
     sockaddr* sendToAddrPtr = nullptr;

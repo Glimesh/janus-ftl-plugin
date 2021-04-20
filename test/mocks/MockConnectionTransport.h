@@ -27,7 +27,7 @@ public:
         receivedBytes.emplace_back(Util::StringToByteVector(str));
     }
 
-    void SetOnWrite(std::function<Result<void>(const std::span<std::byte>& bytes)> onWrite)
+    void SetOnWrite(std::function<Result<void>(const std::span<const std::byte>& bytes)> onWrite)
     {
         this->onWrite = onWrite;
     }
@@ -60,7 +60,7 @@ public:
         }
     }
 
-    Result<void> Write(const std::span<std::byte>& bytes) override
+    Result<void> Write(const std::span<const std::byte>& bytes) override
     {
         if (onWrite)
         {
@@ -74,5 +74,5 @@ public:
 
 private:
     std::list<std::vector<std::byte>> receivedBytes;
-    std::function<Result<void>(const std::span<std::byte>& bytes)> onWrite;
+    std::function<Result<void>(const std::span<const std::byte>& bytes)> onWrite;
 };

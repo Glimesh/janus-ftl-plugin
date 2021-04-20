@@ -53,7 +53,7 @@ public:
     Result<ssize_t> Read(
         std::vector<std::byte>& buffer,
         std::chrono::milliseconds timeout) override;
-    Result<void> Write(const std::span<std::byte>& bytes) override;
+    Result<void> Write(const std::span<const std::byte>& bytes) override;
 
 private:
     /* Static members */
@@ -69,6 +69,6 @@ private:
     std::mutex writeMutex;
 
     /* Private methods */
-    Result<void> sendData(const std::span<std::byte>& data);
+    Result<void> sendData(const std::span<const std::byte>& data);
     void closeConnection();
 };

@@ -190,7 +190,7 @@ TEST_CASE_METHOD(FtlControlConnectionUnitTestsFixture,
     std::vector<std::byte> lastPayloadReceived;
     std::mutex mutex;
     mockTransportPtr->SetOnWrite(
-        [&](const std::span<std::byte>& bytes)
+        [&](const std::span<const std::byte>& bytes)
         {
             std::scoped_lock lock(mutex);
             lastPayloadReceived.assign(bytes.begin(), bytes.end());
