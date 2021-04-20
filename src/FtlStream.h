@@ -39,8 +39,9 @@ public:
     /* Constructor/Destructor */
     FtlStream(
         std::shared_ptr<FtlControlConnection> controlConnection,
-        ftl_stream_id_t streamId,
-        const ClosedCallback onClosed);
+        const ftl_stream_id_t streamId,
+        const ClosedCallback onClosed,
+        const bool nackLostPackets);
 
     /* Public methods */
     Result<void> StartMediaConnection(
@@ -64,6 +65,7 @@ private:
     const std::shared_ptr<FtlControlConnection> controlConnection;
     const ftl_stream_id_t streamId;
     const ClosedCallback onClosed;
+    const bool nackLostPackets;
     bool closed = false;
     std::mutex mutex;
 

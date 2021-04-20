@@ -129,6 +129,12 @@ void Configuration::Load()
         maxAllowedBitsPerSecond = std::stoi(varVal);
     }
 
+    // FTL_SERVICE_NACK_LOST_PACKETS -> IsNackLostPacketsEnabled
+    if (char* varVal = std::getenv("FTL_SERVICE_NACK_LOST_PACKETS"))
+    {
+        nackLostPackets = std::stoi(varVal);
+    }
+
     // FTL_SERVICE_DUMMY_HMAC_KEY -> DummyHmacKey
     if (char* varVal = std::getenv("FTL_SERVICE_DUMMY_HMAC_KEY"))
     {
@@ -267,6 +273,11 @@ std::chrono::milliseconds Configuration::GetServiceConnectionMetadataReportInter
 uint32_t Configuration::GetMaxAllowedBitsPerSecond()
 {
     return maxAllowedBitsPerSecond;
+}
+
+bool Configuration::IsNackLostPacketsEnabled()
+{
+    return nackLostPackets;
 }
 
 std::string Configuration::GetGlimeshServiceHostname()

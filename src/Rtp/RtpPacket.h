@@ -7,11 +7,12 @@
 
 #pragma once
 
-#include "Types.h"
-
 #include <cstdint>
 #include <span>
 #include <vector>
+
+#include "Types.h"
+#include "ExtendedSequenceCounter.h"
 
 /**
  * @brief RTP Class providing a bunch of RTP packet related utilities!
@@ -19,9 +20,17 @@
 class RtpPacket
 {
 public:
-
-    /* Utility methods */
+    /* Static utility methods */
     static const RtpHeader* GetRtpHeader(const std::vector<std::byte>& rtpPacket);
     static const rtp_sequence_num_t GetRtpSequence(const std::vector<std::byte>& rtpPacket);
     static const std::span<const std::byte> GetRtpPayload(const std::vector<std::byte>& rtpPacket);
+
+    /* Public fields */
+    const std::vector<std::byte> Bytes;
+    const rtp_extended_sequence_num_t ExtendedSequenceNum;
+
+    /* Public methods */
+    const RtpHeader* Header() const;
+    const rtp_sequence_num_t SequenceNum() const;
+    const std::span<const std::byte> Payload() const;
 };

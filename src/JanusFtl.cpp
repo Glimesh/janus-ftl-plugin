@@ -70,7 +70,7 @@ int JanusFtl::Init(janus_callbacks* callback, const char* config_path)
 
     initServiceConnection();
 
-    ftlServer->StartAsync();
+    ftlServer->StartAsync(configuration->IsNackLostPacketsEnabled());
 
     initServiceReportThread();
 

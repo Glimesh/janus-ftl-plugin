@@ -9,7 +9,7 @@
 
 #include <netinet/in.h>
 
-#pragma region Utility methods
+#pragma region Static utility methods
 const RtpHeader* RtpPacket::GetRtpHeader(const std::vector<std::byte>& rtpPacket)
 {
     return reinterpret_cast<const RtpHeader*>(rtpPacket.data());
@@ -59,4 +59,22 @@ const std::span<const std::byte> RtpPacket::GetRtpPayload(const std::vector<std:
 
     return std::span(rtpPacket.begin() + payloadIndex, rtpPacket.end());
 }
-#pragma endregion Utility methods
+#pragma endregion Static utility methods
+
+
+#pragma region Public methods
+const RtpHeader* RtpPacket::Header() const
+{
+    return RtpPacket::GetRtpHeader(Bytes);
+}
+
+const rtp_sequence_num_t RtpPacket::SequenceNum() const
+{
+    return RtpPacket::GetRtpSequence(Bytes);
+}
+
+const std::span<const std::byte> RtpPacket::Payload() const
+{
+    return RtpPacket::GetRtpPayload(Bytes);
+}
+#pragma endregion Public methods

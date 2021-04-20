@@ -45,7 +45,8 @@ public:
     std::string GetOrchestratorRegionCode();
     ServiceConnectionKind GetServiceConnectionKind();
     std::chrono::milliseconds GetServiceConnectionMetadataReportInterval();
-    uint32_t GetMaxAllowedBitsPerSecond();
+    uint32_t GetMaxAllowedBitsPerSecond(); 
+    bool IsNackLostPacketsEnabled();
 
     // Dummy Service Connection Values
     std::vector<std::byte> GetDummyHmacKey();
@@ -76,6 +77,7 @@ private:
     ServiceConnectionKind serviceConnectionKind = ServiceConnectionKind::DummyServiceConnection;
     std::chrono::milliseconds serviceConnectionMetadataReportInterval = std::chrono::milliseconds(4000);
     uint32_t maxAllowedBitsPerSecond = 0;
+    bool nackLostPackets = false;
 
     // Dummy Service Connection Backing Stores
     // "aBcDeFgHiJkLmNoPqRsTuVwXyZ123456"

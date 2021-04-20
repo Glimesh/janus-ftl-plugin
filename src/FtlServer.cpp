@@ -85,8 +85,9 @@ FtlServer::FtlServer(
 #pragma endregion Constructor/Destructor
 
 #pragma region Public functions
-void FtlServer::StartAsync()
+void FtlServer::StartAsync(bool nackLostPackets)
 {
+    this->nackLostPackets = nackLostPackets;
     // Start listening for new ingest connections
     std::promise<void> listenThreadReadyPromise;
     std::future<void> listenThreadReadyFuture = listenThreadReadyPromise.get_future();
@@ -567,7 +568,8 @@ void FtlServer::eventStreamIdAssigned(std::shared_ptr<FtlServerStreamIdAssignedE
             auto stream = std::make_shared<FtlStream>(
                 std::move(control),
                 event->StreamId,
-                std::bind(&FtlServer::onStreamClosed, this, std::placeholders::_1));
+                std::bind(&FtlServer::onStreamClosed, this, std::placeholders::_1),
+                nackLostPackets);
 
             Result<void> streamStartResult = stream->StartMediaConnection(
                 std::move(mediaTransport),

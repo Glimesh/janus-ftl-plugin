@@ -23,12 +23,14 @@
 #pragma region Constructor/Destructor
 FtlStream::FtlStream(
     std::shared_ptr<FtlControlConnection> controlConnection,
-    ftl_stream_id_t streamId,
-    const ClosedCallback onClosed)
+    const ftl_stream_id_t streamId,
+    const ClosedCallback onClosed,
+    const bool nackLostPackets)
 :
     controlConnection(std::move(controlConnection)),
     streamId(streamId),
-    onClosed(onClosed)
+    onClosed(onClosed),
+    nackLostPackets(nackLostPackets)
 {
     // Bind to FtlStream
     this->controlConnection->SetFtlStream(this);
@@ -55,7 +57,8 @@ Result<void> FtlStream::StartMediaConnection(
         GetChannelId(),
         GetStreamId(),
         std::bind(&FtlStream::onMediaConnectionClosed, this),
-        onRtpPacket
+        onRtpPacket,
+        nackLostPackets
     );
 
     // Send media port to control connection

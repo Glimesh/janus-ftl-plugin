@@ -66,7 +66,7 @@ public:
     /**
      * @brief Starts listening for FTL connections on a new thread.
      */
-    void StartAsync();
+    void StartAsync(bool nackLostPackets);
 
     /**
      * @brief Stops listening for FTL connections.
@@ -211,6 +211,8 @@ private:
     // Media ports
     const uint16_t minMediaPort;
     const uint16_t maxMediaPort;
+    // Feature toggles
+    bool nackLostPackets;
     // Event queue
     const std::jthread eventQueueThread;
     eventpp::EventQueue<FtlServerEventKind, void (std::shared_ptr<FtlServerEvent>)> eventQueue;
