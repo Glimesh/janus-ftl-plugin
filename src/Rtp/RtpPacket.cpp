@@ -61,6 +61,16 @@ const std::span<const std::byte> RtpPacket::GetRtpPayload(const std::vector<std:
 }
 #pragma endregion Static utility methods
 
+#pragma region Constructor/Destructor
+RtpPacket::RtpPacket(
+    const std::vector<std::byte>& bytes,
+    const rtp_extended_sequence_num_t extendedSequenceNum)
+:
+    Bytes(bytes),
+    ExtendedSequenceNum(extendedSequenceNum)
+{
+}
+#pragma endregion Constructor/Destructor
 
 #pragma region Public methods
 const RtpHeader* RtpPacket::Header() const

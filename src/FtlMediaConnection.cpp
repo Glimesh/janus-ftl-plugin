@@ -211,7 +211,7 @@ void FtlMediaConnection::processRtpPacketBytes(const std::vector<std::byte>& pac
     {
         std::unique_lock lock(dataMutex);
 
-        std::optional<RtpPacket> rtpPacket = validateMediaPacket(packetBytes, lock);
+        std::optional<RtpPacket> rtpPacket = parseMediaPacket(packetBytes, lock);
         if (rtpPacket)
         {
             processRtpPacketSequencing(rtpPacket.value(), lock);
@@ -242,18 +242,11 @@ void FtlMediaConnection::processRtpPacketBytes(const std::vector<std::byte>& pac
     }
 }
 
-std::optional<RtpPacket> FtlMediaConnection::validateMediaPacket(
+std::optional<RtpPacket> FtlMediaConnection::parseMediaPacket(
     const std::vector<std::byte>& packetBytes,
     const std::unique_lock<std::shared_mutex>& dataLock)
 {
-    // TODO
-    return std::nullopt;
-}
-
-void FtlMediaConnection::processRtpPacketSequencing(const RtpPacket& rtpPacket,
-    const std::unique_lock<std::shared_mutex>& dataLock)
-{
-    const RtpHeader* rtpHeader = rtpPacket.Header();
+    const RtpHeader* rtpHeader = RtpPacket::GetRtpHeader(packetBytes);
     const rtp_ssrc_t ssrc = ntohl(rtpHeader->Ssrc);
     const rtp_sequence_num_t seqNum = ntohs(rtpHeader->SequenceNumber);
 
@@ -261,7 +254,7 @@ void FtlMediaConnection::processRtpPacketSequencing(const RtpPacket& rtpPacket,
     {
         const rtp_payload_type_t payloadType = ntohs(rtpHeader->Type);
         spdlog::warn("Received RTP payload type {} with unexpected ssrc {}", payloadType, ssrc);
-        return;
+        return std::nullopt;
     }
 
     SsrcData& data = ssrcData.at(ssrc);
@@ -272,7 +265,7 @@ void FtlMediaConnection::processRtpPacketSequencing(const RtpPacket& rtpPacket,
         (ssrcData.count(mediaMetadata.VideoSsrc) > 0) &&
         (ssrcData.at(mediaMetadata.VideoSsrc).CircularPacketBuffer.size() <= 0))
     {
-        return;
+        return std::nullopt;
     }
 
     rtp_extended_sequence_num_t extendedSeqNum;
@@ -281,10 +274,27 @@ void FtlMediaConnection::processRtpPacketSequencing(const RtpPacket& rtpPacket,
         spdlog::trace("Invalid RTP sequence number {} for ssrc {}, extended to {}",
             seqNum, ssrc, extendedSeqNum);
     }
+    return RtpPacket(packetBytes, extendedSeqNum);
+}
+
+void FtlMediaConnection::processRtpPacketSequencing(const RtpPacket& rtpPacket,
+    const std::unique_lock<std::shared_mutex>& dataLock)
+{
+    const RtpHeader* rtpHeader = rtpPacket.Header();
+    const rtp_ssrc_t ssrc = ntohl(rtpHeader->Ssrc);
+
+    if (ssrcData.count(ssrc) <= 0)
+    {
+        const rtp_payload_type_t payloadType = ntohs(rtpHeader->Type);
+        spdlog::warn("Received RTP payload type {} with unexpected ssrc {}", payloadType, ssrc);
+        return;
+    }
+
+    SsrcData& data = ssrcData.at(ssrc);
 
     // If this sequence is marked as missing anywhere, un-mark it.
-    data.NackQueue.erase(extendedSeqNum);
-    data.NackedSequences.erase(extendedSeqNum);
+    data.NackQueue.erase(rtpPacket.ExtendedSequenceNum);
+    data.NackedSequences.erase(rtpPacket.ExtendedSequenceNum);
 
     // Tally up the size of the packet
     data.PacketsReceived++;
@@ -328,7 +338,7 @@ void FtlMediaConnection::processRtpPacketSequencing(const RtpPacket& rtpPacket,
     // https://github.com/Glimesh/janus-ftl-plugin/issues/95
     if (nackLostPackets)
     {
-        updateNackQueue(data, extendedSeqNum, missingSequences, dataLock);
+        updateNackQueue(data, rtpPacket.ExtendedSequenceNum, missingSequences, dataLock);
         processNacks(ssrc, dataLock);
     }
 }

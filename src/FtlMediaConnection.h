@@ -108,7 +108,7 @@ private:
     std::set<rtp_extended_sequence_num_t> insertPacketInSequenceOrder(
         std::list<RtpPacket>& packetList, const RtpPacket& rtpPacket);
     void processRtpPacketBytes(const std::vector<std::byte>& packetBytes);
-    std::optional<RtpPacket> validateMediaPacket(const std::vector<std::byte>& packetBytes,
+    std::optional<RtpPacket> parseMediaPacket(const std::vector<std::byte>& packetBytes,
         const std::unique_lock<std::shared_mutex>& dataLock);
     void processRtpPacketSequencing(const RtpPacket& packet,
         const std::unique_lock<std::shared_mutex>& dataLock);
