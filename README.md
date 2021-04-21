@@ -110,7 +110,7 @@ Configuration is achieved through environment variables.
 | `FTL_SERVICE_CONNECTION` | `DUMMY`: (default) Dummy service connection <br />`GLIMESH`: Glimesh service connection <br />`REST`: REST service connection ([docs](docs/REST_SERVICE.md)) | This configuration value determines which service FTL should plug into for operations such as stream key retrieval. |
 | `FTL_SERVICE_METADATAREPORTINTERVALMS` | Time in milliseconds | Defaults to `4000`, controls how often FTL stream metadata will be reported to the service. |
 | `FTL_MAX_ALLOWED_BITS_PER_SECOND` | Integer bits per second | Defaults to `0` (disabled), FTL connections that exceed the bandwidth specified here will be stopped.<br />**Note that this is a strictly enforced maximum** based on a rolling average; consider providing some buffer size for encoder spikes above the configured average. |
-| `FTL_SERVICE_NACK_LOST_PACKETS` | `0`: Ignore missing packets <br />`1`: Send NACKs | Determines whether to send NACKs for missing packet sequences in the stream. |
+| `FTL_NACK_LOST_PACKETS` | `0`: Ignore missing packets <br />`1`: Send NACKs | Determines whether to send NACKs for missing packet sequences in the stream. |
 | `FTL_SERVICE_DUMMY_HMAC_KEY` | String, default: `aBcDeFgHiJkLmNoPqRsTuVwXyZ123456` | Key all FTL clients must use if service connection is `DUMMY`. The HMAC key is the part after the dash in a stream key. |
 | `FTL_SERVICE_DUMMY_PREVIEWIMAGEPATH` | `/path/to/directory` | The path where preview images of ingested streams will be stored if service connection is `DUMMY`. Defaults to `~/.ftl/previews` |
 | `FTL_SERVICE_GLIMESH_HOSTNAME` | Hostname value (ex. `localhost`, `glimesh.tv`) | This is the hostname the Glimesh service connection will attempt to reach. |

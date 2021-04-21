@@ -129,8 +129,8 @@ void Configuration::Load()
         maxAllowedBitsPerSecond = std::stoi(varVal);
     }
 
-    // FTL_SERVICE_NACK_LOST_PACKETS -> IsNackLostPacketsEnabled
-    if (char* varVal = std::getenv("FTL_SERVICE_NACK_LOST_PACKETS"))
+    // FTL_NACK_LOST_PACKETS -> IsNackLostPacketsEnabled
+    if (char* varVal = std::getenv("FTL_NACK_LOST_PACKETS"))
     {
         nackLostPackets = std::stoi(varVal);
     }
