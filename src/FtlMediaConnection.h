@@ -71,7 +71,7 @@ private:
         std::set<rtp_extended_sequence_num_t> NackedSequences;
         std::list<RtpPacket> CurrentKeyframePackets;
         std::list<RtpPacket> PendingKeyframePackets;
-        ExtendedSequenceCounter SequenceExtender;
+        ExtendedSequenceCounter SequenceCounter;
     };
 
     /* Constants */

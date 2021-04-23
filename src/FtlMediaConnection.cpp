@@ -269,7 +269,7 @@ std::optional<RtpPacket> FtlMediaConnection::parseMediaPacket(
     }
 
     rtp_extended_sequence_num_t extendedSeqNum;
-    if (!data.SequenceExtender.Extend(seqNum, &extendedSeqNum))
+    if (!data.SequenceCounter.Extend(seqNum, &extendedSeqNum))
     {
         spdlog::trace("Invalid RTP sequence number {} for ssrc {}, extended to {}",
             seqNum, ssrc, extendedSeqNum);
