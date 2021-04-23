@@ -515,7 +515,7 @@ void FtlMediaConnection::processNacks(const rtp_ssrc_t ssrc,
         while (data.NackQueue.size() > 0)
         {
             auto it = data.NackQueue.begin();
-            rtp_sequence_num_t firstSeq = *it;
+            rtp_extended_sequence_num_t firstSeq = *it;
             uint16_t followingLostPacketsBitmask = 0;
             spdlog::debug("FIRST SEQ {}", firstSeq);
             it++;
@@ -526,7 +526,7 @@ void FtlMediaConnection::processNacks(const rtp_ssrc_t ssrc,
                     break;
                 }
 
-                rtp_sequence_num_t nextSeq = *it;
+                rtp_extended_sequence_num_t nextSeq = *it;
                 if ((nextSeq - firstSeq) > 15)
                 {
                     break;
