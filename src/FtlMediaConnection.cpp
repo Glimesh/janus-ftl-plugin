@@ -168,7 +168,6 @@ std::set<rtp_extended_sequence_num_t> FtlMediaConnection::insertPacketInSequence
         if (seqNum > cachedSeqNum)
         {
             // If there are any gaps between the sequence numbers, mark them as missing.
-            // cast to uint16_t to account for overflow (sequence numbers wrap from 65535 -> 0)
             if (seqNum - 1 != cachedSeqNum)
             {
                 for (rtp_extended_sequence_num_t missingSeqNum = (cachedSeqNum + 1);
