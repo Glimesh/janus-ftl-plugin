@@ -34,24 +34,13 @@ extern "C"
 JanusFtl::JanusFtl(
     janus_plugin* plugin,
     std::unique_ptr<ConnectionListener> ingestControlListener,
-    std::unique_ptr<ConnectionCreator> mediaConnectionCreator) : 
-    pluginHandle(plugin)
+    std::unique_ptr<ConnectionCreator> mediaConnectionCreator,
+    janus_callbacks* janusCallbacks,
+    const char* configPath)
+: 
+    pluginHandle(plugin),
+    janusCore(janusCallbacks)
 {
-    ftlServer = std::make_unique<FtlServer>(std::move(ingestControlListener),
-        std::move(mediaConnectionCreator),
-        std::bind(&JanusFtl::ftlServerRequestKey, this, std::placeholders::_1),
-        std::bind(&JanusFtl::ftlServerStreamStarted, this, std::placeholders::_1,
-            std::placeholders::_2),
-        std::bind(&JanusFtl::ftlServerStreamEnded, this, std::placeholders::_1,
-            std::placeholders::_2));
-}
-#pragma endregion
-
-#pragma region Init/Destroy
-int JanusFtl::Init(janus_callbacks* callback, const char* config_path)
-{
-    this->janusCore = callback;
-
 #ifdef DEBUG
     spdlog::set_level(spdlog::level::trace);
 #else
@@ -69,17 +58,25 @@ int JanusFtl::Init(janus_callbacks* callback, const char* config_path)
     initOrchestratorConnection();
 
     initServiceConnection();
+    
+    ftlServer = std::make_unique<FtlServer>(std::move(ingestControlListener),
+        std::move(mediaConnectionCreator),
+        std::bind(&JanusFtl::ftlServerRequestKey, this, std::placeholders::_1),
+        std::bind(&JanusFtl::ftlServerStreamStarted, this, std::placeholders::_1,
+            std::placeholders::_2),
+        std::bind(&JanusFtl::ftlServerStreamEnded, this, std::placeholders::_1,
+            std::placeholders::_2),
+        configuration->IsNackLostPacketsEnabled());
 
-    ftlServer->StartAsync(configuration->IsNackLostPacketsEnabled());
+    ftlServer->StartAsync();
 
     initServiceReportThread();
 
     spdlog::info("FTL plugin initialized!");
     watchdog->Ready();
-    return 0;
 }
 
-void JanusFtl::Destroy()
+JanusFtl::~JanusFtl()
 {
     spdlog::info("Tearing down FTL!");
     {
@@ -90,7 +87,6 @@ void JanusFtl::Destroy()
     serviceReportThreadEndedFuture.wait();
     // TODO: Remove all mountpoints, kill threads, sessions, etc.
     ftlServer->Stop();
-    
 }
 #pragma endregion
 

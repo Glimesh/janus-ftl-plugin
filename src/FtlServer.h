@@ -58,6 +58,7 @@ public:
         RequestKeyCallback onRequestKey,
         StreamStartedCallback onStreamStarted,
         StreamEndedCallback onStreamEnded,
+        bool nackLostPackets,
         uint16_t minMediaPort = DEFAULT_MEDIA_MIN_PORT,
         uint16_t maxMediaPort = DEFAULT_MEDIA_MAX_PORT);
     ~FtlServer() = default;
@@ -66,7 +67,7 @@ public:
     /**
      * @brief Starts listening for FTL connections on a new thread.
      */
-    void StartAsync(bool nackLostPackets);
+    void StartAsync();
 
     /**
      * @brief Stops listening for FTL connections.

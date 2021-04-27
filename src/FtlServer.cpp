@@ -20,6 +20,7 @@ FtlServer::FtlServer(
     RequestKeyCallback onRequestKey,
     StreamStartedCallback onStreamStarted,
     StreamEndedCallback onStreamEnded,
+    bool nackLostPackets,
     uint16_t minMediaPort,
     uint16_t maxMediaPort)
 :
@@ -30,6 +31,7 @@ FtlServer::FtlServer(
     onStreamEnded(onStreamEnded),
     minMediaPort(minMediaPort),
     maxMediaPort(maxMediaPort),
+    nackLostPackets(nackLostPackets),
     eventQueueThread(std::jthread(&FtlServer::eventQueueThreadBody, this))
 {
     // Bind event listeners
@@ -85,9 +87,8 @@ FtlServer::FtlServer(
 #pragma endregion Constructor/Destructor
 
 #pragma region Public functions
-void FtlServer::StartAsync(bool nackLostPackets)
+void FtlServer::StartAsync()
 {
-    this->nackLostPackets = nackLostPackets;
     // Start listening for new ingest connections
     std::promise<void> listenThreadReadyPromise;
     std::future<void> listenThreadReadyFuture = listenThreadReadyPromise.get_future();
