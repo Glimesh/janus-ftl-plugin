@@ -9,6 +9,8 @@
  */
 #pragma once
 
+#include "Rtp/ExtendedSequenceCounter.h"
+#include "Rtp/RtpPacket.h"
 #include "Utilities/FtlTypes.h"
 #include "Utilities/Result.h"
 
@@ -16,11 +18,12 @@
 #include <functional>
 #include <list>
 #include <map>
+#include <optional>
+#include <set>
 #include <set>
 #include <shared_mutex>
-#include <unordered_map>
-#include <set>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 class ConnectionTransport;
@@ -61,13 +64,14 @@ private:
         uint32_t PacketsNacked = 0;
         uint32_t PacketsLost = 0;
         size_t PacketsSinceLastMissedSequence = 0;
-        std::list<std::vector<std::byte>> CircularPacketBuffer;
+        std::list<RtpPacket> CircularPacketBuffer;
         std::map<std::chrono::time_point<std::chrono::steady_clock>, uint16_t> 
             RollingBytesReceivedByTime;
-        std::set<rtp_sequence_num_t> NackQueue;
-        std::set<rtp_sequence_num_t> NackedSequences;
-        std::list<std::vector<std::byte>> CurrentKeyframePackets;
-        std::list<std::vector<std::byte>> PendingKeyframePackets;
+        std::set<rtp_extended_sequence_num_t> NackQueue;
+        std::set<rtp_extended_sequence_num_t> NackedSequences;
+        std::list<RtpPacket> CurrentKeyframePackets;
+        std::list<RtpPacket> PendingKeyframePackets;
+        ExtendedSequenceCounter SequenceCounter;
     };
 
     /* Constants */
@@ -87,7 +91,8 @@ private:
     const ftl_channel_id_t channelId;
     const ftl_stream_id_t streamId;
     const ClosedCallback onClosed;
-    const RtpPacketCallback onRtpPacket;
+    const RtpPacketCallback onRtpPacketBytes;
+    const bool nackLostPackets;
     // Stream data
     std::shared_mutex dataMutex;
     time_t startTime { 0 };
@@ -100,23 +105,28 @@ private:
     void threadBody(std::stop_token stopToken);
     void onBytesReceived(const std::vector<std::byte>& bytes);
     // Packet processing
-    std::set<rtp_sequence_num_t> insertPacketInSequenceOrder(
-        std::list<std::vector<std::byte>>& packetList, const std::vector<std::byte>& packet);
-    void processRtpPacket(const std::vector<std::byte>& rtpPacket);
-    void processRtpPacketSequencing(const std::vector<std::byte>& rtpPacket,
+    std::set<rtp_extended_sequence_num_t> insertPacketInSequenceOrder(
+        std::list<RtpPacket>& packetList, const RtpPacket& rtpPacket);
+    void processRtpPacketBytes(const std::vector<std::byte>& packetBytes);
+    std::optional<RtpPacket> parseMediaPacket(const std::vector<std::byte>& packetBytes,
         const std::unique_lock<std::shared_mutex>& dataLock);
-    void processRtpPacketKeyframe(const std::vector<std::byte>& rtpPacket,
+    void processRtpPacketSequencing(const RtpPacket& packet,
         const std::unique_lock<std::shared_mutex>& dataLock);
-    void processRtpH264PacketKeyframe(const std::vector<std::byte>& rtpPacket,
+    void processRtpPacketKeyframe(const RtpPacket& rtpPacket,
         const std::unique_lock<std::shared_mutex>& dataLock);
-    bool isSequenceNewer(rtp_sequence_num_t newSeq, rtp_sequence_num_t oldSeq,
-        size_t margin = PACKET_BUFFER_SIZE);
+    void processRtpH264PacketKeyframe(const RtpPacket& rtpPacket,
+        const std::unique_lock<std::shared_mutex>& dataLock);
+    void updateNackQueue(
+        SsrcData& data,
+        const rtp_extended_sequence_num_t extendedSeqNum,
+        const std::set<rtp_extended_sequence_num_t>& missingSequences,
+        const std::unique_lock<std::shared_mutex>& dataLock);
     void processNacks(const rtp_ssrc_t ssrc, const std::unique_lock<std::shared_mutex>& dataLock);
     void sendNack(const rtp_ssrc_t ssrc, const rtp_sequence_num_t packetId,
         const uint16_t followingLostPacketsBitmask,
         const std::unique_lock<std::shared_mutex>& dataLock);
-    void processAudioVideoRtpPacket(const std::vector<std::byte>& rtpPacket,
+    void processAudioVideoRtpPacket(const RtpPacket& rtpPacket,
         std::unique_lock<std::shared_mutex>& dataLock);
-    void handlePing(const std::vector<std::byte>& rtpPacket);
-    void handleSenderReport(const std::vector<std::byte>& rtpPacket);
+    void handlePing(const std::vector<std::byte>& packetBytes);
+    void handleSenderReport(const std::vector<std::byte>& packetBytes);
 };

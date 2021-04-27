@@ -20,6 +20,7 @@ FtlServer::FtlServer(
     RequestKeyCallback onRequestKey,
     StreamStartedCallback onStreamStarted,
     StreamEndedCallback onStreamEnded,
+    bool nackLostPackets,
     uint16_t minMediaPort,
     uint16_t maxMediaPort)
 :
@@ -30,6 +31,7 @@ FtlServer::FtlServer(
     onStreamEnded(onStreamEnded),
     minMediaPort(minMediaPort),
     maxMediaPort(maxMediaPort),
+    nackLostPackets(nackLostPackets),
     eventQueueThread(std::jthread(&FtlServer::eventQueueThreadBody, this))
 {
     // Bind event listeners
@@ -567,7 +569,8 @@ void FtlServer::eventStreamIdAssigned(std::shared_ptr<FtlServerStreamIdAssignedE
             auto stream = std::make_shared<FtlStream>(
                 std::move(control),
                 event->StreamId,
-                std::bind(&FtlServer::onStreamClosed, this, std::placeholders::_1));
+                std::bind(&FtlServer::onStreamClosed, this, std::placeholders::_1),
+                nackLostPackets);
 
             Result<void> streamStartResult = stream->StartMediaConnection(
                 std::move(mediaTransport),

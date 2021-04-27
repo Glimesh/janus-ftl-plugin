@@ -62,12 +62,10 @@ public:
     JanusFtl(
         janus_plugin* plugin,
         std::unique_ptr<ConnectionListener> ingestControlListener,
-        std::unique_ptr<ConnectionCreator> mediaConnectionCreator);
-    ~JanusFtl() = default;
-
-    /* Init/Destroy */
-    int Init(janus_callbacks* callback, const char* config_path);
-    void Destroy();
+        std::unique_ptr<ConnectionCreator> mediaConnectionCreator,
+        janus_callbacks* janusCallbacks,
+        const char* configPath);
+    ~JanusFtl();
 
     /* Public plugin methods */
     void CreateSession(janus_plugin_session* handle, int* error);

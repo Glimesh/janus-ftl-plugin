@@ -97,24 +97,26 @@ static janus_plugin janus_ftl_plugin =
 #pragma region Plugin creator
 extern "C" janus_plugin *create(void)
 {
-    auto ingestControlListener = std::make_unique<TcpConnectionListener>(FTL_CONTROL_PORT);
-    auto mediaConnectionCreator = std::make_unique<UdpConnectionCreator>();
-    janusFtl = new JanusFtl(&janus_ftl_plugin, std::move(ingestControlListener),
-        std::move(mediaConnectionCreator));
     JANUS_LOG(LOG_VERB, "%s created!\n", FTL_PLUGIN_NAME);
     return &janus_ftl_plugin;
 }
 #pragma endregion
 
 #pragma region Plugin init/destroy implementation
-static int Init(janus_callbacks *callback, const char* config_path)
+static int Init(janus_callbacks *callback, const char* configPath)
 {
-    return janusFtl->Init(callback, config_path);
+    auto ingestControlListener = std::make_unique<TcpConnectionListener>(FTL_CONTROL_PORT);
+    auto mediaConnectionCreator = std::make_unique<UdpConnectionCreator>();
+    janusFtl = new JanusFtl(&janus_ftl_plugin,
+        std::move(ingestControlListener),
+        std::move(mediaConnectionCreator),
+        callback,
+        configPath);
+    return 0;
 }
 
 static void Destroy()
 {
-    janusFtl->Destroy();
     delete janusFtl;
 }
 #pragma endregion

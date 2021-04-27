@@ -58,6 +58,7 @@ public:
         RequestKeyCallback onRequestKey,
         StreamStartedCallback onStreamStarted,
         StreamEndedCallback onStreamEnded,
+        bool nackLostPackets,
         uint16_t minMediaPort = DEFAULT_MEDIA_MIN_PORT,
         uint16_t maxMediaPort = DEFAULT_MEDIA_MAX_PORT);
     ~FtlServer() = default;
@@ -211,6 +212,8 @@ private:
     // Media ports
     const uint16_t minMediaPort;
     const uint16_t maxMediaPort;
+    // Feature toggles
+    bool nackLostPackets;
     // Event queue
     const std::jthread eventQueueThread;
     eventpp::EventQueue<FtlServerEventKind, void (std::shared_ptr<FtlServerEvent>)> eventQueue;
