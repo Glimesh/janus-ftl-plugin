@@ -93,13 +93,14 @@ Result<FtlKeyframe> FtlMediaConnection::GetKeyframe()
             fmt::format("No ssrc data available for video ssrc {}", mediaMetadata.VideoSsrc));
     }
     
-    std::list<RtpPacket>& currentKeyframePacket = ssrcData.at(mediaMetadata.VideoSsrc).CurrentKeyframePackets;
+    std::list<RtpPacket>& currentKeyframePackets =
+        ssrcData.at(mediaMetadata.VideoSsrc).CurrentKeyframePackets;
     
     FtlKeyframe keyframe { mediaMetadata.VideoCodec };
     std::transform(
-        currentKeyframePacket.begin(),
-        currentKeyframePacket.end(),
-        keyframe.Packets.begin(),
+        currentKeyframePackets.begin(),
+        currentKeyframePackets.end(),
+        std::back_inserter(keyframe.Packets),
         [](const RtpPacket& packet) -> std::vector<std::byte> { return packet.Bytes; });
     return Result<FtlKeyframe>::Success(keyframe);
 }
@@ -427,7 +428,7 @@ void FtlMediaConnection::processRtpH264PacketKeyframe(const RtpPacket& rtpPacket
         {
             spdlog::debug("{} keyframe packets recorded @ timestamp {}",
                 data.PendingKeyframePackets.size(), currentTimestamp);
-            data.CurrentKeyframePackets = std::move(data.PendingKeyframePackets); // swap?
+            data.CurrentKeyframePackets.swap(data.PendingKeyframePackets);
             data.PendingKeyframePackets.clear();
             data.PendingKeyframePackets.push_back(rtpPacket);
         }
