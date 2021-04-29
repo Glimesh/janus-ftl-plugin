@@ -17,12 +17,13 @@
 class FunctionalTestFixture
 {
 public:
-    static const uint16_t FTL_CONTROL_PORT = 8084;
+    static FunctionalTestFixture* Instance;
+    static constexpr uint16_t FTL_CONTROL_PORT = 8084;
 
     // Constructor
     FunctionalTestFixture()
     {
-        Instance = this;
+        FunctionalTestFixture::Instance = this;
         janusFtl = std::make_unique<JanusFtl>(
             const_cast<janus_plugin*>(&janus_ftl_plugin),
             std::move(std::make_unique<TcpConnectionListener>(FTL_CONTROL_PORT)),
@@ -83,8 +84,6 @@ public:
         return janusFtl->QuerySession(handle);
     }
 
-    // Statics
-    static FunctionalTestFixture* Instance;
     static constexpr janus_plugin janus_ftl_plugin =
     {
         // Init/destroy
@@ -159,3 +158,10 @@ public:
 private:
     std::unique_ptr<JanusFtl> janusFtl;
 };
+
+FunctionalTestFixture* FunctionalTestFixture::Instance = nullptr;
+
+TEST_CASE_METHOD(FunctionalTestFixture, "Does it work?")
+{
+
+}
