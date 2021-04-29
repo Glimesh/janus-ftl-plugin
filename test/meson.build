@@ -12,3 +12,4 @@ test_deps = [
 ]
 
 subdir('unit')
+subdir('functional')
