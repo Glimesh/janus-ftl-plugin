@@ -10,10 +10,6 @@
 #include "Utilities/FtlTypes.h"
 #include "Utilities/Result.h"
 
-extern "C"
-{
-    #include <utils.h>
-}
 
 #include <chrono>
 #include <condition_variable>
