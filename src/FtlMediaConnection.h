@@ -82,7 +82,6 @@ private:
     static constexpr size_t              PACKET_BUFFER_SIZE             = 128;
     static constexpr size_t              MAX_PACKETS_BEFORE_NACK        = 16;
     static constexpr size_t              NACK_TIMEOUT_SEQUENCE_DELTA    = 128;
-    static constexpr uint32_t            ROLLING_SIZE_AVERAGE_MS        = 2000;
     static constexpr std::chrono::milliseconds READ_TIMEOUT{200};
 
     /* Private members */

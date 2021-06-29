@@ -46,6 +46,7 @@ public:
     ServiceConnectionKind GetServiceConnectionKind();
     std::chrono::milliseconds GetServiceConnectionMetadataReportInterval();
     uint32_t GetMaxAllowedBitsPerSecond();
+    uint32_t GetRollingSizeAvgMs();
     bool IsNackLostPacketsEnabled();
 
     // Dummy Service Connection Values
@@ -77,6 +78,7 @@ private:
     ServiceConnectionKind serviceConnectionKind = ServiceConnectionKind::DummyServiceConnection;
     std::chrono::milliseconds serviceConnectionMetadataReportInterval = std::chrono::milliseconds(4000);
     uint32_t maxAllowedBitsPerSecond = 0;
+    uint32_t rollingSizeAvgMs = 2000;
     bool nackLostPackets = false;
 
     // Dummy Service Connection Backing Stores

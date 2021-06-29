@@ -50,6 +50,7 @@ JanusFtl::JanusFtl(
     configuration = std::make_unique<Configuration>();
     configuration->Load();
     maxAllowedBitsPerSecond = configuration->GetMaxAllowedBitsPerSecond();
+    rollingSizeAvgMs = configuration->GetRollingSizeAvgMs();
     metadataReportInterval = configuration->GetServiceConnectionMetadataReportInterval();
     watchdog = std::make_unique<Watchdog>(configuration->GetServiceConnectionMetadataReportInterval());
 

@@ -30,6 +30,7 @@ FtlMediaConnection::FtlMediaConnection(
     const ftl_stream_id_t streamId,
     const ClosedCallback onClosed,
     const RtpPacketCallback onRtpPacketBytes,
+    const uint32_t rollingSizeAvgMs,
     const bool nackLostPackets)
 :
     transport(std::move(transport)),
@@ -38,6 +39,7 @@ FtlMediaConnection::FtlMediaConnection(
     streamId(streamId),
     onClosed(onClosed),
     onRtpPacketBytes(onRtpPacketBytes),
+    rollingSizeAvgMs(rollingSizeAvgMs),
     nackLostPackets(nackLostPackets),
     thread(std::jthread(std::bind(&FtlMediaConnection::threadBody, this, std::placeholders::_1)))
 {
@@ -78,7 +80,7 @@ FtlStreamStats FtlMediaConnection::GetStats()
             bytesReceived += bytesPair.second;
         }
     }
-    stats.RollingAverageBitrateBps = (bytesReceived * 8) / (ROLLING_SIZE_AVERAGE_MS / 1000.0f);
+    stats.RollingAverageBitrateBps = (bytesReceived * 8) / (rollingSizeAvgMs / 1000.0f);
 
     return stats;
 }
@@ -313,7 +315,7 @@ void FtlMediaConnection::processRtpPacketSequencing(const RtpPacket& rtpPacket,
     {
         uint32_t msDelta = 
             std::chrono::duration_cast<std::chrono::milliseconds>(steadyNow - it->first).count();
-        if (msDelta > ROLLING_SIZE_AVERAGE_MS)
+        if (msDelta > rollingSizeAvgMs)
         {
             it = data.RollingBytesReceivedByTime.erase(it);
         }
