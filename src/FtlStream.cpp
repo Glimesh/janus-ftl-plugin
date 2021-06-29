@@ -25,11 +25,13 @@ FtlStream::FtlStream(
     std::shared_ptr<FtlControlConnection> controlConnection,
     const ftl_stream_id_t streamId,
     const ClosedCallback onClosed,
+    const uint32_t rollingSizeAvgMs,
     const bool nackLostPackets)
 :
     controlConnection(std::move(controlConnection)),
     streamId(streamId),
     onClosed(onClosed),
+    rollingSizeAvgMs(rollingSizeAvgMs),
     nackLostPackets(nackLostPackets)
 {
     // Bind to FtlStream
@@ -58,6 +60,7 @@ Result<void> FtlStream::StartMediaConnection(
         GetStreamId(),
         std::bind(&FtlStream::onMediaConnectionClosed, this),
         onRtpPacket,
+        rollingSizeAvgMs,
         nackLostPackets
     );
 

@@ -41,6 +41,7 @@ public:
         std::shared_ptr<FtlControlConnection> controlConnection,
         const ftl_stream_id_t streamId,
         const ClosedCallback onClosed,
+        const uint32_t rollingSizeAvgMs,
         const bool nackLostPackets);
 
     /* Public methods */
@@ -65,6 +66,7 @@ private:
     const std::shared_ptr<FtlControlConnection> controlConnection;
     const ftl_stream_id_t streamId;
     const ClosedCallback onClosed;
+    const uint32_t rollingSizeAvgMs;
     const bool nackLostPackets;
     bool closed = false;
     std::mutex mutex;

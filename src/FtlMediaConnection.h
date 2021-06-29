@@ -47,6 +47,7 @@ public:
         const ftl_stream_id_t streamId,
         const ClosedCallback onClosed,
         const RtpPacketCallback onRtpPacket,
+        const uint32_t rollingSizeAvgMs = 2000,
         const bool nackLostPackets = true);
 
     /* Public methods */
@@ -91,6 +92,7 @@ private:
     const ftl_stream_id_t streamId;
     const ClosedCallback onClosed;
     const RtpPacketCallback onRtpPacketBytes;
+    const uint32_t rollingSizeAvgMs;
     const bool nackLostPackets;
     // Stream data
     std::shared_mutex dataMutex;

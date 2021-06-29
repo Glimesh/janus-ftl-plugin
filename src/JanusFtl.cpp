@@ -67,6 +67,7 @@ JanusFtl::JanusFtl(
             std::placeholders::_2),
         std::bind(&JanusFtl::ftlServerStreamEnded, this, std::placeholders::_1,
             std::placeholders::_2),
+        configuration->GetRollingSizeAvgMs(),
         configuration->IsNackLostPacketsEnabled());
 
     ftlServer->StartAsync();

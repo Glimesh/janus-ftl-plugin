@@ -58,6 +58,7 @@ public:
         RequestKeyCallback onRequestKey,
         StreamStartedCallback onStreamStarted,
         StreamEndedCallback onStreamEnded,
+        uint32_t rollingSizeAvgMs,
         bool nackLostPackets,
         uint16_t minMediaPort = DEFAULT_MEDIA_MIN_PORT,
         uint16_t maxMediaPort = DEFAULT_MEDIA_MAX_PORT);
@@ -212,6 +213,8 @@ private:
     // Media ports
     const uint16_t minMediaPort;
     const uint16_t maxMediaPort;
+    // Configurations
+    uint32_t rollingSizeAvgMs;
     // Feature toggles
     bool nackLostPackets;
     // Event queue
