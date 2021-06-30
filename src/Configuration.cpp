@@ -129,6 +129,12 @@ void Configuration::Load()
         maxAllowedBitsPerSecond = std::stoi(varVal);
     }
 
+    // FTL_ROLLING_SIZE_AVG_MS -> RollingSizeAvgMs
+    if (char* varVal = std::getenv("FTL_ROLLING_SIZE_AVG_MS"))
+    {
+        rollingSizeAvgMs = std::stoi(varVal);
+    }
+
     // FTL_NACK_LOST_PACKETS -> IsNackLostPacketsEnabled
     if (char* varVal = std::getenv("FTL_NACK_LOST_PACKETS"))
     {
@@ -273,6 +279,11 @@ std::chrono::milliseconds Configuration::GetServiceConnectionMetadataReportInter
 uint32_t Configuration::GetMaxAllowedBitsPerSecond()
 {
     return maxAllowedBitsPerSecond;
+}
+
+uint32_t Configuration::GetRollingSizeAvgMs()
+{
+    return rollingSizeAvgMs;
 }
 
 bool Configuration::IsNackLostPacketsEnabled()

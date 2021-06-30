@@ -100,6 +100,7 @@ private:
     std::shared_ptr<ServiceConnection> serviceConnection;
     std::unordered_map<VideoCodecKind, std::unique_ptr<VideoDecoder>> videoDecoders;
     uint32_t maxAllowedBitsPerSecond = 0;
+    uint32_t rollingSizeAvgMs = 2000;
     std::chrono::milliseconds metadataReportInterval = std::chrono::milliseconds::min();
     std::atomic<bool> isStopping = false;
     std::thread serviceReportThread;

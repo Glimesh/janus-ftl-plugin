@@ -50,6 +50,7 @@ JanusFtl::JanusFtl(
     configuration = std::make_unique<Configuration>();
     configuration->Load();
     maxAllowedBitsPerSecond = configuration->GetMaxAllowedBitsPerSecond();
+    rollingSizeAvgMs = configuration->GetRollingSizeAvgMs();
     metadataReportInterval = configuration->GetServiceConnectionMetadataReportInterval();
     watchdog = std::make_unique<Watchdog>(configuration->GetServiceConnectionMetadataReportInterval());
 
@@ -66,6 +67,7 @@ JanusFtl::JanusFtl(
             std::placeholders::_2),
         std::bind(&JanusFtl::ftlServerStreamEnded, this, std::placeholders::_1,
             std::placeholders::_2),
+        configuration->GetRollingSizeAvgMs(),
         configuration->IsNackLostPacketsEnabled());
 
     ftlServer->StartAsync();
