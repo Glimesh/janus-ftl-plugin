@@ -337,13 +337,13 @@ JsonPtr GlimeshServiceConnection::runGraphQlQuery(
         // If we're doing files, use a multipart http request
         if (fileData.size() > 0)
         {
-            httplib::Result response = httpClient->Post("/api", fileData);
+            httplib::Result response = httpClient->Post("/api/graph", fileData);
             result = processGraphQlResponse(response);
         }
         // otherwise, stick with post body
         else
         {
-            httplib::Result response = httpClient->Post("/api", queryString, "application/json");
+            httplib::Result response = httpClient->Post("/api/graph", queryString, "application/json");
             result = processGraphQlResponse(response);
         }
 
