@@ -21,7 +21,7 @@ JanusStream::JanusStream(
 #pragma region Public methods
 void JanusStream::SendRtpPacket(const RtpPacket& packet)
 {
-    std::lock_guard lock(mutex);
+    std::scoped_lock lock(mutex);
 
     for (const auto& session : viewerSessions)
     {
@@ -36,19 +36,19 @@ void JanusStream::SendRtpPacket(const RtpPacket& packet)
 
 void JanusStream::AddViewerSession(JanusSession* session)
 {
-    std::lock_guard lock(mutex);
+    std::scoped_lock lock(mutex);
     viewerSessions.insert(session);
 }
 
 size_t JanusStream::RemoveViewerSession(JanusSession* session)
 {
-    std::lock_guard lock(mutex);
+    std::scoped_lock lock(mutex);
     return viewerSessions.erase(session);
 }
 
 std::unordered_set<JanusSession*> JanusStream::RemoveAllViewerSessions()
 {
-    std::lock_guard lock(mutex);
+    std::scoped_lock lock(mutex);
     std::unordered_set<JanusSession*> removedSessions;
     viewerSessions.swap(removedSessions);
     return removedSessions;
@@ -56,14 +56,14 @@ std::unordered_set<JanusSession*> JanusStream::RemoveAllViewerSessions()
 
 size_t JanusStream::GetViewerCount() const
 {
-    std::lock_guard lock(mutex);
+    std::scoped_lock lock(mutex);
     return viewerSessions.size();
 }
 
 void JanusStream::AddRelayClient(const std::string targetHostname,
     std::unique_ptr<FtlClient> client)
 {
-    std::lock_guard lock(mutex);
+    std::scoped_lock lock(mutex);
     relays.push_back(Relay { .TargetHostname = targetHostname, .Client = std::move(client) });
 }
 
@@ -71,7 +71,7 @@ size_t JanusStream::StopRelay(const std::string& targetHostname)
 {
     std::list<Relay> removedRelays;
     {
-        std::lock_guard lock(mutex);
+        std::scoped_lock lock(mutex);
         for (auto it = relays.begin();
             it != relays.end();)
         {
@@ -99,7 +99,7 @@ void JanusStream::StopRelays()
 {
     std::list<Relay> removedRelays;
     {
-        std::lock_guard lock(mutex);
+        std::scoped_lock lock(mutex);
         relays.swap(removedRelays);
     }
     for (const auto& relay : removedRelays)
