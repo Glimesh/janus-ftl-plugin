@@ -11,6 +11,7 @@
 #pragma once
 
 #include "FtlStream.h"
+#include "Rtp/RtpPacket.h"
 #include "Utilities/FtlTypes.h"
 
 #include <vector>
@@ -27,7 +28,7 @@ public:
     JanusSession(janus_plugin_session* handle, janus_callbacks* janusCore);
 
     /* Public methods */
-    void SendRtpPacket(const std::vector<std::byte>& packet, const MediaMetadata& mediaMetadata);
+    void SendRtpPacket(const RtpPacket& packet, const MediaMetadata& mediaMetadata);
     void ResetRtpSwitchingContext();
     
     /* Getters/setters */

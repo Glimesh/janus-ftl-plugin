@@ -19,7 +19,7 @@ JanusStream::JanusStream(
 #pragma endregion
 
 #pragma region Public methods
-void JanusStream::SendRtpPacket(const std::vector<std::byte>& packet)
+void JanusStream::SendRtpPacket(const RtpPacket& packet)
 {
     std::lock_guard lock(mutex);
 

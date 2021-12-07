@@ -26,26 +26,25 @@ JanusSession::JanusSession(janus_plugin_session* handle, janus_callbacks* janusC
 #pragma endregion
 
 #pragma region Public methods
-void JanusSession::SendRtpPacket(const std::vector<std::byte>& packet,
-    const MediaMetadata& mediaMetadata)
+void JanusSession::SendRtpPacket(const RtpPacket& packet, const MediaMetadata& mediaMetadata)
 {
     if (!isStarted)
     {
         return;
     }
+
+    bool isVideoPacket = packet.Header()->Type == mediaMetadata.VideoPayloadType;
     
     // Sadly, we can't avoid a copy here because the janus_plugin_rtp struct doesn't take a
     // const buffer. So allocate some storage to copy.
     std::byte packetBuffer[2048] { std::byte(0) };
-    std::copy(packet.begin(), packet.end(), packetBuffer);
+    std::copy(packet.Bytes.begin(), packet.Bytes.end(), packetBuffer);
 
-    const janus_rtp_header* rtpHeader = reinterpret_cast<janus_rtp_header*>(&packetBuffer[0]);
-    bool isVideoPacket = (rtpHeader->type == mediaMetadata.VideoPayloadType);
     janus_plugin_rtp janusRtp = 
     {
         .video = isVideoPacket,
         .buffer = reinterpret_cast<char*>(&packetBuffer[0]),
-        .length = static_cast<uint16_t>(packet.size())
+        .length = static_cast<uint16_t>(packet.Bytes.size())
     };
     janus_plugin_rtp_extensions_reset(&janusRtp.extensions);
     if (handle->gateway_handle != nullptr)

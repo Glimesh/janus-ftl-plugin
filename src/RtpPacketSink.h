@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include <vector>
+#include "Rtp/RtpPacket.h"
 
 class RtpPacketSink
 {
@@ -15,5 +15,5 @@ public:
     virtual ~RtpPacketSink() {};
 
     /* Public methods */
-    virtual void SendRtpPacket(const std::vector<std::byte>& packet) = 0;
+    virtual void SendRtpPacket(const RtpPacket& packet) = 0;
 };
