@@ -881,7 +881,8 @@ std::string JanusFtl::generateSdpOffer(const ActiveSession& session, const Janus
             "a=rtcp-fb:" << videoPayloadType << " nack pli\r\n" <<        // Send us picture-loss-indicators
             // "a=rtcp-fb:96 nack goog-remb\r\n" <<  // Send some congestion indicator thing
             "a=sendonly\r\n" <<
-            "a=extmap:1 urn:ietf:params:rtp-hdrext:sdes:mid\r\n";
+            "a=extmap:1 urn:ietf:params:rtp-hdrext:sdes:mid\r\n" <<
+            "a=extmap:6 http://www.webrtc.org/experiments/rtp-hdrext/playout-delay\r\n";
     }
     return offerStream.str();
 }

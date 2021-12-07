@@ -9,6 +9,7 @@
  */
 
 #include "JanusSession.h"
+#include "Rtp/JanusRtpPacketBuilder.h"
 
 extern "C"
 {
@@ -28,29 +29,21 @@ JanusSession::JanusSession(janus_plugin_session* handle, janus_callbacks* janusC
 #pragma region Public methods
 void JanusSession::SendRtpPacket(const RtpPacket& packet, const MediaMetadata& mediaMetadata)
 {
-    if (!isStarted)
+    if (!isStarted || handle->gateway_handle == nullptr)
     {
         return;
     }
 
-    bool isVideoPacket = packet.Header()->Type == mediaMetadata.VideoPayloadType;
-    
-    // Sadly, we can't avoid a copy here because the janus_plugin_rtp struct doesn't take a
-    // const buffer. So allocate some storage to copy.
-    std::byte packetBuffer[2048] { std::byte(0) };
-    std::copy(packet.Bytes.begin(), packet.Bytes.end(), packetBuffer);
+    auto builder = JanusRtpPacketBuilder(packet.Bytes);
 
-    janus_plugin_rtp janusRtp = 
-    {
-        .video = isVideoPacket,
-        .buffer = reinterpret_cast<char*>(&packetBuffer[0]),
-        .length = static_cast<uint16_t>(packet.Bytes.size())
-    };
-    janus_plugin_rtp_extensions_reset(&janusRtp.extensions);
-    if (handle->gateway_handle != nullptr)
-    {
-        janusCore->relay_rtp(handle, &janusRtp);
-    }
+    #if defined(JANUS_PLAYOUT_DELAY_SUPPORT)
+    // TODO don't add extension to every packet, that wastes bytes and not every viewer needs it
+    builder.PlayoutDelay(20, 1000);
+    #endif
+
+    janus_plugin_rtp janusRtp = builder.Build(mediaMetadata.VideoPayloadType);
+
+    janusCore->relay_rtp(handle, &janusRtp);
 }
 #pragma endregion
 

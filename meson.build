@@ -31,6 +31,7 @@ sources = files([
     'src/VideoDecoders/H264VideoDecoder.cpp',
     # RTP Utilities
     'src/Rtp/ExtendedSequenceCounter.cpp',
+    'src/Rtp/JanusRtpPacketBuilder.cpp',
     'src/Rtp/RtpPacket.cpp',
     # Service Connections
     'src/ServiceConnections/DummyServiceConnection.cpp',
@@ -67,6 +68,10 @@ catch2_wrap = subproject('catch2')
 systemd_dep = dependency('libsystemd', required : get_option('systemd_watchdog_support'))
 if systemd_dep.found()
   add_project_arguments('-DSYSTEMD_WATCHDOG_SUPPORT', language: 'cpp') 
+endif
+
+if get_option('janus_playout_delay_support')
+    add_project_arguments('-DJANUS_PLAYOUT_DELAY_SUPPORT', language: 'cpp')
 endif
 
 deps = [
