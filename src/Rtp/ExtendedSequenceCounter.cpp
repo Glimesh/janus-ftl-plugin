@@ -54,7 +54,7 @@ bool ExtendedSequenceCounter::UpdateState(rtp_sequence_num_t seq)
         * have been received as long it is sequential to all packets received so far.
         */ 
         return true;
-    } else if (udelta < MAX_DROPOUT) {
+    } else if (udelta <= MAX_DROPOUT) {
         /* in order, with permissible gap */
         if (seq < maxSeq) {
             /*
