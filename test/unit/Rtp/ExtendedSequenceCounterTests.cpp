@@ -17,13 +17,12 @@ void extend(
     rtp_extended_sequence_num_t expectedExtendedSeq,
     bool expectValid = true)
 {
-    rtp_extended_sequence_num_t extendedSeq;
-    bool valid = counter.Extend(seq, &extendedSeq);
+    auto result = counter.Extend(seq);
 
-    INFO("extend - seq:" << seq << " extended:" << extendedSeq << " valid:" << valid);
+    INFO("extend - seq:" << seq << " extended:" << result.extendedSeq << " valid:" << result.valid);
     INFO("" << counter);
-    REQUIRE(extendedSeq == expectedExtendedSeq);
-    CHECK(valid == expectValid);
+    REQUIRE(result.extendedSeq == expectedExtendedSeq);
+    CHECK(result.valid == expectValid);
 }
 
 TEST_CASE("Sequence from zero is valid")

@@ -9,19 +9,21 @@
 
 #include "ExtendedSequenceCounter.h"
 
-bool ExtendedSequenceCounter::Extend(rtp_sequence_num_t seq, rtp_extended_sequence_num_t *extendedSeq)
-{
-    bool valid = UpdateState(seq);
-    *extendedSeq = cycles | seq;
-    return valid;
-}
-
-bool ExtendedSequenceCounter::UpdateState(rtp_sequence_num_t seq)
+ExtendedSequenceCounter::ExtendResult ExtendedSequenceCounter::Extend(rtp_sequence_num_t seq)
 {
     if (!initialized)
     {
-        Initialize(seq);
-        return true;
+        Reset(seq);
+        initialized = true;
+        /*
+         * Unlike RFC 3550, we consider a packet valid even if less than MIN_SEQUENTIAL
+         * have been received as long it is sequential to all packets received so far.
+         */
+        return ExtendResult{
+            .extendedSeq = cycles | seq,
+            .valid = true,
+            .reset = true,
+        };
     }
 
     uint16_t udelta = seq - maxSeq;
@@ -41,7 +43,11 @@ bool ExtendedSequenceCounter::UpdateState(rtp_sequence_num_t seq)
             {
                 Reset(seq);
                 received++;
-                return true;
+                return ExtendResult{
+                    .extendedSeq = cycles | seq,
+                    .valid = true,
+                    .reset = true,
+                };
             }
         }
         else
@@ -49,11 +55,11 @@ bool ExtendedSequenceCounter::UpdateState(rtp_sequence_num_t seq)
             probation = MIN_SEQUENTIAL - 1;
             maxSeq = seq;
         }
-        /*
-         * Unlike RFC 3550, we consider a packet valid even if less than MIN_SEQUENTIAL
-         * have been received as long it is sequential to all packets received so far.
-         */
-        return true;
+        return ExtendResult{
+            .extendedSeq = cycles | seq,
+            .valid = true,
+            .reset = false,
+        };
     }
     /* 
      * Allow small jumps due to lost packets. We allow up to and including for simpler
@@ -70,6 +76,12 @@ bool ExtendedSequenceCounter::UpdateState(rtp_sequence_num_t seq)
             cycles += RTP_SEQ_MOD;
         }
         maxSeq = seq;
+        received++;
+        return ExtendResult{
+            .extendedSeq = cycles | seq,
+            .valid = true,
+            .reset = false,
+        };
     }
     else if (udelta <= RTP_SEQ_MOD - MAX_MISORDER)
     {
@@ -82,26 +94,52 @@ bool ExtendedSequenceCounter::UpdateState(rtp_sequence_num_t seq)
              * (i.e., pretend this was the first packet).
              */
             Reset(seq);
+            received++;
+            return ExtendResult{
+                .extendedSeq = cycles | seq,
+                .valid = false,
+                .reset = true,
+            };
         }
         else
         {
             badSeq = (seq + 1) & (RTP_SEQ_MOD - 1);
-            return false;
+            return ExtendResult{
+                .extendedSeq = cycles | seq,
+                .valid = false,
+                .reset = false,
+            };
         }
     }
     else
     {
         /* duplicate or reordered packet */
+        received++;
+        return ExtendResult{
+            .extendedSeq = cycles | seq,
+            .valid = true,
+            .reset = false,
+        };
     }
-    received++;
-    return true;
 }
 
+/**
+ * Per RFC 3550:
+ * When a new source is heard for the first time, that is, its SSRC
+ * identifier is not in the table (see Section 8.2), and the per-source
+ * state is allocated for it, s->probation is set to the number of
+ * sequential packets required before declaring a source valid
+ * (parameter MIN_SEQUENTIAL) and other variables are initialized:
+ * 
+ *    init_seq(s, seq);
+ *    s->max_seq = seq - 1;
+ *    s->probation = MIN_SEQUENTIAL;
+ */
 void ExtendedSequenceCounter::Initialize(rtp_sequence_num_t seq)
 {
     Reset(seq);
     baseSeq = seq;
-    maxSeq = seq;
+    maxSeq = seq - 1;
     initialized = true;
 }
 

@@ -270,13 +270,13 @@ std::optional<RtpPacket> FtlMediaConnection::parseMediaPacket(
         return std::nullopt;
     }
 
-    rtp_extended_sequence_num_t extendedSeqNum;
-    if (!data.SequenceCounter.Extend(seqNum, &extendedSeqNum))
+    auto extendResult = data.SequenceCounter.Extend(seqNum);
+    if (!extendResult.valid)
     {
-        spdlog::trace("Invalid RTP sequence number {} for ssrc {}, extended to {}",
-            seqNum, ssrc, extendedSeqNum);
+        spdlog::trace("Invalid RTP sequence {} for ssrc {}, extended to {}",
+            seqNum, ssrc, extendResult.extendedSeq);
     }
-    return RtpPacket(packetBytes, extendedSeqNum);
+    return RtpPacket(packetBytes, extendResult.extendedSeq);
 }
 
 void FtlMediaConnection::processRtpPacketSequencing(const RtpPacket& rtpPacket,

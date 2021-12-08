@@ -21,7 +21,13 @@ typedef uint64_t rtp_extended_sequence_num_t;
 class ExtendedSequenceCounter
 {
 public:
-    bool Extend(rtp_sequence_num_t seq, rtp_extended_sequence_num_t* extendedSeq);
+    struct ExtendResult {
+        rtp_extended_sequence_num_t extendedSeq;
+        bool valid;
+        bool reset;
+    };
+
+    ExtendResult Extend(rtp_sequence_num_t seq);
 
     friend std::ostream& operator<<(std::ostream & out, const ExtendedSequenceCounter& point);
     
@@ -29,9 +35,9 @@ public:
     static const rtp_sequence_num_t MAX_MISORDER = 100;
     static const rtp_sequence_num_t MIN_SEQUENTIAL = 2;
 private:
-    rtp_sequence_num_t maxSeq;
+    rtp_sequence_num_t maxSeq = 0;
     uint32_t cycles = 0;
-    uint32_t baseSeq;
+    uint32_t baseSeq = 0;
     uint32_t badSeq = RTP_SEQ_MOD + 1;
     uint32_t probation = MIN_SEQUENTIAL;
     uint32_t received = 0;
@@ -39,7 +45,6 @@ private:
     uint32_t expectedPrior = 0;
     bool initialized = false;
 
-    bool UpdateState(rtp_sequence_num_t seq);
     void Initialize(rtp_sequence_num_t seq);
     void Reset(rtp_sequence_num_t seq);
 };
