@@ -37,12 +37,12 @@ public:
     /**
      * @brief Range of expected delay between server capturing a frame and clients receiving it.
      * 
-     * Experimental extension to RTP only implemented for Chrome. Can be used to suggest client
-     * should delay rendering a frame a consistent amount. This may help combat jitter issues by
-     * setting a higher delay for network jitter than the client would normally decide on.
-     * 
-     * In theory the client should determine a delay for network jitter, but that amount is highly
-     * dynamic and can be wrong. These values can be used to suggest a consistent delay.
+     * Sent to clients via an experimental RTP extension only implemented for Chrome. Can be used to
+     * suggest client should delay rendering a frame. In theory the client should determine an
+     * appropriate delay to account for network jitter and rendering time. We have seen Chrome be
+     * wrong when choosing a delay however, so these values can be used to suggest a longer delay.
+     * This can also help with consistency, every client will attempt to stay within the range of
+     * delay specified here.
      * 
      * Useful values range from 0 to 10,000 milliseconds (rounded to a granularity of 10ms).
      * 
