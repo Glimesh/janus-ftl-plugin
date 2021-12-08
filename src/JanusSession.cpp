@@ -18,11 +18,12 @@ extern "C"
 }
 
 #pragma region Constructor/Destructor
-JanusSession::JanusSession(janus_plugin_session* handle, janus_callbacks* janusCore) : 
+JanusSession::JanusSession(janus_plugin_session* handle, janus_callbacks* janusCore, std::optional<Configuration::PlayoutDelay> playoutDelay) : 
     handle(handle),
     janusCore(janusCore),
     sdpSessionId(janus_get_real_time()),
-    sdpVersion(1)
+    sdpVersion(1),
+    playoutDelay(playoutDelay)
 { }
 #pragma endregion
 
@@ -37,8 +38,10 @@ void JanusSession::SendRtpPacket(const RtpPacket& packet, const MediaMetadata& m
     auto builder = JanusRtpPacketBuilder(packet.Bytes);
 
     #if defined(JANUS_PLAYOUT_DELAY_SUPPORT)
-    // TODO don't add extension to every packet, that wastes bytes and not every viewer needs it
-    builder.PlayoutDelay(20, 1000);
+    if (playoutDelay) {
+        // TODO don't add extension to every packet, that wastes bytes and not every viewer needs it
+        builder.PlayoutDelay(playoutDelay->MinDelay(), playoutDelay->MaxDelay());
+    }
     #endif
 
     janus_plugin_rtp janusRtp = builder.Build(mediaMetadata.VideoPayloadType);

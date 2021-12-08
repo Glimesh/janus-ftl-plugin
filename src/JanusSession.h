@@ -10,6 +10,7 @@
 
 #pragma once
 
+#include "Configuration.h"
 #include "FtlStream.h"
 #include "Rtp/RtpPacket.h"
 #include "Utilities/FtlTypes.h"
@@ -25,7 +26,7 @@ class JanusSession
 {
 public:
     /* Constructor/Destructor */
-    JanusSession(janus_plugin_session* handle, janus_callbacks* janusCore);
+    JanusSession(janus_plugin_session* handle, janus_callbacks* janusCore, std::optional<Configuration::PlayoutDelay> playoutDelay);
 
     /* Public methods */
     void SendRtpPacket(const RtpPacket& packet, const MediaMetadata& mediaMetadata);
@@ -45,4 +46,5 @@ private:
     janus_callbacks* janusCore;
     int64_t sdpSessionId;
     int64_t sdpVersion;
+    std::optional<Configuration::PlayoutDelay> playoutDelay;
 };

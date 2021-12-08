@@ -50,10 +50,20 @@ public:
      */
     struct PlayoutDelay
     {
+public:
+        PlayoutDelay(uint16_t min_ms, uint16_t max_ms);
+
+        /* Public methods */
+        uint16_t MinDelay() {
+            return min;
+        }
+        uint16_t MaxDelay() {
+            return max;
+        }
+
+private:
         uint16_t min;
         uint16_t max;
-
-        PlayoutDelay(uint16_t min_ms, uint16_t max_ms);
     };
 
     /* Public methods */

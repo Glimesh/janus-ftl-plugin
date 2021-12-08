@@ -54,6 +54,7 @@ JanusFtl::JanusFtl(
     rollingSizeAvgMs = configuration->GetRollingSizeAvgMs();
     metadataReportInterval = configuration->GetServiceConnectionMetadataReportInterval();
     watchdog = std::make_unique<Watchdog>(configuration->GetServiceConnectionMetadataReportInterval());
+    playoutDelay = configuration->GetPlayoutDelay();
 
     initVideoDecoders();
 
@@ -97,7 +98,7 @@ JanusFtl::~JanusFtl()
 void JanusFtl::CreateSession(janus_plugin_session* handle, int* error)
 {
     std::unique_lock lock(streamDataMutex);
-    auto session = std::make_unique<JanusSession>(handle, janusCore);
+    auto session = std::make_unique<JanusSession>(handle, janusCore, playoutDelay);
     handle->plugin_handle = session.get();
     sessions[handle] = ActiveSession
     {
