@@ -24,11 +24,11 @@ public:
     bool Extend(rtp_sequence_num_t seq, rtp_extended_sequence_num_t* extendedSeq);
 
     friend std::ostream& operator<<(std::ostream & out, const ExtendedSequenceCounter& point);
+    
+    static const rtp_sequence_num_t MAX_DROPOUT = 3000;
+    static const rtp_sequence_num_t MAX_MISORDER = 100;
+    static const rtp_sequence_num_t MIN_SEQUENTIAL = 2;
 private:
-    const int MAX_DROPOUT = 3000;
-    const int MAX_MISORDER = 100;
-    const int MIN_SEQUENTIAL = 2;
-
     rtp_sequence_num_t maxSeq;
     uint32_t cycles = 0;
     uint32_t baseSeq;
