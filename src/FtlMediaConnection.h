@@ -105,14 +105,17 @@ private:
     /* Private methods */
     void threadBody(std::stop_token stopToken);
     void onBytesReceived(const std::vector<std::byte> &bytes);
-    // Packet processing
-    std::set<rtp_extended_sequence_num_t> insertPacketInSequenceOrder(
-        std::list<RtpPacket> &packetList,
-        const RtpPacket &rtpPacket);
+
+    // Packet handling
     void handleRtpPacket(const std::vector<std::byte> &packetBytes);
     void handleMediaPacket(const std::vector<std::byte> &packetBytes);
     void handlePing(const std::vector<std::byte> &packetBytes);
     void handleSenderReport(const std::vector<std::byte> &packetBytes);
+
+    // Helpers for handling media packets
+    void updateMediaPacketStats(
+        const RtpPacket &packet,
+        SsrcData &data);
     void processRtpPacketSequencing(
         const RtpPacket &packet,
         SsrcData &data);
@@ -137,4 +140,7 @@ private:
     void processAudioVideoRtpPacket(
         const RtpPacket &rtpPacket,
         SsrcData &data);
+    std::set<rtp_extended_sequence_num_t> insertPacketInSequenceOrder(
+        std::list<RtpPacket> &packetList,
+        const RtpPacket &rtpPacket);
 };

@@ -64,7 +64,7 @@ FtlStreamStats FtlMediaConnection::GetStats()
 {
     std::shared_lock lock(dataMutex);
     FtlStreamStats stats{0};
-    uint32_t bytesReceived = 0;
+    uint32_t rollingBytesReceived = 0;
     stats.StartTime = startTime;
     stats.DurationSeconds = std::chrono::duration_cast<std::chrono::seconds>(
                                 std::chrono::steady_clock::now() - steadyStartTime)
@@ -77,10 +77,10 @@ FtlStreamStats FtlMediaConnection::GetStats()
         stats.PacketsLost += data.PacketsLost;
         for (const auto &bytesPair : dataPair.second.RollingBytesReceivedByTime)
         {
-            bytesReceived += bytesPair.second;
+            rollingBytesReceived += bytesPair.second;
         }
     }
-    stats.RollingAverageBitrateBps = (bytesReceived * 8) / (rollingSizeAvgMs / 1000.0f);
+    stats.RollingAverageBitrateBps = (rollingBytesReceived * 8) / (rollingSizeAvgMs / 1000.0f);
 
     return stats;
 }
@@ -259,7 +259,7 @@ void FtlMediaConnection::handleMediaPacket(const std::vector<std::byte> &packetB
     // We should ignore these until we see our first video packet show up.
     if ((ssrc == mediaMetadata.AudioSsrc) &&
         (ssrcData.count(mediaMetadata.VideoSsrc) > 0) &&
-        (ssrcData.at(mediaMetadata.VideoSsrc).CircularPacketBuffer.size() <= 0))
+        (ssrcData.at(mediaMetadata.VideoSsrc).PacketsReceived <= 0))
     {
         return;
     }
@@ -267,8 +267,8 @@ void FtlMediaConnection::handleMediaPacket(const std::vector<std::byte> &packetB
     auto extendResult = data.SequenceCounter.Extend(seqNum);
     if (!extendResult.valid)
     {
-        spdlog::trace("Invalid RTP sequence {} for ssrc {}, extended to {}",
-                      seqNum, ssrc, extendResult.extendedSeq);
+        spdlog::trace("Source {} is not valid, but using RTP packet anyways (seq {} (extended to {})",
+                      ssrc, seqNum, extendResult.extendedSeq);
     }
     if (extendResult.reset)
     {
@@ -277,18 +277,22 @@ void FtlMediaConnection::handleMediaPacket(const std::vector<std::byte> &packetB
     }
     auto packet = RtpPacket(packetBytes, extendResult.extendedSeq);
 
-    processRtpPacketSequencing(packet, data);
+    updateMediaPacketStats(packet, data);
+
+
+    // Keep the sending of NACKs behind a feature toggle for now
+    // https://github.com/Glimesh/janus-ftl-plugin/issues/95
+    if (nackLostPackets)
+    {
+        processRtpPacketSequencing(packet, data);
+    }
     processAudioVideoRtpPacket(packet, data);
 }
 
-void FtlMediaConnection::processRtpPacketSequencing(
+void FtlMediaConnection::updateMediaPacketStats(
     const RtpPacket &packet,
     SsrcData &data)
 {
-    // If this sequence is marked as missing anywhere, un-mark it.
-    data.NackQueue.erase(packet.ExtendedSequenceNum);
-    data.NackedSequences.erase(packet.ExtendedSequenceNum);
-
     // Tally up the size of the packet
     data.PacketsReceived++;
     std::chrono::time_point<std::chrono::steady_clock> steadyNow = std::chrono::steady_clock::now();
@@ -316,6 +320,15 @@ void FtlMediaConnection::processRtpPacketSequencing(
             break;
         }
     }
+}
+
+void FtlMediaConnection::processRtpPacketSequencing(
+    const RtpPacket &packet,
+    SsrcData &data)
+{
+    // If this sequence is marked as missing anywhere, un-mark it.
+    data.NackQueue.erase(packet.ExtendedSequenceNum);
+    data.NackedSequences.erase(packet.ExtendedSequenceNum);
 
     // Insert the packet into the buffer in sequence number order
     std::set<rtp_extended_sequence_num_t> missingSequences =
@@ -327,13 +340,8 @@ void FtlMediaConnection::processRtpPacketSequencing(
         data.CircularPacketBuffer.pop_front();
     }
 
-    // Keep the sending of NACKs behind a feature toggle for now
-    // https://github.com/Glimesh/janus-ftl-plugin/issues/95
-    if (nackLostPackets)
-    {
-        updateNackQueue(packet.ExtendedSequenceNum, missingSequences, data);
-        processNacks(packet.Header()->Ssrc, data);
-    }
+    updateNackQueue(packet.ExtendedSequenceNum, missingSequences, data);
+    processNacks(packet.Header()->Ssrc, data);
 }
 
 void FtlMediaConnection::processRtpPacketKeyframe(const RtpPacket &rtpPacket, SsrcData &data)
