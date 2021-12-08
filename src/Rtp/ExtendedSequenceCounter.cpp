@@ -88,7 +88,7 @@ void ExtendedSequenceCounter::Initialize(rtp_sequence_num_t seq)
 {
     Reset(seq);
     baseSeq = seq;
-    maxSeq = seq - 1;
+    maxSeq = seq;
     initialized = true;
 }
 
