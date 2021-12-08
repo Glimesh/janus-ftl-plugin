@@ -116,7 +116,7 @@ private:
     void updateMediaPacketStats(
         const RtpPacket &packet,
         SsrcData &data);
-    void processRtpPacketSequencing(
+    void processNacks(
         const RtpPacket &packet,
         SsrcData &data);
     void captureVideoKeyframe(
@@ -125,12 +125,12 @@ private:
     void captureH264VideoKeyframe(
         const RtpPacket &rtpPacket,
         SsrcData &data);
+    void sendQueuedNacks(
+        const rtp_ssrc_t ssrc,
+        SsrcData &data);
     void updateNackQueue(
         const rtp_extended_sequence_num_t extendedSeqNum,
         const std::set<rtp_extended_sequence_num_t> &missingSequences,
-        SsrcData &data);
-    void processNacks(
-        const rtp_ssrc_t ssrc,
         SsrcData &data);
     void sendNack(
         const rtp_ssrc_t ssrc,

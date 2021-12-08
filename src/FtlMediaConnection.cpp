@@ -170,6 +170,7 @@ std::set<rtp_extended_sequence_num_t> FtlMediaConnection::insertPacketInSequence
         const RtpPacket &cachedPacket = *it;
         const auto cachedSeqNum = cachedPacket.ExtendedSequenceNum;
 
+        // Have we found our insertion point in the sorted packet list?
         if (seqNum > cachedSeqNum)
         {
             // If there are any gaps between the sequence numbers, mark them as missing.
@@ -283,7 +284,7 @@ void FtlMediaConnection::handleMediaPacket(const std::vector<std::byte> &packetB
     // https://github.com/Glimesh/janus-ftl-plugin/issues/95
     if (nackLostPackets)
     {
-        processRtpPacketSequencing(packet, data);
+        processNacks(packet, data);
     }
 
     captureVideoKeyframe(packet, data);
@@ -327,7 +328,7 @@ void FtlMediaConnection::updateMediaPacketStats(
     }
 }
 
-void FtlMediaConnection::processRtpPacketSequencing(
+void FtlMediaConnection::processNacks(
     const RtpPacket &packet,
     SsrcData &data)
 {
@@ -346,7 +347,7 @@ void FtlMediaConnection::processRtpPacketSequencing(
     }
 
     updateNackQueue(packet.ExtendedSequenceNum, missingSequences, data);
-    processNacks(packet.Header()->Ssrc, data);
+    sendQueuedNacks(packet.Header()->Ssrc, data);
 }
 
 void FtlMediaConnection::captureVideoKeyframe(const RtpPacket &rtpPacket, SsrcData &data)
@@ -436,6 +437,8 @@ void FtlMediaConnection::updateNackQueue(
     SsrcData &data)
 {
     rtp_extended_sequence_num_t lastSequence = data.CircularPacketBuffer.back().ExtendedSequenceNum;
+    
+    // 
     if (missingSequences.size() == 0)
     {
         data.PacketsSinceLastMissedSequence++;
@@ -465,14 +468,8 @@ void FtlMediaConnection::updateNackQueue(
                       missingPacketCount, extendedSeqNum);
         data.PacketsSinceLastMissedSequence = 0;
     }
-}
 
-void FtlMediaConnection::processNacks(
-    const rtp_ssrc_t ssrc,
-    SsrcData &data)
-{
-    rtp_extended_sequence_num_t lastSequence = data.CircularPacketBuffer.back().ExtendedSequenceNum;
-
+    
     // First, toss any old NACK'd packets that we haven't received and mark them lost.
     for (auto it = data.NackedSequences.begin(); it != data.NackedSequences.end();)
     {
@@ -488,6 +485,12 @@ void FtlMediaConnection::processNacks(
         }
     }
 
+}
+
+void FtlMediaConnection::sendQueuedNacks(
+    const rtp_ssrc_t ssrc,
+    SsrcData &data)
+{
     // If enough packets have been marked as missing, or enough time has passed, send NACKs
     if ((data.NackQueue.size() >= MAX_PACKETS_BEFORE_NACK) ||
         ((data.NackQueue.size() > 0) &&
