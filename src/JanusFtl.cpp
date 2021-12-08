@@ -46,6 +46,7 @@ JanusFtl::JanusFtl(
 #else
     spdlog::set_level(spdlog::level::info);
 #endif
+    spdlog::flush_on(spdlog::level::err);
 
     configuration = std::make_unique<Configuration>();
     configuration->Load();
