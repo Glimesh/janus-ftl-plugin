@@ -279,14 +279,19 @@ void FtlMediaConnection::handleMediaPacket(const std::vector<std::byte> &packetB
 
     updateMediaPacketStats(packet, data);
 
-
     // Keep the sending of NACKs behind a feature toggle for now
     // https://github.com/Glimesh/janus-ftl-plugin/issues/95
     if (nackLostPackets)
     {
         processRtpPacketSequencing(packet, data);
     }
-    processAudioVideoRtpPacket(packet, data);
+
+    captureVideoKeyframe(packet, data);
+
+    if (onRtpPacketBytes)
+    {
+        onRtpPacketBytes(packetBytes);
+    }
 }
 
 void FtlMediaConnection::updateMediaPacketStats(
@@ -344,7 +349,7 @@ void FtlMediaConnection::processRtpPacketSequencing(
     processNacks(packet.Header()->Ssrc, data);
 }
 
-void FtlMediaConnection::processRtpPacketKeyframe(const RtpPacket &rtpPacket, SsrcData &data)
+void FtlMediaConnection::captureVideoKeyframe(const RtpPacket &rtpPacket, SsrcData &data)
 {
     const RtpHeader *rtpHeader = rtpPacket.Header();
     // Is this a video packet?
@@ -353,7 +358,7 @@ void FtlMediaConnection::processRtpPacketKeyframe(const RtpPacket &rtpPacket, Ss
         switch (mediaMetadata.VideoCodec)
         {
         case VideoCodecKind::H264:
-            processRtpH264PacketKeyframe(rtpPacket, data);
+            captureH264VideoKeyframe(rtpPacket, data);
             break;
         case VideoCodecKind::Unsupported:
         default:
@@ -363,7 +368,7 @@ void FtlMediaConnection::processRtpPacketKeyframe(const RtpPacket &rtpPacket, Ss
     }
 }
 
-void FtlMediaConnection::processRtpH264PacketKeyframe(const RtpPacket &rtpPacket, SsrcData &data)
+void FtlMediaConnection::captureH264VideoKeyframe(const RtpPacket &rtpPacket, SsrcData &data)
 {
     // Is this packet part of a keyframe?
     std::span<const std::byte> packetPayload = rtpPacket.Payload();
@@ -554,18 +559,6 @@ void FtlMediaConnection::sendNack(
     spdlog::debug(
         "SENT {}",
         spdlog::to_hex(nackBytes.begin(), nackBytes.end()));
-}
-
-void FtlMediaConnection::processAudioVideoRtpPacket(
-    const RtpPacket &rtpPacket,
-    SsrcData &data)
-{
-    processRtpPacketKeyframe(rtpPacket, data);
-
-    if (onRtpPacketBytes)
-    {
-        onRtpPacketBytes(rtpPacket.Bytes);
-    }
 }
 
 void FtlMediaConnection::handlePing(const std::vector<std::byte> &packetBytes)

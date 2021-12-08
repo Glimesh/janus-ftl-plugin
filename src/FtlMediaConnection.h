@@ -119,10 +119,10 @@ private:
     void processRtpPacketSequencing(
         const RtpPacket &packet,
         SsrcData &data);
-    void processRtpPacketKeyframe(
+    void captureVideoKeyframe(
         const RtpPacket &rtpPacket,
         SsrcData &data);
-    void processRtpH264PacketKeyframe(
+    void captureH264VideoKeyframe(
         const RtpPacket &rtpPacket,
         SsrcData &data);
     void updateNackQueue(
@@ -136,9 +136,6 @@ private:
         const rtp_ssrc_t ssrc,
         const rtp_sequence_num_t packetId,
         const uint16_t followingLostPacketsBitmask,
-        SsrcData &data);
-    void processAudioVideoRtpPacket(
-        const RtpPacket &rtpPacket,
         SsrcData &data);
     std::set<rtp_extended_sequence_num_t> insertPacketInSequenceOrder(
         std::list<RtpPacket> &packetList,
