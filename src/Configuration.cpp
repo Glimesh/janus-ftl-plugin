@@ -19,6 +19,13 @@
 #include <unistd.h>
 #include <wordexp.h>
 
+// To warn if playout delay values are given but the feature is not supported.
+#if defined(JANUS_PLAYOUT_DELAY_SUPPORT)
+const bool PLAYOUT_DELAY_SUPPORT = true;
+#else
+const bool PLAYOUT_DELAY_SUPPORT = false;
+#endif
+
 #pragma region Public methods
 void Configuration::Load()
 {
@@ -79,7 +86,7 @@ void Configuration::Load()
     // FTL_ORCHESTRATOR_PORT -> OrchestratorPort
     if (char* varVal = std::getenv("FTL_ORCHESTRATOR_PORT"))
     {
-        orchestratorPort = std::stoi(varVal);
+        orchestratorPort = std::strtoul(varVal, nullptr, 10);
     }
 
     // FTL_ORCHESTRATOR_PSK -> OrchestratorPsk
@@ -120,25 +127,43 @@ void Configuration::Load()
     // FTL_SERVICE_METADATAREPORTINTERVALMS -> ServiceConnectionMetadataReportInterval
     if (char* varVal = std::getenv("FTL_SERVICE_METADATAREPORTINTERVALMS"))
     {
-        serviceConnectionMetadataReportInterval = std::chrono::milliseconds(std::stoi(varVal));
+        serviceConnectionMetadataReportInterval = std::chrono::milliseconds(std::stoul(varVal));
     }
 
     // FTL_MAX_ALLOWED_BITS_PER_SECOND -> MaxAllowedBitsPerSecond
     if (char* varVal = std::getenv("FTL_MAX_ALLOWED_BITS_PER_SECOND"))
     {
-        maxAllowedBitsPerSecond = std::stoi(varVal);
+        maxAllowedBitsPerSecond = std::stoul(varVal);
     }
 
     // FTL_ROLLING_SIZE_AVG_MS -> RollingSizeAvgMs
     if (char* varVal = std::getenv("FTL_ROLLING_SIZE_AVG_MS"))
     {
-        rollingSizeAvgMs = std::stoi(varVal);
+        rollingSizeAvgMs = std::stoul(varVal);
     }
 
     // FTL_NACK_LOST_PACKETS -> IsNackLostPacketsEnabled
     if (char* varVal = std::getenv("FTL_NACK_LOST_PACKETS"))
     {
-        nackLostPackets = std::stoi(varVal);
+        nackLostPackets = std::stoul(varVal);
+    }
+
+    // FTL_PLAYOUT_DELAY_MIN_MS and FTL_PLAYOUT_DELAY_MAX_MS -> PlayoutDelay
+    {
+        char* minVal = std::getenv("FTL_PLAYOUT_DELAY_MIN_MS");
+        char* maxVal = std::getenv("FTL_PLAYOUT_DELAY_MAX_MS");
+
+        if (minVal || maxVal) {
+            if (!PLAYOUT_DELAY_SUPPORT) {
+                spdlog::warn("Ignoring playout delay configuration, option janus_playout_delay_support is not enabled");
+            } else if (minVal && maxVal) {
+                auto min = std::stoul(minVal);
+                auto max = std::stoul(maxVal);
+                playoutDelay = PlayoutDelay(min, max);
+            } else {
+                throw InvalidConfigurationException("Both min and max playout delay values must be set together");
+            }
+        }
     }
 
     // FTL_SERVICE_DUMMY_HMAC_KEY -> DummyHmacKey
@@ -172,13 +197,13 @@ void Configuration::Load()
     // FTL_SERVICE_GLIMESH_PORT -> GlimeshServicePort
     if (char* varVal = std::getenv("FTL_SERVICE_GLIMESH_PORT"))
     {
-        glimeshServicePort = std::stoi(varVal);
+        glimeshServicePort = std::stoul(varVal);
     }
 
     // FTL_SERVICE_GLIMESH_HTTPS -> GlimeshServiceUseHttps
     if (char* varVal = std::getenv("FTL_SERVICE_GLIMESH_HTTPS"))
     {
-        glimeshServiceUseHttps = std::stoi(varVal);
+        glimeshServiceUseHttps = std::stoul(varVal);
     }
 
     // FTL_SERVICE_GLIMESH_CLIENTID -> GlimeshServiceClientId
@@ -202,13 +227,13 @@ void Configuration::Load()
     // FTL_SERVICE_REST_PORT -> RestServicePort
     if (char* varVal = std::getenv("FTL_SERVICE_REST_PORT"))
     {
-        restServicePort = std::stoi(varVal);
+        restServicePort = std::stoul(varVal);
     }
 
     // FTL_SERVICE_REST_HTTPS -> RestServiceUseHttps
     if (char* varVal = std::getenv("FTL_SERVICE_REST_HTTPS"))
     {
-        restServiceUseHttps = std::stoi(varVal);
+        restServiceUseHttps = std::stoul(varVal);
     }
 
     // FTL_SERVICE_REST_PATH_BASE -> RestServicePathBase
@@ -222,6 +247,32 @@ void Configuration::Load()
     {
         restServiceAuthToken = std::string(varVal);
     }
+}
+
+Configuration::PlayoutDelay::PlayoutDelay(uint16_t min_ms, uint16_t max_ms)
+{
+    if (min_ms < 0)
+    {
+        throw InvalidConfigurationException("Playout delay min must be greater than or equal to 0");
+    }
+    if (min_ms > 40950)
+    {
+        throw InvalidConfigurationException("FTL_PLAYOUT_DELAY_MIN_MS must be less than or equal to 40950");
+    }
+    if (max_ms < 0)
+    {
+        throw InvalidConfigurationException("Playout delay max must be greater than or equal to 0");
+    }
+    if (max_ms > 40950)
+    {
+        throw InvalidConfigurationException("FTL_PLAYOUT_DELAY_MAX_MS must be less than or equal to 40950");
+    }
+    if (min_ms > max_ms)
+    {
+        throw InvalidConfigurationException("FTL_PLAYOUT_DELAY_MIN_MS cannot be greater than FTL_PLAYOUT_DELAY_MAX_MS");
+    }
+    min = min_ms / 10;
+    max = max_ms / 10;
 }
 #pragma endregion
 
@@ -291,6 +342,11 @@ bool Configuration::IsNackLostPacketsEnabled()
     return nackLostPackets;
 }
 
+std::optional<Configuration::PlayoutDelay> Configuration::GetPlayoutDelay()
+{
+    return playoutDelay;
+}
+
 std::string Configuration::GetGlimeshServiceHostname()
 {
     return glimeshServiceHostname;
@@ -340,6 +396,7 @@ std::string Configuration::GetRestServiceAuthToken()
 {
     return restServiceAuthToken;
 }
+
 #pragma endregion
 
 #pragma region Private methods

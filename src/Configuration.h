@@ -12,6 +12,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -33,6 +34,28 @@ enum class ServiceConnectionKind
 class Configuration
 {
 public:
+    /**
+     * @brief Range of expected delay between server capturing a frame and clients receiving it.
+     * 
+     * Experimental extension to RTP only implemented for Chrome. Can be used to suggest client
+     * should delay rendering a frame a consistent amount. This may help combat jitter issues by
+     * setting a higher delay for network jitter than the client would normally decide on.
+     * 
+     * In theory the client should determine a delay for network jitter, but that amount is highly
+     * dynamic and can be wrong. These values can be used to suggest a consistent delay.
+     * 
+     * Useful values range from 0 to 10,000 milliseconds (rounded to a granularity of 10ms).
+     * 
+     * See https://webrtc.googlesource.com/src/+/refs/heads/main/docs/native-code/rtp-hdrext/playout-delay
+     */
+    struct PlayoutDelay
+    {
+        uint16_t min;
+        uint16_t max;
+
+        PlayoutDelay(uint16_t min_ms, uint16_t max_ms);
+    };
+
     /* Public methods */
     void Load();
 
@@ -48,6 +71,7 @@ public:
     uint32_t GetMaxAllowedBitsPerSecond();
     uint32_t GetRollingSizeAvgMs();
     bool IsNackLostPacketsEnabled();
+    std::optional<PlayoutDelay> GetPlayoutDelay();
 
     // Dummy Service Connection Values
     std::vector<std::byte> GetDummyHmacKey();
@@ -80,17 +104,43 @@ private:
     uint32_t maxAllowedBitsPerSecond = 0;
     uint32_t rollingSizeAvgMs = 2000;
     bool nackLostPackets = false;
+    std::optional<PlayoutDelay> playoutDelay;
 
     // Dummy Service Connection Backing Stores
     // "aBcDeFgHiJkLmNoPqRsTuVwXyZ123456"
     std::vector<std::byte> dummyHmacKey = {
-        std::byte('a'), std::byte('B'), std::byte('c'), std::byte('D'), std::byte('e'),
-        std::byte('F'), std::byte('g'), std::byte('H'), std::byte('i'), std::byte('J'),
-        std::byte('k'), std::byte('L'), std::byte('m'), std::byte('N'), std::byte('o'),
-        std::byte('P'), std::byte('q'), std::byte('R'), std::byte('s'), std::byte('T'),
-        std::byte('u'), std::byte('V'), std::byte('w'), std::byte('X'), std::byte('y'),
-        std::byte('Z'), std::byte('1'), std::byte('2'), std::byte('3'), std::byte('4'),
-        std::byte('5'), std::byte('6'),
+        std::byte('a'),
+        std::byte('B'),
+        std::byte('c'),
+        std::byte('D'),
+        std::byte('e'),
+        std::byte('F'),
+        std::byte('g'),
+        std::byte('H'),
+        std::byte('i'),
+        std::byte('J'),
+        std::byte('k'),
+        std::byte('L'),
+        std::byte('m'),
+        std::byte('N'),
+        std::byte('o'),
+        std::byte('P'),
+        std::byte('q'),
+        std::byte('R'),
+        std::byte('s'),
+        std::byte('T'),
+        std::byte('u'),
+        std::byte('V'),
+        std::byte('w'),
+        std::byte('X'),
+        std::byte('y'),
+        std::byte('Z'),
+        std::byte('1'),
+        std::byte('2'),
+        std::byte('3'),
+        std::byte('4'),
+        std::byte('5'),
+        std::byte('6'),
     };
     std::string dummyPreviewImagePath;
 
@@ -113,4 +163,14 @@ private:
      * @brief Takes a hex string of format "010203FF" and converts it to an array of bytes.
      */
     std::vector<std::byte> hexStringToByteArray(std::string hexString);
+};
+
+/**
+ * @brief Exception describing invalid configuration values
+ */
+struct InvalidConfigurationException : std::runtime_error
+{
+    InvalidConfigurationException(const char *message) throw() : std::runtime_error(message)
+    {
+    }
 };
