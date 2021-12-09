@@ -27,12 +27,12 @@ public:
     void Reset();
     
     static constexpr rtp_sequence_num_t REORDER_BUFFER_SIZE = 128;
-    static constexpr std::chrono::milliseconds REORDER_BUFFER_TIMEOUT = 10ms;
+    static constexpr std::chrono::milliseconds REORDER_BUFFER_TIMEOUT = 20ms;
     static constexpr rtp_sequence_num_t MAX_DROPOUT = ExtendedSequenceCounter::MAX_DROPOUT;
     static constexpr size_t MAX_OUTSTANDING_NACKS = 32;
     static constexpr size_t MAX_MISSING_SET_SIZE = 1024;
     static constexpr size_t MAX_NACKS_OUTSTANDING_SET_SIZE = 1024;
-    static constexpr std::chrono::milliseconds NACK_OUTSTANDING_TIMEOUT = 1s;
+    static constexpr std::chrono::milliseconds NACK_OUTSTANDING_TIMEOUT = 2s;
 
 
 private:
