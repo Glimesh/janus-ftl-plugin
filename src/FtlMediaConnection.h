@@ -11,6 +11,7 @@
 
 #include "Rtp/ExtendedSequenceCounter.h"
 #include "Rtp/RtpPacket.h"
+#include "Rtp/SequenceTracker.h"
 #include "Utilities/FtlTypes.h"
 #include "Utilities/Result.h"
 
@@ -68,11 +69,10 @@ private:
         std::list<RtpPacket> CircularPacketBuffer;
         std::map<std::chrono::time_point<std::chrono::steady_clock>, uint16_t>
             RollingBytesReceivedByTime;
-        std::set<rtp_extended_sequence_num_t> NackQueue;
-        std::set<rtp_extended_sequence_num_t> NackedSequences;
         std::list<RtpPacket> CurrentKeyframePackets;
         std::list<RtpPacket> PendingKeyframePackets;
         ExtendedSequenceCounter SequenceCounter;
+        SequenceTracker NackQueue;
     };
 
     /* Constants */
@@ -80,7 +80,6 @@ private:
     static constexpr float MICROSECONDS_PER_MILLISECOND = 1000.0f;
     static constexpr rtp_payload_type_t FTL_PAYLOAD_TYPE_SENDER_REPORT = 200;
     static constexpr rtp_payload_type_t FTL_PAYLOAD_TYPE_PING = 250;
-    static constexpr size_t PACKET_BUFFER_SIZE = 128;
     static constexpr size_t MAX_PACKETS_BEFORE_NACK = 16;
     static constexpr size_t NACK_TIMEOUT_SEQUENCE_DELTA = 128;
     static constexpr std::chrono::milliseconds READ_TIMEOUT{200};
@@ -134,9 +133,8 @@ private:
         SsrcData &data);
     void sendNack(
         const rtp_ssrc_t ssrc,
-        const rtp_sequence_num_t packetId,
-        const uint16_t followingLostPacketsBitmask,
-        SsrcData &data);
+        const rtp_extended_sequence_num_t seq,
+        const uint16_t followingLostPacketsBitmask);
     std::set<rtp_extended_sequence_num_t> insertPacketInSequenceOrder(
         std::list<RtpPacket> &packetList,
         const RtpPacket &rtpPacket);

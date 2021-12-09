@@ -13,6 +13,7 @@ sources = files([
     '../../src/FtlStream.cpp',
     '../../src/Rtp/ExtendedSequenceCounter.cpp',
     '../../src/Rtp/RtpPacket.cpp',
+    '../../src/Rtp/SequenceTracker.cpp',
 ])
 
 incdirs = include_directories(

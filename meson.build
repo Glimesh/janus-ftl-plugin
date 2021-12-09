@@ -32,6 +32,7 @@ sources = files([
     # RTP Utilities
     'src/Rtp/ExtendedSequenceCounter.cpp',
     'src/Rtp/RtpPacket.cpp',
+    'src/Rtp/SequenceTracker.cpp',
     # Service Connections
     'src/ServiceConnections/DummyServiceConnection.cpp',
     'src/ServiceConnections/EdgeNodeServiceConnection.cpp',
