@@ -80,6 +80,7 @@ void SequenceTracker::checkForMissing(rtp_extended_sequence_num_t seq)
 
     for (auto it = missing.begin(); it != missing.end() && missing.size() > MAX_MISSING_SET_SIZE;)
     {
+        nacksOutstanding.erase(*it);
         it = missing.erase(it);
     }
 
@@ -88,6 +89,7 @@ void SequenceTracker::checkForMissing(rtp_extended_sequence_num_t seq)
     {
         if (now - it->second >= NACK_OUTSTANDING_TIMEOUT)
         {
+            missing.erase(it->first);
             it = nacksOutstanding.erase(it);
         }
         else
@@ -103,6 +105,7 @@ void SequenceTracker::NackSent(rtp_extended_sequence_num_t seq)
 
     for (auto it = nacksOutstanding.begin(); it != nacksOutstanding.end() && nacksOutstanding.size() > MAX_NACKS_OUTSTANDING_SET_SIZE;)
     {
+        missing.erase(it->first);
         it = nacksOutstanding.erase(it);
     }
 }
