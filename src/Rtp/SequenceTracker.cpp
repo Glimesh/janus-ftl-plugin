@@ -124,6 +124,11 @@ std::list<rtp_extended_sequence_num_t> SequenceTracker::GetMissing() const
         }
     }
 
+    if (nacksOutstanding.size() > MAX_OUTSTANDING_NACKS)
+    {
+        spdlog::debug("Unable to NACK some missed packets, too many outstanding NACKs: {}", nacksOutstanding.size());
+    }
+
     return toNack;
 }
 
@@ -144,7 +149,4 @@ void SequenceTracker::missedPacket(rtp_extended_sequence_num_t seq)
     packetsSinceLastMissed = 0;
 }
 
-// void SequenceTracker::updatewatermark(rtp_extended_sequence_num_t seq)
-// {
-// }
 #pragma endregion Public methods
