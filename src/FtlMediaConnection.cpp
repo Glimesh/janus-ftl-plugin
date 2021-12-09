@@ -478,7 +478,7 @@ void FtlMediaConnection::sendNack(
                                      reinterpret_cast<std::byte *>(nackBuffer) + sizeof(nackBuffer));
     transport->Write(nackBytes);
 
-    spdlog::debug("NACK seq:{}, following:{:#016b}", seq, followingLostPacketsBitmask);
+    spdlog::debug("NACK ssrc:{}, seq:{}, following:{:#016b}", ssrc, seq, followingLostPacketsBitmask);
 }
 
 void FtlMediaConnection::handlePing(const std::vector<std::byte> &packetBytes)
