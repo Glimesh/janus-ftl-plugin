@@ -16,7 +16,7 @@ First, compile and install [Janus](https://github.com/meetecho/janus-gateway).
 
 Get [Meson](https://mesonbuild.com/Getting-meson.html) for building.
 
-Install `libavcodec` library (`sudo apt install libavcodec-dev` on Ubuntu).
+See the `Dockerfile` for the full set of dependencies.
 
 ## Building
 
