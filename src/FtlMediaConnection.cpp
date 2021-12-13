@@ -272,7 +272,7 @@ void FtlMediaConnection::handleMediaPacket(const std::vector<std::byte> &packetB
 
         data.NackQueue.Reset();
     }
-    
+
     if (!extendResult.valid)
     {
         spdlog::trace("Source {} is not valid, but using RTP packet anyways (seq {} (extended to {})",
@@ -287,7 +287,8 @@ void FtlMediaConnection::handleMediaPacket(const std::vector<std::byte> &packetB
     {
         auto missing = data.NackQueue.GetMissing();
 
-        for (auto it = missing.rbegin(); it != missing.rend(); ) {
+        for (auto it = missing.rbegin(); it != missing.rend();)
+        {
             // TODO do better than cheat and just send one packet per NACK
             rtp_extended_sequence_num_t seq = *it;
             sendNack(ssrc, seq, 0);
