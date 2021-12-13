@@ -84,3 +84,32 @@ TEST_CASE("A small skip accross a wrap is valid")
         extend(counter, extended, extended);
     }
 }
+
+TEST_CASE("NACKs do not reset sequence")
+{
+    ExtendedSequenceCounter counter;
+    rtp_extended_sequence_num_t extended = 0;
+
+    // Run sequence for a bit
+    for (int i = 0; i < 100; ++i)
+    {
+        extend(counter, extended, extended);
+        extended++;
+    }
+
+    // Skip two packets
+    auto skipped = extended++;
+    extended++;
+
+    // Send next few packets
+    
+    for (int i = 0; i < 10; ++i)
+    {
+        extend(counter, extended, extended);
+        extended++;
+    }
+
+    // Receive nack'd packets
+    extend(counter, skipped, skipped);
+    extend(counter, skipped + 1, skipped + 1);
+}
