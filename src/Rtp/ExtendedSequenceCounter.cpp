@@ -9,6 +9,8 @@
 
 #include "ExtendedSequenceCounter.h"
 
+#include <spdlog/spdlog.h>
+
 ExtendedSequenceCounter::ExtendResult ExtendedSequenceCounter::Extend(rtp_sequence_num_t seq)
 {
     if (!initialized)
@@ -93,6 +95,7 @@ ExtendedSequenceCounter::ExtendResult ExtendedSequenceCounter::Extend(rtp_sequen
              * restarted without telling us so just re-sync
              * (i.e., pretend this was the first packet).
              */
+            spdlog::info("Sequence counter reset");
             Reset(seq);
             received++;
             return ExtendResult{
