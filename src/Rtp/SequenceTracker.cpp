@@ -60,6 +60,12 @@ bool SequenceTracker::Emplace(rtp_extended_sequence_num_t seq)
         }
     }
 
+    // Cleanup received buffer
+    for (auto it = received.begin(); it != received.end() && received.size() > MAX_RECEIVE_BUFFER_SIZE;)
+    {
+        it = received.erase(it);
+    }
+
     return true;
 }
 

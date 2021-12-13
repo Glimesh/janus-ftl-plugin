@@ -34,6 +34,7 @@ public:
     static constexpr size_t MAX_MISSING_SET_SIZE = 1024;
     static constexpr size_t MAX_NACKS_OUTSTANDING_SET_SIZE = 1024;
     static constexpr std::chrono::milliseconds NACK_OUTSTANDING_TIMEOUT = 2s;
+    static constexpr size_t MAX_RECEIVE_BUFFER_SIZE = 4096;
 
 
 private:
