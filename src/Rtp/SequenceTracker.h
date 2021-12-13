@@ -24,8 +24,10 @@ public:
     rtp_extended_sequence_num_t Track(rtp_sequence_num_t seq);
     bool Emplace(rtp_extended_sequence_num_t seq);
     void NackSent(rtp_extended_sequence_num_t seq);
-    std::list<rtp_extended_sequence_num_t> GetMissing() const;
     void Reset();
+
+    std::list<rtp_extended_sequence_num_t> GetMissing() const;
+    uint64_t GetPacketsLost() const;
     
     static constexpr rtp_sequence_num_t REORDER_BUFFER_SIZE = 64;
     static constexpr std::chrono::milliseconds REORDER_BUFFER_TIMEOUT = 20ms;
@@ -41,6 +43,7 @@ private:
     ExtendedSequenceCounter counter;
     bool initialized = false;
     rtp_extended_sequence_num_t watermark = 0;
+    uint64_t packetsLost = 0;
     uint64_t packetsMissed = 0;
     uint64_t packetsSinceLastMissed = 0;
     std::set<rtp_extended_sequence_num_t> received;

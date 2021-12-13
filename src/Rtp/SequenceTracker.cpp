@@ -15,6 +15,7 @@ rtp_extended_sequence_num_t SequenceTracker::Track(rtp_sequence_num_t seq)
     auto mapping = nackMapping.find(seq);
     if (mapping != nackMapping.end()) {
         spdlog::debug("Received nack'd packet: {}", mapping->second);
+        packetsLost--;
         Emplace(mapping->second);
         return mapping->second;
     }
@@ -168,6 +169,10 @@ std::list<rtp_extended_sequence_num_t> SequenceTracker::GetMissing() const
     return toNack;
 }
 
+uint64_t SequenceTracker::GetPacketsLost() const {
+    return packetsLost;
+}
+
 void SequenceTracker::Reset()
 {
     initialized = false;
@@ -183,6 +188,7 @@ void SequenceTracker::missedPacket(rtp_extended_sequence_num_t seq)
 {
     missing.emplace(seq);
     packetsMissed += 1;
+    packetsLost += 1;
     packetsSinceLastMissed = 0;
 }
 

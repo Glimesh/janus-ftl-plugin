@@ -74,7 +74,7 @@ FtlStreamStats FtlMediaConnection::GetStats()
         const SsrcData &data = dataPair.second;
         stats.PacketsReceived += data.PacketsReceived;
         stats.PacketsNacked += data.PacketsNacked;
-        stats.PacketsLost += data.PacketsLost;
+        stats.PacketsLost += data.NackQueue.GetPacketsLost();
         for (const auto &bytesPair : dataPair.second.RollingBytesReceivedByTime)
         {
             rollingBytesReceived += bytesPair.second;
@@ -279,6 +279,7 @@ void FtlMediaConnection::handleMediaPacket(const std::vector<std::byte> &packetB
             rtp_extended_sequence_num_t seq = *it;
             sendNack(ssrc, seq, 0);
             data.NackQueue.NackSent(seq);
+            data.PacketsNacked++;
             ++it;
 
             // // Group missing sequence numbers into NACK packets which use a 16-bit
