@@ -9,7 +9,6 @@
  */
 #pragma once
 
-#include "Rtp/ExtendedSequenceCounter.h"
 #include "Rtp/RtpPacket.h"
 #include "Rtp/SequenceTracker.h"
 #include "Utilities/FtlTypes.h"
@@ -71,7 +70,6 @@ private:
             RollingBytesReceivedByTime;
         std::list<RtpPacket> CurrentKeyframePackets;
         std::list<RtpPacket> PendingKeyframePackets;
-        ExtendedSequenceCounter SequenceCounter;
         SequenceTracker NackQueue;
     };
 

@@ -97,18 +97,51 @@ TEST_CASE("NACKs should not reset sequence counter")
         extended++;
     }
 
-    // Skip two packets
+    INFO("Skipping two packet sequence numbers: " << extended << ", " << extended + 1);
     auto skipped = extended++;
     extended++;
 
     // Send next few packets
-    for (int i = 0; i < 10; ++i)
+    INFO("Send a few packets " << counter);
+    for (int j = 0; j < 10; ++j)
     {
         extend(counter, extended, extended);
         extended++;
     }
 
-    // Receive nack'd packets
+    INFO("Receive skipped packets (simulating NACK) " << counter << " extended:" << extended);
     extend(counter, skipped, skipped);
     extend(counter, skipped + 1, skipped + 1);
 }
+
+// TODO, breaks because packet gets wrong seq number
+// After extended counter wraps, the retransmitted packets skip ahead from expected
+// (MAX_SEQ_NUM - 1) to next cycle (2*MAX_SEQ_NUM - 1)
+// TEST_CASE("NACKs should not reset sequence counter")
+// {
+//     ExtendedSequenceCounter counter;
+//     rtp_extended_sequence_num_t extended = MAX_SEQ_NUM - 100;
+
+//     // Run sequence for a bit
+//     for (int i = 0; i < 100; ++i)
+//     {
+//         extend(counter, extended, extended);
+//         extended++;
+//     }
+
+//     INFO("Skipping two packet sequence numbers: " << extended << ", " << extended + 1);
+//     auto skipped = extended++;
+//     extended++;
+
+//     // Send next few packets
+//     INFO("Send a few packets " << counter);
+//     for (int j = 0; j < 10; ++j)
+//     {
+//         extend(counter, extended, extended);
+//         extended++;
+//     }
+
+//     INFO("Receive skipped packets (simulating NACK) " << counter << " extended:" << extended);
+//     extend(counter, skipped, skipped);
+//     extend(counter, skipped + 1, skipped + 1);
+// }

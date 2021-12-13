@@ -265,21 +265,7 @@ void FtlMediaConnection::handleMediaPacket(const std::vector<std::byte> &packetB
         return;
     }
 
-    auto extendResult = data.SequenceCounter.Extend(seqNum);
-    if (extendResult.reset)
-    {
-        spdlog::debug("Resetting extended sequence number for ssrc {}", ssrc);
-
-        data.NackQueue.Reset();
-    }
-
-    if (!extendResult.valid)
-    {
-        spdlog::trace("Source {} is not valid, but using RTP packet anyways (seq {} (extended to {})",
-                      ssrc, seqNum, extendResult.extendedSeq);
-    }
-
-    data.NackQueue.Emplace(extendResult.extendedSeq);
+    auto extendedSeq = data.NackQueue.Track(seqNum);
 
     // Keep the sending of NACKs behind a feature toggle for now
     // https://github.com/Glimesh/janus-ftl-plugin/issues/95
@@ -327,7 +313,7 @@ void FtlMediaConnection::handleMediaPacket(const std::vector<std::byte> &packetB
         }
     }
 
-    auto packet = RtpPacket(packetBytes, extendResult.extendedSeq);
+    auto packet = RtpPacket(packetBytes, extendedSeq);
 
     updateMediaPacketStats(packetBytes, data);
     captureVideoKeyframe(packet, data);

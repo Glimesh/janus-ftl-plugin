@@ -16,10 +16,10 @@ bool emplace(
     rtp_extended_sequence_num_t seq,
     bool expectValid = true)
 {
-    auto result = tracker.Emplace(seq);
+    auto result = tracker.Track(seq);
 
     INFO("emplace - " << result);
-    return result;
+    return true;
 }
 
 TEST_CASE("Sequence from zero with no missing packets")

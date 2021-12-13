@@ -13,6 +13,7 @@
 
 ExtendedSequenceCounter::ExtendResult ExtendedSequenceCounter::Extend(rtp_sequence_num_t seq)
 {
+    received++;
     if (!initialized)
     {
         Reset(seq);
@@ -44,7 +45,6 @@ ExtendedSequenceCounter::ExtendResult ExtendedSequenceCounter::Extend(rtp_sequen
             if (probation == 0)
             {
                 Reset(seq);
-                received++;
                 return ExtendResult{
                     .extendedSeq = cycles | seq,
                     .valid = true,
@@ -78,7 +78,6 @@ ExtendedSequenceCounter::ExtendResult ExtendedSequenceCounter::Extend(rtp_sequen
             cycles += RTP_SEQ_MOD;
         }
         maxSeq = seq;
-        received++;
         return ExtendResult{
             .extendedSeq = cycles | seq,
             .valid = true,
@@ -95,9 +94,8 @@ ExtendedSequenceCounter::ExtendResult ExtendedSequenceCounter::Extend(rtp_sequen
              * restarted without telling us so just re-sync
              * (i.e., pretend this was the first packet).
              */
-            spdlog::info("Sequence counter reset");
+            spdlog::trace("Sequence counter reset");
             Reset(seq);
-            received++;
             return ExtendResult{
                 .extendedSeq = cycles | seq,
                 .valid = false,
@@ -117,7 +115,6 @@ ExtendedSequenceCounter::ExtendResult ExtendedSequenceCounter::Extend(rtp_sequen
     else
     {
         /* duplicate or reordered packet */
-        received++;
         return ExtendResult{
             .extendedSeq = cycles | seq,
             .valid = true,
@@ -152,7 +149,6 @@ void ExtendedSequenceCounter::Reset(rtp_sequence_num_t seq)
     maxSeq = seq;
     badSeq = RTP_SEQ_MOD + 1; /* so seq == badSeq is false */
     cycles = 0;
-    received = 0;
     receivedPrior = 0;
     expectedPrior = 0;
 }

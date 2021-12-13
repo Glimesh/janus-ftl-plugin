@@ -10,6 +10,27 @@
 #include <spdlog/spdlog.h>
 
 #pragma region Public methods
+rtp_extended_sequence_num_t SequenceTracker::Track(rtp_sequence_num_t seq)
+{
+    auto extendResult = counter.Extend(seq);
+
+    if (extendResult.reset)
+    {
+        spdlog::debug("Resetting extended sequence number for source");
+
+        Reset();
+    }
+
+    if (!extendResult.valid)
+    {
+        spdlog::trace("Source is not valid, but using RTP packet anyways (seq {} (extended to {})",
+                      seq, extendResult.extendedSeq);
+    }
+
+    Emplace(extendResult.extendedSeq);
+    return extendResult.extendedSeq;
+}
+
 bool SequenceTracker::Emplace(rtp_extended_sequence_num_t seq)
 {
     bool inserted = received.emplace(seq).second;

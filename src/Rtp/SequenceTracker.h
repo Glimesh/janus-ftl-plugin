@@ -21,6 +21,7 @@ using namespace std::literals;
 class SequenceTracker
 {
 public:
+    rtp_extended_sequence_num_t Track(rtp_sequence_num_t seq);
     bool Emplace(rtp_extended_sequence_num_t seq);
     void NackSent(rtp_extended_sequence_num_t seq);
     std::list<rtp_extended_sequence_num_t> GetMissing() const;
@@ -36,6 +37,7 @@ public:
 
 
 private:
+    ExtendedSequenceCounter counter;
     bool initialized = false;
     rtp_extended_sequence_num_t watermark = 0;
     uint64_t packetsMissed = 0;
