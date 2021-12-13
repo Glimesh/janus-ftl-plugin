@@ -113,7 +113,7 @@ private:
 
     // Helpers for handling media packets
     void updateMediaPacketStats(
-        const RtpPacket &packet,
+        const std::vector<std::byte> &packetBytes,
         SsrcData &data);
     void processNacks(
         const RtpPacket &packet,

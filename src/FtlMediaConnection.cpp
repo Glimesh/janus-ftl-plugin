@@ -329,7 +329,7 @@ void FtlMediaConnection::handleMediaPacket(const std::vector<std::byte> &packetB
 
     auto packet = RtpPacket(packetBytes, extendResult.extendedSeq);
 
-    updateMediaPacketStats(packet, data);
+    updateMediaPacketStats(packetBytes, data);
     captureVideoKeyframe(packet, data);
 
     if (onRtpPacketBytes)
@@ -339,7 +339,7 @@ void FtlMediaConnection::handleMediaPacket(const std::vector<std::byte> &packetB
 }
 
 void FtlMediaConnection::updateMediaPacketStats(
-    const RtpPacket &packet,
+    const std::vector<std::byte> &packetBytes,
     SsrcData &data)
 {
     // Record packet count
@@ -349,11 +349,11 @@ void FtlMediaConnection::updateMediaPacketStats(
     std::chrono::time_point<std::chrono::steady_clock> now = std::chrono::steady_clock::now();
     if (data.RollingBytesReceivedByTime.count(now) > 0)
     {
-        data.RollingBytesReceivedByTime.at(now) += packet.Bytes.size();
+        data.RollingBytesReceivedByTime.at(now) += packetBytes.size();
     }
     else
     {
-        data.RollingBytesReceivedByTime.emplace(now, packet.Bytes.size());
+        data.RollingBytesReceivedByTime.emplace(now, packetBytes.size());
     }
 
     // Trim any packets that are too old from rolling count

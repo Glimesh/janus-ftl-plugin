@@ -85,7 +85,7 @@ TEST_CASE("A small skip accross a wrap is valid")
     }
 }
 
-TEST_CASE("NACKs do not reset sequence")
+TEST_CASE("NACKs should not reset sequence counter")
 {
     ExtendedSequenceCounter counter;
     rtp_extended_sequence_num_t extended = 0;
@@ -102,7 +102,6 @@ TEST_CASE("NACKs do not reset sequence")
     extended++;
 
     // Send next few packets
-    
     for (int i = 0; i < 10; ++i)
     {
         extend(counter, extended, extended);
