@@ -12,6 +12,12 @@
 #pragma region Public methods
 rtp_extended_sequence_num_t SequenceTracker::Track(rtp_sequence_num_t seq)
 {
+    auto mapping = nackMapping.find(seq);
+    if (mapping != nackMapping.end()) {
+        spdlog::debug("Received nack'd packet: {}", mapping->second);
+        Emplace(mapping->second);
+        return mapping->second;
+    }
     auto extendResult = counter.Extend(seq);
 
     if (extendResult.reset)
@@ -108,6 +114,7 @@ void SequenceTracker::checkForMissing(rtp_extended_sequence_num_t seq)
     for (auto it = missing.begin(); it != missing.end() && missing.size() > MAX_MISSING_SET_SIZE;)
     {
         nacksOutstanding.erase(*it);
+        nackMapping.erase(*it);
         it = missing.erase(it);
     }
 
@@ -129,10 +136,12 @@ void SequenceTracker::checkForMissing(rtp_extended_sequence_num_t seq)
 void SequenceTracker::NackSent(rtp_extended_sequence_num_t seq)
 {
     nacksOutstanding.emplace(seq, std::chrono::steady_clock::now());
+    nackMapping.emplace(seq, seq);
 
     for (auto it = nacksOutstanding.begin(); it != nacksOutstanding.end() && nacksOutstanding.size() > MAX_NACKS_OUTSTANDING_SET_SIZE;)
     {
         missing.erase(it->first);
+        nackMapping.erase(it->first);
         it = nacksOutstanding.erase(it);
     }
 }
@@ -165,6 +174,7 @@ void SequenceTracker::Reset()
     received.clear();
     missing.clear();
     nacksOutstanding.clear();
+    nackMapping.clear();
     watermark = 0;
     packetsSinceLastMissed = 0;
 }

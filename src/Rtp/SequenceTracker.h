@@ -27,7 +27,7 @@ public:
     std::list<rtp_extended_sequence_num_t> GetMissing() const;
     void Reset();
     
-    static constexpr rtp_sequence_num_t REORDER_BUFFER_SIZE = 128;
+    static constexpr rtp_sequence_num_t REORDER_BUFFER_SIZE = 64;
     static constexpr std::chrono::milliseconds REORDER_BUFFER_TIMEOUT = 20ms;
     static constexpr rtp_sequence_num_t MAX_DROPOUT = ExtendedSequenceCounter::MAX_DROPOUT;
     static constexpr size_t MAX_OUTSTANDING_NACKS = 32;
@@ -47,6 +47,7 @@ private:
     std::map<rtp_extended_sequence_num_t, std::chrono::steady_clock::time_point> reorderBuffer;
     std::set<rtp_extended_sequence_num_t> missing;
     std::map<rtp_extended_sequence_num_t, std::chrono::steady_clock::time_point> nacksOutstanding;
+    std::map<rtp_sequence_num_t, rtp_extended_sequence_num_t> nackMapping;
 
     void checkForMissing(rtp_extended_sequence_num_t seq);
     void missedPacket(rtp_extended_sequence_num_t seq);
