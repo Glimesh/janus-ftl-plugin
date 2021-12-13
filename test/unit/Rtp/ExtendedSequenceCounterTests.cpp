@@ -9,7 +9,20 @@
 
 #include "../../../src/Rtp/ExtendedSequenceCounter.h"
 
+#include <string>
+#include <sstream>
+
+using Catch::Matchers::Equals;
+
 static const rtp_sequence_num_t MAX_SEQ_NUM = std::numeric_limits<rtp_sequence_num_t>::max();
+
+template <typename T>
+std::string to_string( const T& value )
+{
+  std::ostringstream ss;
+  ss << value;
+  return ss.str();
+}
 
 void extend(
     ExtendedSequenceCounter& counter,
@@ -19,8 +32,8 @@ void extend(
 {
     auto result = counter.Extend(seq);
 
-    INFO("extend - seq:" << seq << " extended:" << result.extendedSeq << " valid:" << result.valid);
-    INFO("" << counter);
+    UNSCOPED_INFO("extend - seq:" << seq << " extended:" << result.extendedSeq << " valid:" << result.valid);
+    UNSCOPED_INFO("" << counter);
     REQUIRE(result.extendedSeq == expectedExtendedSeq);
     CHECK(result.valid == expectValid);
 }
@@ -114,34 +127,23 @@ TEST_CASE("NACKs should not reset sequence counter")
     extend(counter, skipped + 1, skipped + 1);
 }
 
-// TODO, breaks because packet gets wrong seq number
-// After extended counter wraps, the retransmitted packets skip ahead from expected
-// (MAX_SEQ_NUM - 1) to next cycle (2*MAX_SEQ_NUM - 1)
-// TEST_CASE("NACKs should not reset sequence counter")
-// {
-//     ExtendedSequenceCounter counter;
-//     rtp_extended_sequence_num_t extended = MAX_SEQ_NUM - 100;
+TEST_CASE("Try to reproduce bad case")
+{
+    ExtendedSequenceCounter counter;
+    rtp_extended_sequence_num_t seq = 59215;
 
-//     // Run sequence for a bit
-//     for (int i = 0; i < 100; ++i)
-//     {
-//         extend(counter, extended, extended);
-//         extended++;
-//     }
+    // Run sequence for a bit
+    for (int i = 0; i < (1 << 16) + 59; ++i)
+    {
+        WARN("seq:" << seq << " " << counter);
+        extend(counter, seq, seq);
+        seq++;
+    }
 
-//     INFO("Skipping two packet sequence numbers: " << extended << ", " << extended + 1);
-//     auto skipped = extended++;
-//     extended++;
-
-//     // Send next few packets
-//     INFO("Send a few packets " << counter);
-//     for (int j = 0; j < 10; ++j)
-//     {
-//         extend(counter, extended, extended);
-//         extended++;
-//     }
-
-//     INFO("Receive skipped packets (simulating NACK) " << counter << " extended:" << extended);
-//     extend(counter, skipped, skipped);
-//     extend(counter, skipped + 1, skipped + 1);
-// }
+    REQUIRE(seq == 124810);
+    WARN("seq:" << seq << " " << counter);
+    std::string expected = "ExtendedSequenceCounter { maxSeq:59273, cycleCount:1, baseSeq:59217, received:65595 }";
+    REQUIRE_THAT(to_string(counter), Equals(expected));
+    extend(counter, seq, seq);
+    seq++;
+}

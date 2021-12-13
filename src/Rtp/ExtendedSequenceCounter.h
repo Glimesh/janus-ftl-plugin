@@ -29,7 +29,7 @@ public:
 
     ExtendResult Extend(rtp_sequence_num_t seq);
 
-    friend std::ostream& operator<<(std::ostream & out, const ExtendedSequenceCounter& point);
+    friend std::ostream& operator<<(std::ostream & out, const ExtendedSequenceCounter& self);
     
     static const rtp_sequence_num_t MAX_DROPOUT = 3000;
     static const rtp_sequence_num_t MAX_MISORDER = 100;

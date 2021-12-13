@@ -55,7 +55,7 @@ bool SequenceTracker::Emplace(rtp_extended_sequence_num_t seq)
     // Cleanup reorder buffer
     for (auto it = reorderBuffer.begin(); it != reorderBuffer.end();)
     {
-        if (reorderBuffer.size() > REORDER_BUFFER_SIZE || now - it->second >= REORDER_BUFFER_TIMEOUT)
+        if (reorderBuffer.size() >= REORDER_BUFFER_SIZE || now - it->second >= REORDER_BUFFER_TIMEOUT)
         {
             auto seq = it->first;
             it = reorderBuffer.erase(it);
@@ -80,14 +80,14 @@ void SequenceTracker::checkForMissing(rtp_extended_sequence_num_t seq)
 {
     if (!initialized)
     {
-        watermark = seq;
+        maxSeq = seq;
         initialized = true;
     }
 
     missing.erase(seq);
     nacksOutstanding.erase(seq);
 
-    int64_t gap = seq - watermark;
+    int64_t gap = seq - maxSeq;
     if (gap == 1)
     {
         // In-order packet
@@ -103,13 +103,13 @@ void SequenceTracker::checkForMissing(rtp_extended_sequence_num_t seq)
         // Mark all sequence numbers in gap as missing (if any)
         for (int64_t i = 1; i < gap; ++i)
         {
-            missedPacket(watermark + i);
+            missedPacket(maxSeq + i);
         }
     }
 
-    if (seq > watermark)
+    if (seq > maxSeq)
     {
-        watermark = seq;
+        maxSeq = seq;
     }
 
     for (auto it = missing.begin(); it != missing.end() && missing.size() > MAX_MISSING_SET_SIZE;)
@@ -180,9 +180,20 @@ void SequenceTracker::Reset()
     missing.clear();
     nacksOutstanding.clear();
     nackMapping.clear();
-    watermark = 0;
+    maxSeq = 0;
     packetsSinceLastMissed = 0;
 }
+
+std::ostream &operator<<(std::ostream &os, const SequenceTracker &self)
+{
+    os << "SequenceTracker { "
+       << "initialized:" << self.initialized << ", "
+       << "maxSeq:" << self.maxSeq << ", "
+       << "counter:" << self.counter << " }";
+    return os;
+}
+
+#pragma endregion Public methods
 
 void SequenceTracker::missedPacket(rtp_extended_sequence_num_t seq)
 {
@@ -191,5 +202,3 @@ void SequenceTracker::missedPacket(rtp_extended_sequence_num_t seq)
     packetsLost += 1;
     packetsSinceLastMissed = 0;
 }
-
-#pragma endregion Public methods

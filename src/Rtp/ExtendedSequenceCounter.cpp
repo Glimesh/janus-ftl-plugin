@@ -153,12 +153,12 @@ void ExtendedSequenceCounter::Reset(rtp_sequence_num_t seq)
     expectedPrior = 0;
 }
 
-std::ostream &operator<<(std::ostream &os, const ExtendedSequenceCounter &c)
+std::ostream &operator<<(std::ostream &os, const ExtendedSequenceCounter &self)
 {
     os << "ExtendedSequenceCounter { "
-       << "maxSeq:" << c.maxSeq << ", "
-       << "cycles:" << c.cycles << ", "
-       << "baseSeq:" << c.baseSeq << ", "
-       << "received:" << c.received << " }";
+       << "maxSeq:" << self.maxSeq << ", "
+       << "cycleCount:" << self.cycles / RTP_SEQ_MOD << ", "
+       << "baseSeq:" << self.baseSeq << ", "
+       << "received:" << self.received << " }";
     return os;
 }
