@@ -30,12 +30,12 @@ public:
     
     friend std::ostream& operator<<(std::ostream & out, const SequenceTracker& self);
     
-    static constexpr rtp_sequence_num_t REORDER_BUFFER_SIZE = 64;
+    static constexpr rtp_sequence_num_t REORDER_BUFFER_SIZE = 16;
     static constexpr std::chrono::milliseconds REORDER_BUFFER_TIMEOUT = 20ms;
-    static constexpr rtp_sequence_num_t RECEIVE_BUFFER_SIZE = 4096;
+    static constexpr rtp_sequence_num_t RECEIVE_BUFFER_SIZE = 2048;
     static constexpr std::chrono::milliseconds RECEIVE_BUFFER_TIMEOUT = 2s;
     static constexpr rtp_sequence_num_t MAX_DROPOUT = ExtendedSequenceCounter::MAX_DROPOUT;
-    static constexpr size_t MAX_OUTSTANDING_NACKS = 32;
+    static constexpr size_t MAX_OUTSTANDING_NACKS = 64;
 
 private:
     ExtendedSequenceCounter counter;
