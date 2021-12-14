@@ -16,7 +16,7 @@
 int main(int argc, char* argv[])
 {
     // Enable verbose logging
-    spdlog::set_level(spdlog::level::trace);
+    spdlog::set_level(spdlog::level::debug);
 
     // Test!
     int result = Catch::Session().run(argc, argv);

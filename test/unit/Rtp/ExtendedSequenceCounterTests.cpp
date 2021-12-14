@@ -126,24 +126,3 @@ TEST_CASE("NACKs should not reset sequence counter")
     extend(counter, skipped, skipped);
     extend(counter, skipped + 1, skipped + 1);
 }
-
-TEST_CASE("Try to reproduce bad case")
-{
-    ExtendedSequenceCounter counter;
-    rtp_extended_sequence_num_t seq = 59215;
-
-    // Run sequence for a bit
-    for (int i = 0; i < (1 << 16) + 59; ++i)
-    {
-        WARN("seq:" << seq << " " << counter);
-        extend(counter, seq, seq);
-        seq++;
-    }
-
-    REQUIRE(seq == 124810);
-    WARN("seq:" << seq << " " << counter);
-    std::string expected = "ExtendedSequenceCounter { maxSeq:59273, cycleCount:1, baseSeq:59217, received:65595 }";
-    REQUIRE_THAT(to_string(counter), Equals(expected));
-    extend(counter, seq, seq);
-    seq++;
-}

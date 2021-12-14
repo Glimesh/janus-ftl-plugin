@@ -12,20 +12,21 @@
 #pragma region Public methods
 rtp_extended_sequence_num_t SequenceTracker::Track(rtp_sequence_num_t seq)
 {
+    packetsReceived++;
     auto mapping = nackMapping.find(seq);
     if (mapping != nackMapping.end()) {
-        spdlog::debug("Received nack'd packet: {}", mapping->second);
+        spdlog::trace("Received NACK'd packet: {}", mapping->second);
         packetsLost--;
         Emplace(mapping->second);
         return mapping->second;
     }
     auto extendResult = counter.Extend(seq);
 
-    if (extendResult.reset)
+    if (extendResult.resync)
     {
-        spdlog::debug("Resetting extended sequence number for source");
+        spdlog::trace("Resyncing sequence number tracking for source");
 
-        Reset();
+        resync();
     }
 
     if (!extendResult.valid)
@@ -40,15 +41,15 @@ rtp_extended_sequence_num_t SequenceTracker::Track(rtp_sequence_num_t seq)
 
 bool SequenceTracker::Emplace(rtp_extended_sequence_num_t seq)
 {
-    bool inserted = received.emplace(seq).second;
+    auto now = std::chrono::steady_clock::now();
+
+    bool inserted = receiveBuffer.emplace(seq, now).second;
 
     if (!inserted)
     {
         // Duplicate packet received, nothing to do
         return false;
     }
-
-    auto now = std::chrono::steady_clock::now();
 
     reorderBuffer.emplace(seq, now);
 
@@ -67,10 +68,13 @@ bool SequenceTracker::Emplace(rtp_extended_sequence_num_t seq)
         }
     }
 
-    // Cleanup received buffer
-    for (auto it = received.begin(); it != received.end() && received.size() > MAX_RECEIVE_BUFFER_SIZE;)
+    // Cleanup receive buffer
+    for (auto it = receiveBuffer.begin(); it != receiveBuffer.end() && receiveBuffer.size() > RECEIVE_BUFFER_SIZE;)
     {
-        it = received.erase(it);
+        missing.erase(it->first);
+        nacksOutstanding.erase(it->first);
+        nackMapping.erase(it->first);
+        it = receiveBuffer.erase(it);
     }
 
     return true;
@@ -103,7 +107,7 @@ void SequenceTracker::checkForMissing(rtp_extended_sequence_num_t seq)
         // Mark all sequence numbers in gap as missing (if any)
         for (int64_t i = 1; i < gap; ++i)
         {
-            missedPacket(maxSeq + i);
+            missedPacket(seq - i);
         }
     }
 
@@ -112,44 +116,37 @@ void SequenceTracker::checkForMissing(rtp_extended_sequence_num_t seq)
         maxSeq = seq;
     }
 
-    for (auto it = missing.begin(); it != missing.end() && missing.size() > MAX_MISSING_SET_SIZE;)
-    {
-        nacksOutstanding.erase(*it);
-        nackMapping.erase(*it);
-        it = missing.erase(it);
-    }
+    // for (auto it = missing.begin(); it != missing.end() && missing.size() > MAX_MISSING_SET_SIZE;)
+    // {
+    //     nacksOutstanding.erase(*it);
+    //     nackMapping.erase(*it);
+    //     it = missing.erase(it);
+    // }
 
-    auto now = std::chrono::steady_clock::now();
-    for (auto it = nacksOutstanding.begin(); it != nacksOutstanding.end();)
-    {
-        if (now - it->second >= NACK_OUTSTANDING_TIMEOUT)
-        {
-            missing.erase(it->first);
-            it = nacksOutstanding.erase(it);
-        }
-        else
-        {
-            ++it;
-        }
-    }
+    // auto now = std::chrono::steady_clock::now();
+    // for (auto it = nacksOutstanding.begin(); it != nacksOutstanding.end();)
+    // {
+    //     if (now - it->second >= RECEIVE_BUFFER_TIMEOUT)
+    //     {
+    //         missing.erase(it->first);
+    //         it = nacksOutstanding.erase(it);
+    //     }
+    //     else
+    //     {
+    //         ++it;
+    //     }
+    // }
 }
 
 void SequenceTracker::NackSent(rtp_extended_sequence_num_t seq)
 {
     nacksOutstanding.emplace(seq, std::chrono::steady_clock::now());
     nackMapping.emplace(seq, seq);
-
-    for (auto it = nacksOutstanding.begin(); it != nacksOutstanding.end() && nacksOutstanding.size() > MAX_NACKS_OUTSTANDING_SET_SIZE;)
-    {
-        missing.erase(it->first);
-        nackMapping.erase(it->first);
-        it = nacksOutstanding.erase(it);
-    }
 }
 
-std::list<rtp_extended_sequence_num_t> SequenceTracker::GetMissing() const
+std::vector<rtp_extended_sequence_num_t> SequenceTracker::GetMissing() const
 {
-    std::list<rtp_extended_sequence_num_t> toNack;
+    std::vector<rtp_extended_sequence_num_t> toNack;
 
     // Iterate newest missing packets first
     for (auto it = missing.rbegin(); it != missing.rend() && nacksOutstanding.size() + toNack.size() < MAX_OUTSTANDING_NACKS; ++it)
@@ -173,10 +170,11 @@ uint64_t SequenceTracker::GetPacketsLost() const {
     return packetsLost;
 }
 
-void SequenceTracker::Reset()
+void SequenceTracker::resync()
 {
     initialized = false;
-    received.clear();
+    reorderBuffer.clear();
+    receiveBuffer.clear();
     missing.clear();
     nacksOutstanding.clear();
     nackMapping.clear();

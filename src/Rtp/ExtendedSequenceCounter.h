@@ -24,7 +24,8 @@ public:
     struct ExtendResult {
         rtp_extended_sequence_num_t extendedSeq;
         bool valid;
-        bool reset;
+        bool resync;
+        bool stable;
     };
 
     ExtendResult Extend(rtp_sequence_num_t seq);
@@ -40,11 +41,11 @@ private:
     uint32_t baseSeq = 0;
     uint32_t badSeq = RTP_SEQ_MOD + 1;
     uint32_t probation = MIN_SEQUENTIAL;
-    uint32_t received = 0;
     uint32_t receivedPrior = 0;
     uint32_t expectedPrior = 0;
     bool initialized = false;
 
-    void Initialize(rtp_sequence_num_t seq);
-    void Reset(rtp_sequence_num_t seq);
+    void initialize(rtp_sequence_num_t seq);
+    void reset(rtp_sequence_num_t seq);
+    void resync(rtp_sequence_num_t seq);
 };

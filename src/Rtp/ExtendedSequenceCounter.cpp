@@ -13,10 +13,9 @@
 
 ExtendedSequenceCounter::ExtendResult ExtendedSequenceCounter::Extend(rtp_sequence_num_t seq)
 {
-    received++;
     if (!initialized)
     {
-        Reset(seq);
+        reset(seq);
         initialized = true;
         /*
          * Unlike RFC 3550, we consider a packet valid even if less than MIN_SEQUENTIAL
@@ -25,7 +24,8 @@ ExtendedSequenceCounter::ExtendResult ExtendedSequenceCounter::Extend(rtp_sequen
         return ExtendResult{
             .extendedSeq = cycles | seq,
             .valid = true,
-            .reset = true,
+            .resync = false,
+            .stable = false,
         };
     }
 
@@ -44,11 +44,12 @@ ExtendedSequenceCounter::ExtendResult ExtendedSequenceCounter::Extend(rtp_sequen
             maxSeq = seq;
             if (probation == 0)
             {
-                Reset(seq);
+                reset(seq);
                 return ExtendResult{
                     .extendedSeq = cycles | seq,
                     .valid = true,
-                    .reset = true,
+                    .resync = false,
+                    .stable = false,
                 };
             }
         }
@@ -60,7 +61,8 @@ ExtendedSequenceCounter::ExtendResult ExtendedSequenceCounter::Extend(rtp_sequen
         return ExtendResult{
             .extendedSeq = cycles | seq,
             .valid = true,
-            .reset = false,
+            .resync = false,
+            .stable = true,
         };
     }
     /* 
@@ -81,7 +83,8 @@ ExtendedSequenceCounter::ExtendResult ExtendedSequenceCounter::Extend(rtp_sequen
         return ExtendResult{
             .extendedSeq = cycles | seq,
             .valid = true,
-            .reset = false,
+            .resync = false,
+            .stable = true,
         };
     }
     else if (udelta <= RTP_SEQ_MOD - MAX_MISORDER)
@@ -95,11 +98,12 @@ ExtendedSequenceCounter::ExtendResult ExtendedSequenceCounter::Extend(rtp_sequen
              * (i.e., pretend this was the first packet).
              */
             spdlog::trace("Sequence counter reset");
-            Reset(seq);
+            resync(seq);
             return ExtendResult{
                 .extendedSeq = cycles | seq,
                 .valid = false,
-                .reset = true,
+                .resync = true,
+                .stable = false,
             };
         }
         else
@@ -108,7 +112,8 @@ ExtendedSequenceCounter::ExtendResult ExtendedSequenceCounter::Extend(rtp_sequen
             return ExtendResult{
                 .extendedSeq = cycles | seq,
                 .valid = false,
-                .reset = false,
+                .resync = false,
+                .stable = true,
             };
         }
     }
@@ -118,7 +123,8 @@ ExtendedSequenceCounter::ExtendResult ExtendedSequenceCounter::Extend(rtp_sequen
         return ExtendResult{
             .extendedSeq = cycles | seq,
             .valid = true,
-            .reset = false,
+            .resync = false,
+            .stable = true,
         };
     }
 }
@@ -135,15 +141,15 @@ ExtendedSequenceCounter::ExtendResult ExtendedSequenceCounter::Extend(rtp_sequen
  *    s->max_seq = seq - 1;
  *    s->probation = MIN_SEQUENTIAL;
  */
-void ExtendedSequenceCounter::Initialize(rtp_sequence_num_t seq)
+void ExtendedSequenceCounter::initialize(rtp_sequence_num_t seq)
 {
-    Reset(seq);
+    reset(seq);
     baseSeq = seq;
     maxSeq = seq - 1;
     initialized = true;
 }
 
-void ExtendedSequenceCounter::Reset(rtp_sequence_num_t seq)
+void ExtendedSequenceCounter::reset(rtp_sequence_num_t seq)
 {
     baseSeq = seq;
     maxSeq = seq;
@@ -153,12 +159,16 @@ void ExtendedSequenceCounter::Reset(rtp_sequence_num_t seq)
     expectedPrior = 0;
 }
 
+void ExtendedSequenceCounter::resync(rtp_sequence_num_t seq)
+{
+    reset(seq);
+}
+
 std::ostream &operator<<(std::ostream &os, const ExtendedSequenceCounter &self)
 {
     os << "ExtendedSequenceCounter { "
        << "maxSeq:" << self.maxSeq << ", "
        << "cycleCount:" << self.cycles / RTP_SEQ_MOD << ", "
-       << "baseSeq:" << self.baseSeq << ", "
-       << "received:" << self.received << " }";
+       << "baseSeq:" << self.baseSeq << " }";
     return os;
 }
