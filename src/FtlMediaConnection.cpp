@@ -439,7 +439,7 @@ void FtlMediaConnection::captureH264VideoKeyframe(const RtpPacket &rtpPacket, Ss
         }
         else
         {
-            spdlog::debug("{} keyframe packets recorded @ timestamp {}",
+            spdlog::trace("{} keyframe packets recorded @ timestamp {}",
                           data.PendingKeyframePackets.size(), currentTimestamp);
             data.CurrentKeyframePackets.swap(data.PendingKeyframePackets);
             data.PendingKeyframePackets.clear();
