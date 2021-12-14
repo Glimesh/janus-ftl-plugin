@@ -22,6 +22,7 @@
 #include <poll.h>
 #include <spdlog/spdlog.h>
 #include <spdlog/fmt/bin_to_hex.h>
+#include <spdlog/fmt/ostr.h>
 
 #pragma region Constructor / Destructor
 FtlMediaConnection::FtlMediaConnection(
@@ -82,6 +83,7 @@ FtlStreamStats FtlMediaConnection::GetStats()
         }
         
         spdlog::debug("Stats ssrc:{} received:{} nacked:{} lost:{}", dataPair.first, data.PacketsReceived, data.PacketsNacked, data.NackQueue.GetPacketsLost());
+        spdlog::trace("{}", data.NackQueue);
 
     }
     stats.RollingAverageBitrateBps = (rollingBytesReceived * 8) / (rollingSizeAvgMs / 1000.0f);
