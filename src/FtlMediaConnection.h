@@ -63,7 +63,6 @@ private:
     {
         uint32_t PacketsReceived = 0;
         uint32_t PacketsNacked = 0;
-        uint32_t PacketsLost = 0;
         size_t PacketsSinceLastMissedSequence = 0;
         std::list<RtpPacket> CircularPacketBuffer;
         std::map<std::chrono::time_point<std::chrono::steady_clock>, uint16_t>
