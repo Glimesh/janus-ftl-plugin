@@ -50,7 +50,7 @@ public:
      * 
      * Reasonable values range from 0 to 10,000 milliseconds (rounded to a granularity of 10ms). The
      * ideal value depends on expected network delay and jitter clients will experience. Generally
-     * a minimum of 100ms-400ms and a maximum of a couple seconds is a good starting range. 
+     * a minimum of 100ms-400ms and a maximum of a few seconds is a good starting range. 
      */
     struct PlayoutDelay
     {
