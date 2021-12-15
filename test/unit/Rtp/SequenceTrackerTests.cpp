@@ -9,6 +9,8 @@
 
 #include "../../../src/Rtp/SequenceTracker.h"
 
+#include <thread>
+
 using Catch::Matchers::Equals;
 
 static const rtp_sequence_num_t MIN_SEQ_NUM = std::numeric_limits<rtp_sequence_num_t>::min();
@@ -19,10 +21,21 @@ bool emplace(
     rtp_extended_sequence_num_t seq,
     bool expectValid = true)
 {
-    auto extended = tracker.Track(seq);
-
-    REQUIRE(extended == seq);
+    REQUIRE(tracker.Track(seq) == seq);
     return true;
+}
+
+void flushReorderBuffer(
+    SequenceTracker &tracker,
+    rtp_extended_sequence_num_t &seq)
+{
+    INFO("Flush reorder buffer");
+    CAPTURE(seq);
+    for (int i = 0; i < SequenceTracker::REORDER_BUFFER_SIZE; ++i)
+    {
+        emplace(tracker, seq);
+        seq++;
+    }
 }
 
 TEST_CASE("Sequence from zero with no missing packets")
@@ -112,7 +125,7 @@ TEST_CASE("Skip second packet")
 
     INFO("Flush reorder buffer");
     CAPTURE(seq);
-    for (int i = 0; i < SequenceTracker::REORDER_BUFFER_SIZE + 50; ++i)
+    for (int i = 0; i < SequenceTracker::REORDER_BUFFER_SIZE; ++i)
     {
         emplace(tracker, seq);
         seq++;
@@ -120,6 +133,54 @@ TEST_CASE("Skip second packet")
 
     std::reverse(skipped.begin(), skipped.end());
     REQUIRE_THAT(tracker.GetMissing(), Equals(skipped));
+}
+
+TEST_CASE("Many outstanding NACKs")
+{
+    SequenceTracker tracker;
+    std::vector<rtp_extended_sequence_num_t> skipped;
+    rtp_extended_sequence_num_t seq = 0;
+
+    INFO("Receive a number of packets with a high loss rate");
+    CAPTURE(seq);
+    for (int i = 0; i < 1000; ++i)
+    {
+        // Receive one packet
+        emplace(tracker, seq);
+        seq++;
+
+        // Skip next packet
+        seq++;
+    }
+
+    flushReorderBuffer(tracker, seq);
+
+    INFO("Send NACKs, but don't retransmit packet to simulate many outstanding NACKs");
+    for (auto missing : tracker.GetMissing())
+    {
+        tracker.NackSent(missing);
+    }
+
+    INFO("Receive another bunch of packets with a high loss rate");
+    CAPTURE(seq);
+    for (int i = 0; i < 1000; ++i)
+    {
+        // Receive one packet
+        emplace(tracker, seq);
+        seq++;
+
+        // Skip next packet and record it
+        skipped.emplace_back(seq++);
+    }
+
+    flushReorderBuffer(tracker, seq);
+
+    INFO("Wait for outstanding NACKs to timeout");
+    std::this_thread::sleep_for(2000ms);
+
+    std::reverse(skipped.begin(), skipped.end());
+    std::vector<rtp_extended_sequence_num_t> expected(skipped.begin(), skipped.begin() + SequenceTracker::MAX_OUTSTANDING_NACKS);
+    REQUIRE_THAT(tracker.GetMissing(), Equals(expected));
 }
 
 TEST_CASE("Randomized skipped packet test")
