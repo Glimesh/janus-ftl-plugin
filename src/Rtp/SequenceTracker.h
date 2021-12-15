@@ -25,7 +25,7 @@ public:
     bool Emplace(rtp_extended_sequence_num_t seq);
     void NackSent(rtp_extended_sequence_num_t seq);
 
-    std::vector<rtp_extended_sequence_num_t> GetMissing() const;
+    std::vector<rtp_extended_sequence_num_t> GetMissing();
     uint64_t GetPacketsLost() const;
     
     friend std::ostream& operator<<(std::ostream & out, const SequenceTracker& self);

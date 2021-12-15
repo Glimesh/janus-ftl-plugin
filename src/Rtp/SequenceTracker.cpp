@@ -131,27 +131,6 @@ void SequenceTracker::checkForMissing(rtp_extended_sequence_num_t seq)
     {
         maxSeq = seq;
     }
-
-    // for (auto it = missing.begin(); it != missing.end() && missing.size() > MAX_MISSING_SET_SIZE;)
-    // {
-    //     nacksOutstanding.erase(*it);
-    //     nackMapping.erase(*it);
-    //     it = missing.erase(it);
-    // }
-
-    // auto now = std::chrono::steady_clock::now();
-    // for (auto it = nacksOutstanding.begin(); it != nacksOutstanding.end();)
-    // {
-    //     if (now - it->second >= RECEIVE_BUFFER_TIMEOUT)
-    //     {
-    //         missing.erase(it->first);
-    //         it = nacksOutstanding.erase(it);
-    //     }
-    //     else
-    //     {
-    //         ++it;
-    //     }
-    // }
 }
 
 void SequenceTracker::NackSent(rtp_extended_sequence_num_t seq)
@@ -160,23 +139,44 @@ void SequenceTracker::NackSent(rtp_extended_sequence_num_t seq)
     nackMapping.emplace(seq, seq);
 }
 
-std::vector<rtp_extended_sequence_num_t> SequenceTracker::GetMissing() const
+std::vector<rtp_extended_sequence_num_t> SequenceTracker::GetMissing()
 {
+    // List all missing packets not already NACK'd
     std::vector<rtp_extended_sequence_num_t> toNack;
-
-    // Iterate newest missing packets first
-    for (auto it = missing.rbegin(); it != missing.rend() && nacksOutstanding.size() + toNack.size() < MAX_OUTSTANDING_NACKS; ++it)
+    for (auto it = missing.begin(); it != missing.end(); ++it)
     {
-        auto seq = *it;
-        if (!nacksOutstanding.contains(seq))
+        if (!nacksOutstanding.contains(*it))
         {
-            toNack.emplace_back(seq);
+            toNack.emplace_back(*it);
         }
     }
 
-    if (nacksOutstanding.size() > MAX_OUTSTANDING_NACKS)
+    // If we have many outstandling NACKs, try to clean up the older ones that were likely lost
+    if (toNack.size() + nacksOutstanding.size() > MAX_OUTSTANDING_NACKS)
+    {
+        auto now = std::chrono::steady_clock::now();
+        for (auto it = nacksOutstanding.begin(); it != nacksOutstanding.end();)
+        {
+            if (now - it->second >= RECEIVE_BUFFER_TIMEOUT)
+            {
+                missing.erase(it->first);
+                it = nacksOutstanding.erase(it);
+            }
+            else
+            {
+                ++it;
+            }
+        }
+    }
+
+    // Reverse so we hand back recent packets first
+    std::reverse(toNack.begin(), toNack.end());
+
+    // Finally, ensure we stay under the max outstanding nack limit
+    if (toNack.size() + nacksOutstanding.size() > MAX_OUTSTANDING_NACKS)
     {
         spdlog::debug("Unable to NACK some missed packets, too many outstanding NACKs: {}", nacksOutstanding.size());
+        toNack.resize(MAX_OUTSTANDING_NACKS - nacksOutstanding.size());
     }
 
     return toNack;
