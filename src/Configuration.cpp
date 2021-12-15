@@ -19,12 +19,7 @@
 #include <unistd.h>
 #include <wordexp.h>
 
-// To warn if playout delay values are given but the feature is not supported.
-#if defined(JANUS_PLAYOUT_DELAY_SUPPORT)
-const bool PLAYOUT_DELAY_SUPPORT = true;
-#else
-const bool PLAYOUT_DELAY_SUPPORT = false;
-#endif
+using namespace std::chrono_literals;
 
 #pragma region Public methods
 void Configuration::Load()
@@ -86,7 +81,7 @@ void Configuration::Load()
     // FTL_ORCHESTRATOR_PORT -> OrchestratorPort
     if (char* varVal = std::getenv("FTL_ORCHESTRATOR_PORT"))
     {
-        orchestratorPort = std::strtoul(varVal, nullptr, 10);
+        orchestratorPort = std::stoul(varVal);
     }
 
     // FTL_ORCHESTRATOR_PSK -> OrchestratorPsk
@@ -157,8 +152,8 @@ void Configuration::Load()
             if (!PLAYOUT_DELAY_SUPPORT) {
                 spdlog::warn("Ignoring playout delay configuration, option janus_playout_delay_support is not enabled");
             } else if (minVal && maxVal) {
-                auto min = std::stoul(minVal);
-                auto max = std::stoul(maxVal);
+                auto min = std::chrono::milliseconds(std::stoul(minVal));
+                auto max = std::chrono::milliseconds(std::stoul(maxVal));
                 playoutDelay = PlayoutDelay(min, max);
             } else {
                 throw InvalidConfigurationException("Both min and max playout delay values must be set together");
@@ -249,30 +244,32 @@ void Configuration::Load()
     }
 }
 
-Configuration::PlayoutDelay::PlayoutDelay(uint16_t min_ms, uint16_t max_ms)
+Configuration::PlayoutDelay::PlayoutDelay(std::chrono::milliseconds min_ms, std::chrono::milliseconds max_ms)
 {
-    if (min_ms < 0)
+    if (min_ms < 0ms)
     {
         throw InvalidConfigurationException("Playout delay min must be greater than or equal to 0");
     }
-    if (min_ms > 40950)
+    if (min_ms > 40950ms)
     {
-        throw InvalidConfigurationException("FTL_PLAYOUT_DELAY_MIN_MS must be less than or equal to 40950");
+        throw InvalidConfigurationException("FTL_PLAYOUT_DELAY_MIN_MS must be less than or equal to 40950ms");
     }
-    if (max_ms < 0)
+    if (max_ms < 0ms)
     {
         throw InvalidConfigurationException("Playout delay max must be greater than or equal to 0");
     }
-    if (max_ms > 40950)
+    if (max_ms > 40950ms)
     {
-        throw InvalidConfigurationException("FTL_PLAYOUT_DELAY_MAX_MS must be less than or equal to 40950");
+        throw InvalidConfigurationException("FTL_PLAYOUT_DELAY_MAX_MS must be less than or equal to 40950ms");
     }
     if (min_ms > max_ms)
     {
         throw InvalidConfigurationException("FTL_PLAYOUT_DELAY_MIN_MS cannot be greater than FTL_PLAYOUT_DELAY_MAX_MS");
     }
-    min = min_ms / 10;
-    max = max_ms / 10;
+
+    // Convert validated values to units of 10ms as used in the playout-delay header extension
+    min = min_ms.count() / 10;
+    max = max_ms.count() / 10;
 }
 #pragma endregion
 

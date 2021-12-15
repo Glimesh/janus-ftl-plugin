@@ -37,21 +37,25 @@ public:
     /**
      * @brief Range of expected delay between server capturing a frame and clients receiving it.
      * 
+     * Note min/max delay are in units of 10ms as specified by the playout-delay specification, but
+     * the constructor takes the chrono::duration type for clarity and convenience.
+     * 
      * Sent to clients via an experimental RTP extension only implemented for Chrome. Can be used to
-     * suggest client should delay rendering a frame. In theory the client should determine an
-     * appropriate delay to account for network jitter and rendering time. We have seen Chrome be
-     * wrong when choosing a delay however, so these values can be used to suggest a longer delay.
-     * This can also help with consistency, every client will attempt to stay within the range of
-     * delay specified here.
+     * suggest a bounded range client should delay before rendering a frame. In theory the client
+     * should determine an appropriate delay to account for network jitter and rendering time.
      * 
-     * Useful values range from 0 to 10,000 milliseconds (rounded to a granularity of 10ms).
+     * However, we have seen Chrome be wrong when choosing a delay, and there are other use cases
+     * where bounding the minimum or maximum delay can be useful. See the RFC for more details.
+     * https://webrtc.googlesource.com/src/+/refs/heads/main/docs/native-code/rtp-hdrext/playout-delay
      * 
-     * See https://webrtc.googlesource.com/src/+/refs/heads/main/docs/native-code/rtp-hdrext/playout-delay
+     * Reasonable values range from 0 to 10,000 milliseconds (rounded to a granularity of 10ms). The
+     * ideal value depends on expected network delay and jitter clients will experience. Generally
+     * a minimum of 100ms-400ms and a maximum of a couple seconds is a good starting range. 
      */
     struct PlayoutDelay
     {
 public:
-        PlayoutDelay(uint16_t min_ms, uint16_t max_ms);
+        PlayoutDelay(std::chrono::milliseconds min_ms, std::chrono::milliseconds max_ms);
 
         /* Public methods */
         uint16_t MinDelay() {
@@ -102,6 +106,16 @@ private:
     std::string GetRestServiceAuthToken();
 
 private:
+    /* Constants */
+    // Playout delay configuration can only used if your Janus version supports the playout-delay
+    // RTP extension, hence the compiler flag. We use this constant to print a warning to the user
+    // if they set a delay configuration but it is not being used.
+    #if defined(JANUS_PLAYOUT_DELAY_SUPPORT)
+    static constexpr bool PLAYOUT_DELAY_SUPPORT = true;
+    #else
+    static constexpr bool PLAYOUT_DELAY_SUPPORT = false;
+    #endif
+
     /* Backing stores */
     std::string myHostname;
     NodeKind nodeKind = NodeKind::Standalone;

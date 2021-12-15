@@ -31,7 +31,6 @@ sources = files([
     'src/VideoDecoders/H264VideoDecoder.cpp',
     # RTP Utilities
     'src/Rtp/ExtendedSequenceCounter.cpp',
-    'src/Rtp/JanusRtpPacketBuilder.cpp',
     'src/Rtp/RtpPacket.cpp',
     # Service Connections
     'src/ServiceConnections/DummyServiceConnection.cpp',
