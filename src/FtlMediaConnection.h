@@ -73,12 +73,8 @@ private:
     };
 
     /* Constants */
-    static constexpr uint64_t           MICROSECONDS_PER_SECOND        = 1000000;
-    static constexpr float              MICROSECONDS_PER_MILLISECOND   = 1000.0f;
-    static constexpr rtp_payload_type_t FTL_PAYLOAD_TYPE_SENDER_REPORT = 200;
-    static constexpr rtp_payload_type_t FTL_PAYLOAD_TYPE_PING          = 250;
-    static constexpr size_t             MAX_PACKETS_BEFORE_NACK        = 16;
-    static constexpr size_t             NACK_TIMEOUT_SEQUENCE_DELTA    = 128;
+    static constexpr rtp_payload_type_t  FTL_PAYLOAD_TYPE_SENDER_REPORT = 200;
+    static constexpr rtp_payload_type_t  FTL_PAYLOAD_TYPE_PING          = 250;
     static constexpr std::chrono::milliseconds READ_TIMEOUT{200};
 
     /* Private members */
