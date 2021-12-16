@@ -1,6 +1,3 @@
-[submodule "cpp-httplib"]
-	path = vendor/cpp-httplib
-	url = https://github.com/yhirose/cpp-httplib
 [submodule "janus-ftl-orchestrator"]
 	path = vendor/janus-ftl-orchestrator
 	url = https://github.com/Glimesh/janus-ftl-orchestrator
