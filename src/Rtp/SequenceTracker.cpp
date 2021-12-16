@@ -175,7 +175,8 @@ std::vector<rtp_extended_sequence_num_t> SequenceTracker::GetMissing()
     // Finally, ensure we stay under the max outstanding nack limit
     if (toNack.size() + nacksOutstanding.size() > MAX_OUTSTANDING_NACKS)
     {
-        spdlog::debug("Unable to NACK some missed packets, too many outstanding NACKs: {}", nacksOutstanding.size());
+        spdlog::debug("Unable to NACK some missed packets; toNack: {}, nacksOutstanding: {}",
+                      toNack.size(), nacksOutstanding.size());
         toNack.resize(MAX_OUTSTANDING_NACKS - nacksOutstanding.size());
     }
 
