@@ -51,7 +51,8 @@ void JanusSession::SendRtpPacket(const RtpPacket& packet, const MediaMetadata& m
 #if defined(JANUS_PLAYOUT_DELAY_SUPPORT)
     // If a playout delay is defined, add it to the first N video packets sent out. Sending it on
     // both audio&video sources is redundant so we only attach it to the video source.
-    if (playoutDelay && isVideoPacket && playoutDelaySendCount < PLAYOUT_DELAY_SEND_COUNT_TARGET) {
+    if (playoutDelay && isVideoPacket && playoutDelaySendCount < PLAYOUT_DELAY_SEND_COUNT_TARGET)
+    {
         janusRtp.extensions.playout_delay_min = playoutDelay->MinDelay();
         janusRtp.extensions.playout_delay_max = playoutDelay->MaxDelay();
         playoutDelaySendCount++;

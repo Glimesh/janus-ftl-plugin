@@ -148,14 +148,20 @@ void Configuration::Load()
         char* minVal = std::getenv("FTL_PLAYOUT_DELAY_MIN_MS");
         char* maxVal = std::getenv("FTL_PLAYOUT_DELAY_MAX_MS");
 
-        if (minVal || maxVal) {
-            if (!PLAYOUT_DELAY_SUPPORT) {
+        if (minVal || maxVal)
+        {
+            if (!PLAYOUT_DELAY_SUPPORT)
+            {
                 spdlog::warn("Ignoring playout delay configuration, option janus_playout_delay_support is not enabled");
-            } else if (minVal && maxVal) {
+            }
+            else if (minVal && maxVal)
+            {
                 auto min = std::chrono::milliseconds(std::stoul(minVal));
                 auto max = std::chrono::milliseconds(std::stoul(maxVal));
                 playoutDelay = PlayoutDelay(min, max);
-            } else {
+            }
+            else
+            {
                 throw InvalidConfigurationException("Both min and max playout delay values must be set together");
             }
         }
