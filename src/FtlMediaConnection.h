@@ -36,7 +36,7 @@ class FtlMediaConnection
 {
 public:
     /* Public types */
-    using ClosedCallback = std::function<void(FtlMediaConnection &)>;
+    using ClosedCallback = std::function<void(FtlMediaConnection&)>;
     using RtpPacketCallback = std::function<void(const RtpPacket&)>;
 
     /* Constructor/Destructor */
@@ -73,12 +73,12 @@ private:
     };
 
     /* Constants */
-    static constexpr uint64_t MICROSECONDS_PER_SECOND = 1000000;
-    static constexpr float MICROSECONDS_PER_MILLISECOND = 1000.0f;
+    static constexpr uint64_t           MICROSECONDS_PER_SECOND = 1000000;
+    static constexpr float              MICROSECONDS_PER_MILLISECOND = 1000.0f;
     static constexpr rtp_payload_type_t FTL_PAYLOAD_TYPE_SENDER_REPORT = 200;
     static constexpr rtp_payload_type_t FTL_PAYLOAD_TYPE_PING = 250;
-    static constexpr size_t MAX_PACKETS_BEFORE_NACK = 16;
-    static constexpr size_t NACK_TIMEOUT_SEQUENCE_DELTA = 128;
+    static constexpr size_t             MAX_PACKETS_BEFORE_NACK = 16;
+    static constexpr size_t             NACK_TIMEOUT_SEQUENCE_DELTA = 128;
     static constexpr std::chrono::milliseconds READ_TIMEOUT{200};
 
     /* Private members */
@@ -92,7 +92,7 @@ private:
     const bool nackLostPackets;
     // Stream data
     std::shared_mutex dataMutex;
-    time_t startTime{0};
+    time_t startTime { 0 };
     std::chrono::time_point<std::chrono::steady_clock> steadyStartTime;
     std::unordered_map<rtp_ssrc_t, SsrcData> ssrcData;
     // Thread to read and process packets from the connection, must be initialized last
