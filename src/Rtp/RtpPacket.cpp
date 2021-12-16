@@ -10,17 +10,17 @@
 #include <netinet/in.h>
 
 #pragma region Static utility methods
-const RtpHeader* RtpPacket::GetRtpHeader(const std::vector<std::byte>& rtpPacket)
+const RtpHeader* RtpPacket::GetRtpHeader(std::span<const std::byte> rtpPacket)
 {
     return reinterpret_cast<const RtpHeader*>(rtpPacket.data());
 }
 
-const rtp_sequence_num_t RtpPacket::GetRtpSequence(const std::vector<std::byte>& rtpPacket)
+const rtp_sequence_num_t RtpPacket::GetRtpSequence(std::span<const std::byte> rtpPacket)
 {
     return ntohs(GetRtpHeader(rtpPacket)->SequenceNumber);
 }
 
-const std::span<const std::byte> RtpPacket::GetRtpPayload(const std::vector<std::byte>& rtpPacket)
+const std::span<const std::byte> RtpPacket::GetRtpPayload(std::span<const std::byte> rtpPacket)
 {
     if (rtpPacket.size() < 12)
     {
@@ -63,10 +63,10 @@ const std::span<const std::byte> RtpPacket::GetRtpPayload(const std::vector<std:
 
 #pragma region Constructor/Destructor
 RtpPacket::RtpPacket(
-    const std::vector<std::byte>& bytes,
-    const rtp_extended_sequence_num_t extendedSequenceNum)
+    std::span<const std::byte> bytes,
+    rtp_extended_sequence_num_t extendedSequenceNum)
 :
-    Bytes(bytes),
+    Bytes(bytes.begin(), bytes.end()),
     ExtendedSequenceNum(extendedSequenceNum)
 {
 }

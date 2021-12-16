@@ -5,9 +5,9 @@
  * @copyright Copyright (c) 2021 Daniel Stiner
  */
 
-#include <iostream>
-
 #include "ExtendedSequenceCounter.h"
+
+#include <iostream>
 
 bool ExtendedSequenceCounter::Extend(rtp_sequence_num_t seq, rtp_extended_sequence_num_t* extendedSeq)
 {

@@ -10,6 +10,7 @@
 #include "FtlClient.h"
 #include "JanusSession.h"
 #include "RtpPacketSink.h"
+#include "Rtp/RtpPacket.h"
 #include "Utilities/FtlTypes.h"
 
 #include <unordered_set>
@@ -25,7 +26,7 @@ public:
         MediaMetadata mediaMetadata);
 
     /* Public methods */
-    void SendRtpPacket(const std::vector<std::byte>& packet) override;
+    void SendRtpPacket(const RtpPacket& packet) override;
 
     // Session methods
     void AddViewerSession(JanusSession* session);

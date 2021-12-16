@@ -29,7 +29,7 @@ FtlMediaConnection::FtlMediaConnection(
     const ftl_channel_id_t channelId,
     const ftl_stream_id_t streamId,
     const ClosedCallback onClosed,
-    const RtpPacketCallback onRtpPacketBytes,
+    const RtpPacketCallback onRtpPacket,
     const uint32_t rollingSizeAvgMs,
     const bool nackLostPackets)
 :
@@ -38,7 +38,7 @@ FtlMediaConnection::FtlMediaConnection(
     channelId(channelId),
     streamId(streamId),
     onClosed(onClosed),
-    onRtpPacketBytes(onRtpPacketBytes),
+    onRtpPacket(onRtpPacket),
     rollingSizeAvgMs(rollingSizeAvgMs),
     nackLostPackets(nackLostPackets),
     thread(std::jthread(std::bind(&FtlMediaConnection::threadBody, this, std::placeholders::_1)))
@@ -577,9 +577,9 @@ void FtlMediaConnection::processAudioVideoRtpPacket(const RtpPacket& rtpPacket,
 {
     processRtpPacketKeyframe(rtpPacket, dataLock);
 
-    if (onRtpPacketBytes)
+    if (onRtpPacket)
     {
-        onRtpPacketBytes(rtpPacket.Bytes);
+        onRtpPacket(rtpPacket);
     }
 }
 
