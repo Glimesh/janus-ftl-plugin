@@ -579,7 +579,7 @@ void FtlServer::eventStreamIdAssigned(std::shared_ptr<FtlServerStreamIdAssignedE
                 std::move(mediaTransport),
                 mediaPort,
                 event->Metadata,
-                [rtpPacketSink](const std::vector<std::byte> packet)
+                [rtpPacketSink](const RtpPacket& packet)
                 {
                     rtpPacketSink->SendRtpPacket(packet);
                 });

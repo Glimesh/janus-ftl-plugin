@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include "Rtp/RtpPacket.h"
 #include "Utilities/FtlTypes.h"
 #include "Utilities/Result.h"
 
@@ -79,7 +80,7 @@ public:
     /**
      * @brief Relays a packet from an incoming FtlStream
      */
-    void RelayPacket(const std::vector<std::byte>& packet);
+    void RelayPacket(const RtpPacket& packet);
 
 private:
     /* Private structs */

@@ -46,6 +46,7 @@ JanusFtl::JanusFtl(
 #else
     spdlog::set_level(spdlog::level::info);
 #endif
+    spdlog::flush_on(spdlog::level::err);
 
     configuration = std::make_unique<Configuration>();
     configuration->Load();
@@ -53,6 +54,7 @@ JanusFtl::JanusFtl(
     rollingSizeAvgMs = configuration->GetRollingSizeAvgMs();
     metadataReportInterval = configuration->GetServiceConnectionMetadataReportInterval();
     watchdog = std::make_unique<Watchdog>(configuration->GetServiceConnectionMetadataReportInterval());
+    playoutDelay = configuration->GetPlayoutDelay();
 
     initVideoDecoders();
 
@@ -96,7 +98,7 @@ JanusFtl::~JanusFtl()
 void JanusFtl::CreateSession(janus_plugin_session* handle, int* error)
 {
     std::unique_lock lock(streamDataMutex);
-    auto session = std::make_unique<JanusSession>(handle, janusCore);
+    auto session = std::make_unique<JanusSession>(handle, janusCore, playoutDelay);
     handle->plugin_handle = session.get();
     sessions[handle] = ActiveSession
     {
@@ -881,7 +883,8 @@ std::string JanusFtl::generateSdpOffer(const ActiveSession& session, const Janus
             "a=rtcp-fb:" << videoPayloadType << " nack pli\r\n" <<        // Send us picture-loss-indicators
             // "a=rtcp-fb:96 nack goog-remb\r\n" <<  // Send some congestion indicator thing
             "a=sendonly\r\n" <<
-            "a=extmap:1 urn:ietf:params:rtp-hdrext:sdes:mid\r\n";
+            "a=extmap:1 urn:ietf:params:rtp-hdrext:sdes:mid\r\n" <<
+            "a=extmap:6 http://www.webrtc.org/experiments/rtp-hdrext/playout-delay\r\n";
     }
     return offerStream.str();
 }

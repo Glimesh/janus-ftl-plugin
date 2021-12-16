@@ -110,12 +110,12 @@ void FtlClient::SetOnClosed(std::function<void()> onClosed)
     this->onClosed = onClosed;
 }
 
-void FtlClient::RelayPacket(const std::vector<std::byte>& packet)
+void FtlClient::RelayPacket(const RtpPacket& packet)
 {
     if (mediaSocketHandle != 0)
     {
-        size_t writeResult = write(mediaSocketHandle, packet.data(), packet.size());
-        if (writeResult != packet.size())
+        size_t writeResult = write(mediaSocketHandle, packet.Bytes.data(), packet.Bytes.size());
+        if (writeResult != packet.Bytes.size())
         {
             // TODO: Handle writeResult
         }

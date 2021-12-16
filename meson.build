@@ -70,6 +70,10 @@ if systemd_dep.found()
   add_project_arguments('-DSYSTEMD_WATCHDOG_SUPPORT', language: 'cpp') 
 endif
 
+if get_option('janus_playout_delay_support')
+    add_project_arguments('-DJANUS_PLAYOUT_DELAY_SUPPORT', language: 'cpp')
+endif
+
 deps = [
     dependency('glib-2.0'),
     dependency('libsrtp2'),

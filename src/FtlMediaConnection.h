@@ -37,7 +37,7 @@ class FtlMediaConnection
 public:
     /* Public types */
     using ClosedCallback = std::function<void(FtlMediaConnection &)>;
-    using RtpPacketCallback = std::function<void(const std::vector<std::byte> &)>;
+    using RtpPacketCallback = std::function<void(const RtpPacket&)>;
 
     /* Constructor/Destructor */
     FtlMediaConnection(
@@ -87,7 +87,7 @@ private:
     const ftl_channel_id_t channelId;
     const ftl_stream_id_t streamId;
     const ClosedCallback onClosed;
-    const RtpPacketCallback onRtpPacketBytes;
+    const RtpPacketCallback onRtpPacket;
     const uint32_t rollingSizeAvgMs;
     const bool nackLostPackets;
     // Stream data

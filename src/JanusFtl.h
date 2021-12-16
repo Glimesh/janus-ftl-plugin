@@ -108,6 +108,7 @@ private:
     std::mutex threadShutdownMutex;
     std::condition_variable threadShutdownConditionVariable;
     std::unique_ptr<Watchdog> watchdog;
+    std::optional<Configuration::PlayoutDelay> playoutDelay;
     // Stream/Session/Relay data
     std::shared_mutex streamDataMutex; // Covers shared access to streams and sessions
     std::unordered_map<ftl_channel_id_t, std::shared_ptr<JanusStream>> streams;

@@ -5,10 +5,9 @@
  * @copyright Copyright (c) 2021 Daniel Stiner
  */
 
-#include <iostream>
-
 #include "ExtendedSequenceCounter.h"
 
+#include <iostream>
 #include <spdlog/spdlog.h>
 
 ExtendedSequenceCounter::ExtendResult ExtendedSequenceCounter::Extend(rtp_sequence_num_t seq)

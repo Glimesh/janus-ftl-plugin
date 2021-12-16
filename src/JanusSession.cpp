@@ -17,41 +17,49 @@ extern "C"
 }
 
 #pragma region Constructor/Destructor
-JanusSession::JanusSession(janus_plugin_session* handle, janus_callbacks* janusCore) : 
+JanusSession::JanusSession(janus_plugin_session* handle, janus_callbacks* janusCore, std::optional<Configuration::PlayoutDelay> playoutDelay) : 
     handle(handle),
     janusCore(janusCore),
     sdpSessionId(janus_get_real_time()),
-    sdpVersion(1)
+    sdpVersion(1),
+    playoutDelay(playoutDelay)
 { }
 #pragma endregion
 
 #pragma region Public methods
-void JanusSession::SendRtpPacket(const std::vector<std::byte>& packet,
-    const MediaMetadata& mediaMetadata)
+void JanusSession::SendRtpPacket(const RtpPacket& packet, const MediaMetadata& mediaMetadata)
 {
-    if (!isStarted)
+    if (!isStarted || handle->gateway_handle == nullptr)
     {
         return;
     }
-    
+
+    bool isVideoPacket = (packet.Header()->Type == mediaMetadata.VideoPayloadType);
+
     // Sadly, we can't avoid a copy here because the janus_plugin_rtp struct doesn't take a
     // const buffer. So allocate some storage to copy.
-    std::byte packetBuffer[2048] { std::byte(0) };
-    std::copy(packet.begin(), packet.end(), packetBuffer);
+    std::vector<std::byte> buffer(packet.Bytes.begin(), packet.Bytes.end());
 
-    const janus_rtp_header* rtpHeader = reinterpret_cast<janus_rtp_header*>(&packetBuffer[0]);
-    bool isVideoPacket = (rtpHeader->type == mediaMetadata.VideoPayloadType);
     janus_plugin_rtp janusRtp = 
     {
         .video = isVideoPacket,
-        .buffer = reinterpret_cast<char*>(&packetBuffer[0]),
-        .length = static_cast<uint16_t>(packet.size())
+        .buffer = reinterpret_cast<char*>(buffer.data()),
+        .length = static_cast<uint16_t>(buffer.size())
     };
     janus_plugin_rtp_extensions_reset(&janusRtp.extensions);
-    if (handle->gateway_handle != nullptr)
+
+#if defined(JANUS_PLAYOUT_DELAY_SUPPORT)
+    // If a playout delay is defined, add it to the first N video packets sent out. Sending it on
+    // both audio&video sources is redundant so we only attach it to the video source.
+    if (playoutDelay && isVideoPacket && playoutDelaySendCount < PLAYOUT_DELAY_SEND_COUNT_TARGET)
     {
-        janusCore->relay_rtp(handle, &janusRtp);
+        janusRtp.extensions.playout_delay_min = playoutDelay->MinDelay();
+        janusRtp.extensions.playout_delay_max = playoutDelay->MaxDelay();
+        playoutDelaySendCount++;
     }
+#endif
+
+    janusCore->relay_rtp(handle, &janusRtp);
 }
 #pragma endregion
 

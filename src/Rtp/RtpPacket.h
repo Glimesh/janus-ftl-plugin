@@ -21,14 +21,14 @@ class RtpPacket
 {
 public:
     /* Static utility methods */
-    static const RtpHeader* GetRtpHeader(const std::vector<std::byte>& rtpPacket);
-    static const rtp_sequence_num_t GetRtpSequence(const std::vector<std::byte>& rtpPacket);
-    static const std::span<const std::byte> GetRtpPayload(const std::vector<std::byte>& rtpPacket);
+    static const RtpHeader* GetRtpHeader(std::span<const std::byte> rtpPacket);
+    static const rtp_sequence_num_t GetRtpSequence(std::span<const std::byte> rtpPacket);
+    static const std::span<const std::byte> GetRtpPayload(std::span<const std::byte> rtpPacket);
 
     /* Constructor/Destructor */
     RtpPacket(
-        const std::vector<std::byte>& bytes,
-        const rtp_extended_sequence_num_t extendedSequenceNum);
+        std::span<const std::byte> bytes,
+        rtp_extended_sequence_num_t extendedSequenceNum);
 
     /* Public fields */
     const std::vector<std::byte> Bytes;
