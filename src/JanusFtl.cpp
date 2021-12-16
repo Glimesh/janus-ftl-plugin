@@ -215,7 +215,7 @@ void JanusFtl::IncomingRtcp(janus_plugin_session* handle, janus_plugin_rtcp* pac
             handlePsfbRtcpPacket(handle, rtcpHeader);
             break;
         default:
-            spdlog::info("Got unknown RTCP packet! Type: {}", rtcpHeader->type);
+            spdlog::info("Got unknown RTCP packet! Type: {}", static_cast<uint16_t>(rtcpHeader->type));
             break;
         }
 

@@ -59,6 +59,7 @@ sources = files([
 ])
 
 # Pull in subprojects
+cpp_httplib_wrap = subproject('cpp-httplib')
 fmt_wrap = subproject('fmt', default_options: 'default_library=static')
 meson.override_dependency('fmt', fmt_wrap.get_variable('fmt_dep')) # Use our copy of fmt for spdlog
 spdlog_wrap = subproject('spdlog', default_options: ['default_library=static', 'compile_library=true', 'external_fmt=true'] )
@@ -83,13 +84,13 @@ deps = [
     dependency('libavcodec'),
     dependency('libavutil'),
     # Meson wrapped dependencies
+    cpp_httplib_wrap.get_variable('cpp_httplib_dep'),
     fmt_wrap.get_variable('fmt_dep'),
     spdlog_wrap.get_variable('spdlog_dep'),
     systemd_dep,
 ]
 
 incdir = include_directories(
-    './vendor/cpp-httplib',
     './vendor/janus-ftl-orchestrator/inc',
     './vendor/eventpp/include',
     janusincludepath,
