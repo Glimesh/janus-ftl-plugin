@@ -435,7 +435,7 @@ bool FtlMediaConnection::Frame::IsComplete() const
     }
 
     // Require last packet has the market bit set to indicate it is the end of the frame
-    if (!Packets.end()->Header()->MarkerBit)
+    if (!Packets.back().Header()->MarkerBit)
     {
         return false;
     }
