@@ -24,7 +24,7 @@
 #include <spdlog/fmt/bin_to_hex.h>
 #include <spdlog/fmt/ostr.h>
 
-#pragma region Constructor / Destructor
+#pragma region Constructor/Destructor
 FtlMediaConnection::FtlMediaConnection(
     std::unique_ptr<ConnectionTransport> transport,
     const MediaMetadata mediaMetadata,
@@ -34,15 +34,16 @@ FtlMediaConnection::FtlMediaConnection(
     const RtpPacketCallback onRtpPacket,
     const uint32_t rollingSizeAvgMs,
     const bool nackLostPackets)
-    : transport(std::move(transport)),
-      mediaMetadata(mediaMetadata),
-      channelId(channelId),
-      streamId(streamId),
-      onClosed(onClosed),
-      onRtpPacket(onRtpPacket),
-      rollingSizeAvgMs(rollingSizeAvgMs),
-      nackLostPackets(nackLostPackets),
-      thread(std::jthread(std::bind(&FtlMediaConnection::threadBody, this, std::placeholders::_1)))
+:
+    transport(std::move(transport)),
+    mediaMetadata(mediaMetadata),
+    channelId(channelId),
+    streamId(streamId),
+    onClosed(onClosed),
+    onRtpPacket(onRtpPacket),
+    rollingSizeAvgMs(rollingSizeAvgMs),
+    nackLostPackets(nackLostPackets),
+    thread(std::jthread(std::bind(&FtlMediaConnection::threadBody, this, std::placeholders::_1)))
 {
     // Prepare stream data stores to accept packets from SSRCs specified by control handshake
     ssrcData.try_emplace(mediaMetadata.AudioSsrc);
@@ -52,7 +53,7 @@ FtlMediaConnection::FtlMediaConnection(
     startTime = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
     steadyStartTime = std::chrono::steady_clock::now();
     spdlog::info("Media stream receiving for Channel {} / Stream {}",
-                 channelId, streamId);
+        channelId, streamId);
 }
 #pragma endregion
 
@@ -65,7 +66,7 @@ void FtlMediaConnection::RequestStop()
 FtlStreamStats FtlMediaConnection::GetStats()
 {
     std::shared_lock lock(dataMutex);
-    FtlStreamStats stats{0};
+    FtlStreamStats stats { 0 };
     uint32_t rollingBytesReceived = 0;
     stats.StartTime = startTime;
     stats.DurationSeconds = std::chrono::duration_cast<std::chrono::seconds>(
@@ -82,9 +83,7 @@ FtlStreamStats FtlMediaConnection::GetStats()
             rollingBytesReceived += bytesPair.second;
         }
         
-        spdlog::debug("Stats ssrc:{} received:{} nacked:{} lost:{}", dataPair.first, data.NackQueue.GetReceivedCount(), data.NackQueue.GetNackCount(), data.NackQueue.GetLostCount());
-        spdlog::trace("{}", data.NackQueue);
-
+        spdlog::trace("GetStats {}", data.NackQueue);
     }
     stats.RollingAverageBitrateBps = (rollingBytesReceived * 8) / (rollingSizeAvgMs / 1000.0f);
 
@@ -101,15 +100,15 @@ Result<FtlKeyframe> FtlMediaConnection::GetKeyframe()
             fmt::format("No ssrc data available for video ssrc {}", mediaMetadata.VideoSsrc));
     }
 
-    std::list<RtpPacket> &currentKeyframePackets =
-        ssrcData.at(mediaMetadata.VideoSsrc).CurrentKeyframePackets;
+    std::list<RtpPacket>& currentKeyframePackets =
+        ssrcData.at(mediaMetadata.VideoSsrc).CurrentKeyframe.Packets;
 
-    FtlKeyframe keyframe{mediaMetadata.VideoCodec};
+    FtlKeyframe keyframe { mediaMetadata.VideoCodec };
     std::transform(
         currentKeyframePackets.begin(),
         currentKeyframePackets.end(),
         std::back_inserter(keyframe.Packets),
-        [](const RtpPacket &packet) -> std::vector<std::byte> { return packet.Bytes; });
+        [](const RtpPacket& packet) -> std::vector<std::byte> { return packet.Bytes; });
     return Result<FtlKeyframe>::Success(keyframe);
 }
 #pragma endregion
@@ -125,7 +124,7 @@ void FtlMediaConnection::threadBody(std::stop_token stopToken)
         if (result.IsError)
         {
             spdlog::error("Failed to read from media connection transport: {}",
-                          result.ErrorMessage);
+                result.ErrorMessage);
             break;
         }
 
@@ -136,7 +135,7 @@ void FtlMediaConnection::threadBody(std::stop_token stopToken)
     }
 
     spdlog::debug("Stopping media connection thread for Channel {} / Stream {}",
-                  channelId, streamId);
+        channelId, streamId);
     transport->Stop();
     if (onClosed)
     {
@@ -144,7 +143,7 @@ void FtlMediaConnection::threadBody(std::stop_token stopToken)
     }
 }
 
-void FtlMediaConnection::onBytesReceived(const std::vector<std::byte> &bytes)
+void FtlMediaConnection::onBytesReceived(const std::vector<std::byte>& bytes)
 {
     if (bytes.size() < 12)
     {
@@ -158,62 +157,9 @@ void FtlMediaConnection::onBytesReceived(const std::vector<std::byte> &bytes)
     handleRtpPacket(bytes);
 }
 
-std::set<rtp_extended_sequence_num_t> FtlMediaConnection::insertPacketInSequenceOrder(
-    std::list<RtpPacket> &packetList, const RtpPacket &packet)
-{
-    const auto seqNum = packet.ExtendedSequenceNum;
-    std::set<rtp_extended_sequence_num_t> missingSequences;
-    // If the list is empty, just add it and we're done.
-    if (packetList.size() == 0)
-    {
-        packetList.push_back(packet);
-        return missingSequences;
-    }
-    // Insert the packet into list according to sequence number
-    bool wasInserted = false;
-    for (auto it = packetList.rbegin(); it != packetList.rend(); it++)
-    {
-        const RtpPacket &cachedPacket = *it;
-        const auto cachedSeqNum = cachedPacket.ExtendedSequenceNum;
-
-        // Have we found our insertion point in the sorted packet list?
-        if (seqNum > cachedSeqNum)
-        {
-            // If there are any gaps between the sequence numbers, mark them as missing.
-            if (seqNum - 1 != cachedSeqNum)
-            {
-                for (rtp_extended_sequence_num_t missingSeqNum = (cachedSeqNum + 1);
-                     (missingSeqNum < seqNum); missingSeqNum++)
-                {
-                    missingSequences.insert(missingSeqNum);
-                }
-            }
-            packetList.insert(it.base(), packet);
-            wasInserted = true;
-            break;
-        }
-    }
-
-    if (!wasInserted)
-    {
-        // The packet's sequence number was older than the whole list - insert at the very front.
-        const auto firstSeqNum = packetList.front().ExtendedSequenceNum;
-
-        // Mark in-between packets missing.
-        for (rtp_extended_sequence_num_t missingSeqNum = (seqNum + 1);
-             (missingSeqNum < firstSeqNum); missingSeqNum++)
-        {
-            missingSequences.insert(missingSeqNum);
-        }
-        packetList.push_front(packet);
-    }
-
-    return missingSequences;
-}
-
 void FtlMediaConnection::handleRtpPacket(const std::vector<std::byte> &packetBytes)
 {
-    const RtpHeader *rtpHeader = RtpPacket::GetRtpHeader(packetBytes);
+    const RtpHeader* rtpHeader = RtpPacket::GetRtpHeader(packetBytes);
     rtp_ssrc_t ssrc = ntohl(rtpHeader->Ssrc);
 
     // Handle audio/video packets
@@ -228,7 +174,7 @@ void FtlMediaConnection::handleRtpPacket(const std::vector<std::byte> &packetByt
         // when the payload type is not audio or video. So we need to reconstruct it.
         uint8_t payloadType =
             ((static_cast<uint8_t>(rtpHeader->MarkerBit) << 7) |
-             static_cast<uint8_t>(rtpHeader->Type));
+            static_cast<uint8_t>(rtpHeader->Type));
 
         if (payloadType == FTL_PAYLOAD_TYPE_PING)
         {
@@ -241,14 +187,14 @@ void FtlMediaConnection::handleRtpPacket(const std::vector<std::byte> &packetByt
         else
         {
             spdlog::warn("Unknown RTP payload type {} (orig {})\n", payloadType,
-                         rtpHeader->Type);
+                rtpHeader->Type);
         }
     }
 }
 
-void FtlMediaConnection::handleMediaPacket(const std::vector<std::byte> &packetBytes)
+void FtlMediaConnection::handleMediaPacket(const std::vector<std::byte>& packetBytes)
 {
-    const RtpHeader *rtpHeader = RtpPacket::GetRtpHeader(packetBytes);
+    const RtpHeader* rtpHeader = RtpPacket::GetRtpHeader(packetBytes);
     const rtp_ssrc_t ssrc = ntohl(rtpHeader->Ssrc);
     const rtp_sequence_num_t seqNum = ntohs(rtpHeader->SequenceNumber);
     const rtp_timestamp_t timestamp = ntohs(rtpHeader->Timestamp);
@@ -260,7 +206,7 @@ void FtlMediaConnection::handleMediaPacket(const std::vector<std::byte> &packetB
         return;
     }
 
-    std::unique_lock lock(dataMutex);
+    std::unique_lock dataLock(dataMutex);
     SsrcData &data = ssrcData.at(ssrc);
 
     // The FTL client will sometimes send a bunch of audio packets first as a 'speed test'.
@@ -292,8 +238,8 @@ void FtlMediaConnection::handleMediaPacket(const std::vector<std::byte> &packetB
 
     RtpPacket packet(packetBytes, extendedSeq);
 
-    updateMediaPacketStats(packetBytes, data);
-    captureVideoKeyframe(packet, data);
+    updateMediaPacketStats(packet, data, dataLock);
+    captureVideoKeyframe(packet, data, dataLock);
 
     if (onRtpPacket)
     {
@@ -302,8 +248,9 @@ void FtlMediaConnection::handleMediaPacket(const std::vector<std::byte> &packetB
 }
 
 void FtlMediaConnection::updateMediaPacketStats(
-    const std::vector<std::byte> &packetBytes,
-    SsrcData &data)
+    const RtpPacket &rtpPacket,
+    SsrcData &data,
+    const std::unique_lock<std::shared_mutex>& dataLock)
 {
     // Record packet count
     data.PacketsReceived++;
@@ -312,11 +259,11 @@ void FtlMediaConnection::updateMediaPacketStats(
     std::chrono::time_point<std::chrono::steady_clock> now = std::chrono::steady_clock::now();
     if (data.RollingBytesReceivedByTime.count(now) > 0)
     {
-        data.RollingBytesReceivedByTime.at(now) += packetBytes.size();
+        data.RollingBytesReceivedByTime.at(now) += rtpPacket.Bytes.size();
     }
     else
     {
-        data.RollingBytesReceivedByTime.emplace(now, packetBytes.size());
+        data.RollingBytesReceivedByTime.emplace(now, rtpPacket.Bytes.size());
     }
 
     // Trim any packets that are too old from rolling count
@@ -337,7 +284,10 @@ void FtlMediaConnection::updateMediaPacketStats(
     }
 }
 
-void FtlMediaConnection::captureVideoKeyframe(const RtpPacket &rtpPacket, SsrcData &data)
+void FtlMediaConnection::captureVideoKeyframe(
+    const RtpPacket &rtpPacket,
+    SsrcData &data,
+    const std::unique_lock<std::shared_mutex>& dataLock)
 {
     const RtpHeader *rtpHeader = rtpPacket.Header();
     // Is this a video packet?
@@ -346,7 +296,7 @@ void FtlMediaConnection::captureVideoKeyframe(const RtpPacket &rtpPacket, SsrcDa
         switch (mediaMetadata.VideoCodec)
         {
         case VideoCodecKind::H264:
-            captureH264VideoKeyframe(rtpPacket, data);
+            captureH264VideoKeyframe(rtpPacket, data, dataLock);
             break;
         case VideoCodecKind::Unsupported:
         default:
@@ -356,7 +306,10 @@ void FtlMediaConnection::captureVideoKeyframe(const RtpPacket &rtpPacket, SsrcDa
     }
 }
 
-void FtlMediaConnection::captureH264VideoKeyframe(const RtpPacket &rtpPacket, SsrcData &data)
+void FtlMediaConnection::captureH264VideoKeyframe(
+    const RtpPacket &rtpPacket,
+    SsrcData &data,
+    const std::unique_lock<std::shared_mutex>& dataLock)
 {
     // Is this packet part of a keyframe?
     std::span<const std::byte> packetPayload = rtpPacket.Payload();
@@ -393,29 +346,26 @@ void FtlMediaConnection::captureH264VideoKeyframe(const RtpPacket &rtpPacket, Ss
         return;
     }
 
-    if (data.PendingKeyframePackets.size() <= 0)
+    rtp_timestamp_t timestamp = ntohl(rtpPacket.Header()->Timestamp);
+
+    if (timestamp != data.PendingKeyframe.Timestamp)
     {
-        insertPacketInSequenceOrder(data.PendingKeyframePackets, rtpPacket);
-    }
-    else
-    {
-        const RtpPacket &firstPacket = data.PendingKeyframePackets.front();
-        const RtpHeader *firstHeader = firstPacket.Header();
-        rtp_timestamp_t lastTimestamp = ntohl(firstHeader->Timestamp);
-        rtp_timestamp_t currentTimestamp = ntohl(rtpPacket.Header()->Timestamp);
-        if (lastTimestamp == currentTimestamp)
-        {
-            insertPacketInSequenceOrder(data.PendingKeyframePackets, rtpPacket);
-        }
-        else
-        {
+        // Start of new keyframe. If pending keyframe was complete, swap it into the current slot
+        if (data.PendingKeyframe.IsComplete()) {
+            std::swap(data.CurrentKeyframe, data.PendingKeyframe);
             spdlog::trace("{} keyframe packets recorded @ timestamp {}",
-                          data.PendingKeyframePackets.size(), currentTimestamp);
-            data.CurrentKeyframePackets.swap(data.PendingKeyframePackets);
-            data.PendingKeyframePackets.clear();
-            data.PendingKeyframePackets.push_back(rtpPacket);
+                data.CurrentKeyframe.Packets.size(), data.CurrentKeyframe.Timestamp);
+        } else {
+            spdlog::debug("Not recording incomplete keyframe");
         }
+
+        // Reset pending keyframe based on the new timestamp
+        data.PendingKeyframe = Frame {
+            .Timestamp = timestamp,
+        };
     }
+
+    data.PendingKeyframe.InsertPacketInSequenceOrder(rtpPacket);
 }
 
 void FtlMediaConnection::sendNack(
@@ -445,13 +395,13 @@ void FtlMediaConnection::sendNack(
     spdlog::trace("NACK ssrc:{}, seq:{}, following:{:#016b}", ssrc, seq, followingLostPacketsBitmask);
 }
 
-void FtlMediaConnection::handlePing(const std::vector<std::byte> &packetBytes)
+void FtlMediaConnection::handlePing(const std::vector<std::byte>& packetBytes)
 {
     // FTL client is trying to measure round trip time (RTT), pong back the same packet
     transport->Write(packetBytes);
 }
 
-void FtlMediaConnection::handleSenderReport(const std::vector<std::byte> &packetBytes)
+void FtlMediaConnection::handleSenderReport(const std::vector<std::byte>& packetBytes)
 {
     // We expect this packet to be 28 bytes big.
     if (packetBytes.size() != 28)
@@ -472,4 +422,62 @@ void FtlMediaConnection::handleSenderReport(const std::vector<std::byte> &packet
     // TODO: We don't do anything with this information right now, but we ought to log
     // it away somewhere.
 }
+
 #pragma endregion
+
+bool FtlMediaConnection::Frame::IsComplete() const
+{
+    if (Packets.empty())
+    {
+        return false;
+    }
+
+    // Require last packet has the market bit set to indicate it is the end of the frame
+    if (!Packets.end()->Header()->MarkerBit)
+    {
+        return false;
+    }
+
+    // Require all packets are sequential
+    auto it = Packets.begin();
+    auto seqNum = it->ExtendedSequenceNum;
+    ++it;
+    for (; it != Packets.end(); ++it)
+    {
+        if (seqNum + 1 != it->ExtendedSequenceNum)
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+void FtlMediaConnection::Frame::InsertPacketInSequenceOrder(const RtpPacket& packet)
+{
+    const auto seqNum = packet.ExtendedSequenceNum;
+    // If the list is empty, just add it and we're done.
+    if (Packets.size() == 0)
+    {
+        Packets.push_back(packet);
+        return;
+    }
+    // Insert the packet into list according to sequence number
+    bool wasInserted = false;
+    for (auto it = Packets.rbegin(); it != Packets.rend(); it++)
+    {
+        // Have we found our insertion point in the sorted packet list?
+        if (seqNum > it->ExtendedSequenceNum)
+        {
+            Packets.insert(it.base(), packet);
+            wasInserted = true;
+            break;
+        }
+    }
+
+    if (!wasInserted)
+    {
+        // The packet's sequence number was older than the whole list - insert at the very front.
+        Packets.push_front(packet);
+    }
+}

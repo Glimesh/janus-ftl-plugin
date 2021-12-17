@@ -59,20 +59,27 @@ public:
 
 private:
     /* Private types */
+    struct Frame
+    {
+        std::list<RtpPacket> Packets;
+        rtp_timestamp_t Timestamp;
+        
+        bool IsComplete() const;
+        void InsertPacketInSequenceOrder(const RtpPacket &rtpPacket);
+    };
     struct SsrcData
     {
         uint32_t PacketsReceived = 0;
-        std::list<RtpPacket> CircularPacketBuffer;
         std::map<std::chrono::time_point<std::chrono::steady_clock>, uint16_t>
             RollingBytesReceivedByTime;
-        std::list<RtpPacket> CurrentKeyframePackets;
-        std::list<RtpPacket> PendingKeyframePackets;
+        Frame CurrentKeyframe;
+        Frame PendingKeyframe;
         SequenceTracker NackQueue;
     };
 
     /* Constants */
-    static constexpr rtp_payload_type_t  FTL_PAYLOAD_TYPE_SENDER_REPORT = 200;
-    static constexpr rtp_payload_type_t  FTL_PAYLOAD_TYPE_PING          = 250;
+    static constexpr rtp_payload_type_t FTL_PAYLOAD_TYPE_SENDER_REPORT = 200;
+    static constexpr rtp_payload_type_t FTL_PAYLOAD_TYPE_PING          = 250;
     static constexpr std::chrono::milliseconds READ_TIMEOUT{200};
 
     /* Private members */
@@ -104,29 +111,32 @@ private:
 
     // Helpers for handling media packets
     void updateMediaPacketStats(
-        const std::vector<std::byte> &packetBytes,
-        SsrcData &data);
+        const RtpPacket &rtpPacket,
+        SsrcData &data,
+        const std::unique_lock<std::shared_mutex>& dataLock);
     void processNacks(
         const RtpPacket &packet,
-        SsrcData &data);
+        SsrcData &data,
+        const std::unique_lock<std::shared_mutex>& dataLock);
     void captureVideoKeyframe(
         const RtpPacket &rtpPacket,
-        SsrcData &data);
+        SsrcData &data,
+        const std::unique_lock<std::shared_mutex>& dataLock);
     void captureH264VideoKeyframe(
         const RtpPacket &rtpPacket,
-        SsrcData &data);
+        SsrcData &data,
+        const std::unique_lock<std::shared_mutex>& dataLock);
     void sendQueuedNacks(
         const rtp_ssrc_t ssrc,
-        SsrcData &data);
+        SsrcData &data,
+        const std::unique_lock<std::shared_mutex>& dataLock);
     void updateNackQueue(
         const rtp_extended_sequence_num_t extendedSeqNum,
         const std::set<rtp_extended_sequence_num_t> &missingSequences,
-        SsrcData &data);
+        SsrcData &data,
+        const std::unique_lock<std::shared_mutex>& dataLock);
     void sendNack(
         const rtp_ssrc_t ssrc,
         const rtp_extended_sequence_num_t seq,
         const uint16_t followingLostPacketsBitmask);
-    std::set<rtp_extended_sequence_num_t> insertPacketInSequenceOrder(
-        std::list<RtpPacket> &packetList,
-        const RtpPacket &rtpPacket);
 };
