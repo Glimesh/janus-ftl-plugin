@@ -28,6 +28,7 @@ rtp_extended_sequence_num_t SequenceTracker::Track(rtp_sequence_num_t seqNum, rt
 
 void SequenceTracker::MarkNackSent(rtp_extended_sequence_num_t extendedSeq)
 {
+    nackCount++;
     nacks.emplace(static_cast<rtp_sequence_num_t>(extendedSeq), OutstandingNack {
         .extendedSeq = extendedSeq,
         .sent_at = std::chrono::steady_clock::now(),
@@ -77,6 +78,11 @@ uint64_t SequenceTracker::GetMissedCount() const
     return missedCount;
 }
 
+uint64_t SequenceTracker::GetNackCount() const
+{
+    return missedCount;
+}
+
 uint64_t SequenceTracker::GetLostCount() const
 {
     return lostCount;
@@ -94,7 +100,7 @@ std::ostream &operator<<(std::ostream &os, const SequenceTracker &self)
        << "received:" << self.receivedCount << ", "
        << "missed:" << self.missedCount << ", "
        << "lost:" << self.lostCount << ", "
-       << "sinceLastMissed:" << self.packetsSinceLastMissed << ", "
+       << "sinceLastMissed:" << self.sinceLastMissed << ", "
        << self.counter << " }";
     return os;
 }
@@ -212,7 +218,7 @@ void SequenceTracker::checkGap(rtp_extended_sequence_num_t begin, rtp_extended_s
     if (delta == 1)
     {
         // In-order packet
-        packetsSinceLastMissed += 1;
+        sinceLastMissed += 1;
     }
     else if (delta < 0)
     {
@@ -239,7 +245,7 @@ void SequenceTracker::missedPacket(rtp_extended_sequence_num_t extendedSeq)
     missing.emplace(extendedSeq);
     missedCount += 1;
     lostCount += 1;
-    packetsSinceLastMissed = 0;
+    sinceLastMissed = 0;
 }
 
 void SequenceTracker::resync()
@@ -250,7 +256,7 @@ void SequenceTracker::resync()
     nacks.clear();
     maxSeq = 0;
     checkForMissingWatermark = 0;
-    packetsSinceLastMissed = 0;
+    sinceLastMissed = 0;
 }
 
 #pragma endregion Private methods

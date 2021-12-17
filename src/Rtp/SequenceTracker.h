@@ -26,6 +26,7 @@ public:
     std::vector<rtp_extended_sequence_num_t> GetMissing();
     uint64_t GetReceivedCount() const;
     uint64_t GetMissedCount() const;
+    uint64_t GetNackCount() const;
     uint64_t GetLostCount() const;
     
     friend std::ostream& operator<<(std::ostream & out, const SequenceTracker& self);
@@ -60,10 +61,11 @@ private:
     rtp_extended_sequence_num_t maxSeq = 0;
     rtp_extended_sequence_num_t checkForMissingWatermark = 0;
 
-    // Stats
+    // Statistics
     uint64_t receivedCount = 0;
     uint64_t missedCount = 0;
-    uint64_t packetsSinceLastMissed = 0;
+    uint64_t sinceLastMissed = 0;
+    uint64_t nackCount = 0;
     uint64_t lostCount = 0;
 
     void trackRetransmit(OutstandingNack nack, rtp_timestamp_t timestamp);

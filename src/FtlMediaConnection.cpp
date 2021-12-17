@@ -75,14 +75,14 @@ FtlStreamStats FtlMediaConnection::GetStats()
     {
         const SsrcData &data = dataPair.second;
         stats.PacketsReceived += data.NackQueue.GetReceivedCount();
-        stats.PacketsNacked += data.PacketsNacked;
+        stats.PacketsNacked += data.NackQueue.GetNackCount();
         stats.PacketsLost += data.NackQueue.GetLostCount();
         for (const auto &bytesPair : dataPair.second.RollingBytesReceivedByTime)
         {
             rollingBytesReceived += bytesPair.second;
         }
         
-        spdlog::debug("Stats ssrc:{} received:{} nacked:{} lost:{}", dataPair.first, data.NackQueue.GetReceivedCount(), data.PacketsNacked, data.NackQueue.GetLostCount());
+        spdlog::debug("Stats ssrc:{} received:{} nacked:{} lost:{}", dataPair.first, data.NackQueue.GetReceivedCount(), data.NackQueue.GetNackCount(), data.NackQueue.GetLostCount());
         spdlog::trace("{}", data.NackQueue);
 
     }
@@ -286,7 +286,6 @@ void FtlMediaConnection::handleMediaPacket(const std::vector<std::byte> &packetB
             rtp_extended_sequence_num_t seq = *it;
             sendNack(ssrc, seq, 0);
             data.NackQueue.MarkNackSent(seq);
-            data.PacketsNacked++;
             ++it;
         }
     }
