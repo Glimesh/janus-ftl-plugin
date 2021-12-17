@@ -53,6 +53,7 @@ private:
     };
     
     bool initialized = false;
+
     std::map<rtp_extended_sequence_num_t, Entry> buffer;
     std::set<rtp_extended_sequence_num_t> missing;
     std::map<rtp_sequence_num_t, OutstandingNack> nacks;

@@ -39,7 +39,8 @@ std::vector<rtp_extended_sequence_num_t> SequenceTracker::GetMissing()
 {
     // If we might exceed the maximum number of outstanding NACKs
     if (missing.size() + nacks.size() >= MAX_OUTSTANDING_NACKS) {
-        // Timeout older NACKs the sender failed to retransmit to allow sending newer NACKs
+        // Then timeout older NACKs the sender failed to retransmit. This gives us an accurate
+        // count of how many more NACKs can be sent with the current limits.
         auto now = std::chrono::steady_clock::now();
         for (auto it = nacks.begin(); it != nacks.end();)
         {
@@ -191,6 +192,8 @@ void SequenceTracker::checkForMissing(rtp_extended_sequence_num_t extendedSeq, r
 
     rtp_extended_sequence_num_t lowerBound = checkForMissingWatermark + 1;
     rtp_extended_sequence_num_t upperBound = maxSeq > REORDER_DELTA ? maxSeq - REORDER_DELTA : 0;
+
+    // TODO upper bound should also depend on time based timeout
 
     if (upperBound <= lowerBound)
     {
