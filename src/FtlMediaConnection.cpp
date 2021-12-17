@@ -74,15 +74,15 @@ FtlStreamStats FtlMediaConnection::GetStats()
     for (const auto &dataPair : ssrcData)
     {
         const SsrcData &data = dataPair.second;
-        stats.PacketsReceived += data.PacketsReceived;
+        stats.PacketsReceived += data.NackQueue.GetReceivedCount();
         stats.PacketsNacked += data.PacketsNacked;
-        stats.PacketsLost += data.NackQueue.GetPacketsLost();
+        stats.PacketsLost += data.NackQueue.GetLostCount();
         for (const auto &bytesPair : dataPair.second.RollingBytesReceivedByTime)
         {
             rollingBytesReceived += bytesPair.second;
         }
         
-        spdlog::debug("Stats ssrc:{} received:{} nacked:{} lost:{}", dataPair.first, data.PacketsReceived, data.PacketsNacked, data.NackQueue.GetPacketsLost());
+        spdlog::debug("Stats ssrc:{} received:{} nacked:{} lost:{}", dataPair.first, data.NackQueue.GetReceivedCount(), data.PacketsNacked, data.NackQueue.GetLostCount());
         spdlog::trace("{}", data.NackQueue);
 
     }
@@ -251,6 +251,7 @@ void FtlMediaConnection::handleMediaPacket(const std::vector<std::byte> &packetB
     const RtpHeader *rtpHeader = RtpPacket::GetRtpHeader(packetBytes);
     const rtp_ssrc_t ssrc = ntohl(rtpHeader->Ssrc);
     const rtp_sequence_num_t seqNum = ntohs(rtpHeader->SequenceNumber);
+    const rtp_timestamp_t timestamp = ntohs(rtpHeader->Timestamp);
 
     if (ssrcData.count(ssrc) <= 0)
     {
@@ -271,7 +272,7 @@ void FtlMediaConnection::handleMediaPacket(const std::vector<std::byte> &packetB
         return;
     }
 
-    auto extendedSeq = data.NackQueue.Track(seqNum);
+    auto extendedSeq = data.NackQueue.Track(seqNum, timestamp);
 
     // Keep the sending of NACKs behind a feature toggle for now
     // https://github.com/Glimesh/janus-ftl-plugin/issues/95
@@ -284,39 +285,9 @@ void FtlMediaConnection::handleMediaPacket(const std::vector<std::byte> &packetB
             // TODO do better than cheat and just send one packet per NACK
             rtp_extended_sequence_num_t seq = *it;
             sendNack(ssrc, seq, 0);
-            data.NackQueue.NackSent(seq);
+            data.NackQueue.MarkNackSent(seq);
             data.PacketsNacked++;
             ++it;
-
-            // // Group missing sequence numbers into NACK packets which use a 16-bit
-            // // bitmask to potentialy nack multiple numbers with a single packet.
-            // rtp_extended_sequence_num_t nackStartSeq = *it;
-
-            // // Build bitmask of current and up to 15 following missing sequence numbers
-            // uint16_t bitmask = 0;
-            // while (it != missing.rend()) {
-            //     rtp_extended_sequence_num_t seq = *it;
-            //     spdlog::trace("NACKing seq:{}", seq);
-
-            //     auto offset = seq - nackStartSeq;
-            //     if (offset > 15)
-            //     {
-            //         // Cannot include this seq in our current NACK packet, break to
-            //         // send current NACK packet and start a new one
-            //         break;
-            //     }
-
-            //     bitmask |= 0x1 << offset;
-
-            //     // Premptively mark seq as NACK'd, simpler to mark it here than
-            //     // when the packet is actually sent (once this loop breaks)
-            //     data.NackQueue.NackSent(seq);
-
-            //     ++it;
-            // }
-
-            // // Send NACK packet for bitmask of missing packets
-            // sendNack(ssrc, nackStartSeq, bitmask);
         }
     }
 

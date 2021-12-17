@@ -21,37 +21,56 @@ using namespace std::literals;
 class SequenceTracker
 {
 public:
-    rtp_extended_sequence_num_t Track(rtp_sequence_num_t seq);
-    bool Emplace(rtp_extended_sequence_num_t seq);
-    void NackSent(rtp_extended_sequence_num_t seq);
-
+    rtp_extended_sequence_num_t Track(rtp_sequence_num_t seqNum, rtp_timestamp_t timestamp);
+    void MarkNackSent(rtp_extended_sequence_num_t extendedSeq);
     std::vector<rtp_extended_sequence_num_t> GetMissing();
-    uint64_t GetPacketsLost() const;
+    uint64_t GetReceivedCount() const;
+    uint64_t GetMissedCount() const;
+    uint64_t GetLostCount() const;
     
     friend std::ostream& operator<<(std::ostream & out, const SequenceTracker& self);
     
-    static constexpr rtp_sequence_num_t REORDER_BUFFER_SIZE = 16;
-    static constexpr std::chrono::milliseconds REORDER_BUFFER_TIMEOUT = 20ms;
-    static constexpr rtp_sequence_num_t RECEIVE_BUFFER_SIZE = 2048;
-    static constexpr std::chrono::milliseconds RECEIVE_BUFFER_TIMEOUT = 2s;
-    static constexpr rtp_sequence_num_t MAX_DROPOUT = ExtendedSequenceCounter::MAX_DROPOUT;
+    static constexpr rtp_sequence_num_t BUFFER_SIZE = 2048;
+    static constexpr rtp_sequence_num_t REORDER_DELTA = 16;
+    static constexpr std::chrono::milliseconds REORDER_TIMEOUT = 20ms;
     static constexpr size_t MAX_OUTSTANDING_NACKS = 64;
+    static constexpr std::chrono::milliseconds NACK_TIMEOUT = 2s;
+    static constexpr rtp_sequence_num_t MAX_DROPOUT = ExtendedSequenceCounter::MAX_DROPOUT;
 
 private:
-    ExtendedSequenceCounter counter;
-    bool initialized = false;
-    rtp_extended_sequence_num_t maxSeq = 0;
-    uint64_t packetsReceived = 0;
-    uint64_t packetsMissed = 0;
-    uint64_t packetsSinceLastMissed = 0;
-    uint64_t packetsLost = 0;
-    std::map<rtp_extended_sequence_num_t, std::chrono::steady_clock::time_point> reorderBuffer;
-    std::map<rtp_extended_sequence_num_t, std::chrono::steady_clock::time_point> receiveBuffer;
-    std::set<rtp_extended_sequence_num_t> missing;
-    std::map<rtp_extended_sequence_num_t, std::chrono::steady_clock::time_point> nacksOutstanding;
-    std::map<rtp_sequence_num_t, rtp_extended_sequence_num_t> nackMapping;
+    struct Entry
+    {
+        rtp_extended_sequence_num_t extendedSeq;
+        std::chrono::steady_clock::time_point received_at;
+        rtp_timestamp_t timestamp;
+    };
 
-    void checkForMissing(rtp_extended_sequence_num_t seq);
-    void missedPacket(rtp_extended_sequence_num_t seq);
+    struct OutstandingNack
+    {
+        rtp_extended_sequence_num_t extendedSeq;
+        std::chrono::steady_clock::time_point sent_at;
+    };
+    
+    bool initialized = false;
+    std::map<rtp_extended_sequence_num_t, Entry> buffer;
+    std::set<rtp_extended_sequence_num_t> missing;
+    std::map<rtp_sequence_num_t, OutstandingNack> nacks;
+
+    ExtendedSequenceCounter counter;
+    rtp_extended_sequence_num_t maxSeq = 0;
+    rtp_extended_sequence_num_t checkForMissingWatermark = 0;
+
+    // Stats
+    uint64_t receivedCount = 0;
+    uint64_t missedCount = 0;
+    uint64_t packetsSinceLastMissed = 0;
+    uint64_t lostCount = 0;
+
+    void trackRetransmit(OutstandingNack nack, rtp_timestamp_t timestamp);
+    rtp_extended_sequence_num_t trackNewPacket(rtp_sequence_num_t seq, rtp_timestamp_t timestamp);
+    void insert(rtp_extended_sequence_num_t extendedSeq, rtp_timestamp_t timestamp);
+    void checkForMissing(rtp_extended_sequence_num_t extendedSeq, rtp_timestamp_t timestamp);
+    void checkGap(rtp_extended_sequence_num_t begin, rtp_extended_sequence_num_t end);
+    void missedPacket(rtp_extended_sequence_num_t extendedSeq);
     void resync();
 };

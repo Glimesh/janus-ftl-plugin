@@ -16,26 +16,27 @@ using Catch::Matchers::Equals;
 static const rtp_sequence_num_t MIN_SEQ_NUM = std::numeric_limits<rtp_sequence_num_t>::min();
 static const rtp_sequence_num_t MAX_SEQ_NUM = std::numeric_limits<rtp_sequence_num_t>::max();
 
-bool emplace(
+bool track(
     SequenceTracker &tracker,
     rtp_extended_sequence_num_t seq,
     bool expectValid = true)
 {
-    REQUIRE(tracker.Track(seq) == seq);
+    CAPTURE(seq, tracker);
+    REQUIRE(tracker.Track(seq, 0) == seq);
     return true;
 }
 
-void flushReorderBuffer(
+size_t flushReorderBuffer(
     SequenceTracker &tracker,
     rtp_extended_sequence_num_t &seq)
 {
     INFO("Flush reorder buffer");
-    CAPTURE(seq);
-    for (int i = 0; i < SequenceTracker::REORDER_BUFFER_SIZE; ++i)
+    for (int i = 0; i <= SequenceTracker::REORDER_DELTA; ++i)
     {
-        emplace(tracker, seq);
+        track(tracker, seq);
         seq++;
     }
+    return SequenceTracker::REORDER_DELTA + 1;
 }
 
 TEST_CASE("Sequence from zero with no missing packets")
@@ -44,10 +45,13 @@ TEST_CASE("Sequence from zero with no missing packets")
     rtp_extended_sequence_num_t seq = 0;
     for (int i = 0; i < 100; ++i)
     {
-        REQUIRE(emplace(tracker, seq));
+        REQUIRE(track(tracker, seq));
         seq++;
     }
-    REQUIRE(tracker.GetMissing().size() == 0);
+    CAPTURE(seq, tracker);
+    CHECK(tracker.GetMissing().size() == 0);
+    CHECK(tracker.GetReceivedCount() == 100);
+    CHECK(tracker.GetMissedCount() == 0);
 }
 
 TEST_CASE("Sequence that wraps with no missing packets")
@@ -56,58 +60,81 @@ TEST_CASE("Sequence that wraps with no missing packets")
     rtp_extended_sequence_num_t seq = MAX_SEQ_NUM - 50;
     for (int i = 0; i < 100; ++i)
     {
-        REQUIRE(emplace(tracker, seq));
+        REQUIRE(track(tracker, seq));
         seq++;
     }
-    REQUIRE(tracker.GetMissing().size() == 0);
+    CAPTURE(seq, tracker);
+    CHECK(tracker.GetMissing().size() == 0);
+    CHECK(tracker.GetReceivedCount() == 100);
+    CHECK(tracker.GetMissedCount() == 0);
 }
 
 TEST_CASE("Every other packet is missing")
 {
     SequenceTracker tracker;
     rtp_extended_sequence_num_t seq = 0;
-    for (int i = 0; i < 20 + SequenceTracker::REORDER_BUFFER_SIZE; ++i)
+    for (int i = 0; i < 20; ++i)
     {
-        REQUIRE(emplace(tracker, seq));
+        REQUIRE(track(tracker, seq));
         seq += 2;
     }
-    REQUIRE(tracker.GetMissing().size() == 20);
+
+    auto flushedPackets = flushReorderBuffer(tracker, seq);
+
+    CAPTURE(seq, tracker);
+    CHECK(tracker.GetMissing().size() == 20);
+    CHECK(tracker.GetReceivedCount() == 20 + flushedPackets);
+    CHECK(tracker.GetMissedCount() == 20);
 }
 
-TEST_CASE("Track two NACKs")
+TEST_CASE("Two consecutive skipped packets, nack, then retransmit")
 {
     SequenceTracker tracker;
+    std::vector<rtp_extended_sequence_num_t> skipped;
     rtp_extended_sequence_num_t seq = MAX_SEQ_NUM - 100;
 
-    // Run sequence for a bit
+    INFO("Send a few packets");
     for (int i = 0; i < 100; ++i)
     {
-        emplace(tracker, seq);
+        track(tracker, seq);
         seq++;
     }
 
-    INFO("Skipping two packet sequence numbers: " << seq << ", " << seq + 1);
-    auto skipStart = seq++;
-    seq++;
+    INFO("Skip two packet sequence numbers: " << seq << ", " << seq + 1);
+    CAPTURE(seq, tracker);
+    skipped.emplace_back(seq++);
+    skipped.emplace_back(seq++);
 
-    // Send next few packets
-    INFO("Send a few more packets ");
+    // Reverse skipped list, later methods like GetMissing sort higher (most recent) numbers first
+    std::reverse(skipped.begin(), skipped.end());
+
+    INFO("Send a few more packets");
     for (int j = 0; j < 100; ++j)
     {
-        emplace(tracker, seq);
+        track(tracker, seq);
         seq++;
     }
 
-    REQUIRE(tracker.GetMissing().size() == 2);
-    tracker.NackSent(skipStart);
-    tracker.NackSent(skipStart + 1);
-    REQUIRE(tracker.GetMissing().size() == 0);
+    REQUIRE_THAT(tracker.GetMissing(), Equals(skipped));
+    CHECK(tracker.GetMissedCount() == 2);
 
-    INFO("Receive skipped packets (simulating NACK) seq:" << seq);
-    emplace(tracker, skipStart);
-    emplace(tracker, skipStart + 1);
+    INFO("Simulate sending NACKs");
+    for (auto s : skipped) {
+        tracker.MarkNackSent(s);
+    }
 
-    REQUIRE(tracker.GetMissing().size() == 0);
+    CHECK(tracker.GetMissing().size() == 0);
+    CHECK(tracker.GetMissedCount() == 2);
+
+    INFO("Receive skipped packets to simulate re-transmits due to the NACKs");
+    CAPTURE(seq, tracker);
+    for (auto s : skipped) {
+        INFO("track");
+        track(tracker, s);
+    }
+
+    CHECK(tracker.GetMissing().size() == 0);
+    CHECK(tracker.GetLostCount() == 0);
 }
 
 TEST_CASE("Skip second packet")
@@ -117,19 +144,13 @@ TEST_CASE("Skip second packet")
     rtp_extended_sequence_num_t seq = 0;
 
     INFO("Receive first packet");
-    emplace(tracker, seq);
+    track(tracker, seq);
     seq++;
 
     INFO("Skip second packet");
     skipped.emplace_back(seq++);
 
-    INFO("Flush reorder buffer");
-    CAPTURE(seq);
-    for (int i = 0; i < SequenceTracker::REORDER_BUFFER_SIZE; ++i)
-    {
-        emplace(tracker, seq);
-        seq++;
-    }
+    flushReorderBuffer(tracker, seq);
 
     std::reverse(skipped.begin(), skipped.end());
     REQUIRE_THAT(tracker.GetMissing(), Equals(skipped));
@@ -146,7 +167,7 @@ TEST_CASE("Many outstanding NACKs")
     for (int i = 0; i < 1000; ++i)
     {
         // Receive one packet
-        emplace(tracker, seq);
+        track(tracker, seq);
         seq++;
 
         // Skip next packet
@@ -158,7 +179,7 @@ TEST_CASE("Many outstanding NACKs")
     INFO("Send NACKs, but don't retransmit packet to simulate many outstanding NACKs");
     for (auto missing : tracker.GetMissing())
     {
-        tracker.NackSent(missing);
+        tracker.MarkNackSent(missing);
     }
 
     INFO("Receive another bunch of packets with a high loss rate");
@@ -166,7 +187,7 @@ TEST_CASE("Many outstanding NACKs")
     for (int i = 0; i < 1000; ++i)
     {
         // Receive one packet
-        emplace(tracker, seq);
+        track(tracker, seq);
         seq++;
 
         // Skip next packet and record it
