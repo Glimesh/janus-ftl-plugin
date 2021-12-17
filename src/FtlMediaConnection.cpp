@@ -289,7 +289,7 @@ void FtlMediaConnection::captureVideoKeyframe(
     SsrcData &data,
     const std::unique_lock<std::shared_mutex>& dataLock)
 {
-    const RtpHeader *rtpHeader = rtpPacket.Header();
+    const RtpHeader* rtpHeader = rtpPacket.Header();
     // Is this a video packet?
     if (ntohl(rtpHeader->Ssrc) == mediaMetadata.VideoSsrc)
     {
@@ -375,8 +375,8 @@ void FtlMediaConnection::sendNack(
 {
     // See https://tools.ietf.org/html/rfc4585#section-6.2.1
     // for information on how the nack packet is formed
-    char nackBuffer[16]{0};
-    auto rtcpPacket = reinterpret_cast<RtcpFeedbackPacket *>(nackBuffer);
+    char nackBuffer[16] { 0 };
+    auto rtcpPacket = reinterpret_cast<RtcpFeedbackPacket*>(nackBuffer);
     rtcpPacket->Header.Version = 2;
     rtcpPacket->Header.Padding = 0;
     rtcpPacket->Header.Rc = RtcpFeedbackMessageType::NACK;
@@ -424,6 +424,8 @@ void FtlMediaConnection::handleSenderReport(const std::vector<std::byte>& packet
 }
 
 #pragma endregion
+
+#pragma region Nested type methods
 
 bool FtlMediaConnection::Frame::IsComplete() const
 {
@@ -481,3 +483,5 @@ void FtlMediaConnection::Frame::InsertPacketInSequenceOrder(const RtpPacket& pac
         Packets.push_front(packet);
     }
 }
+
+#pragma endregion
