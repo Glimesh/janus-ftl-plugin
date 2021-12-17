@@ -441,15 +441,14 @@ bool FtlMediaConnection::Frame::IsComplete() const
     }
 
     // Require all packets are sequential
-    auto it = Packets.begin();
-    auto seqNum = it->ExtendedSequenceNum;
-    ++it;
-    for (; it != Packets.end(); ++it)
+    rtp_extended_sequence_num_t seqNum = Packets.front().ExtendedSequenceNum;
+    for (auto packet : Packets)
     {
-        if (seqNum + 1 != it->ExtendedSequenceNum)
+        if (seqNum != packet.ExtendedSequenceNum)
         {
             return false;
         }
+        ++seqNum;
     }
 
     return true;
