@@ -75,15 +75,15 @@ FtlStreamStats FtlMediaConnection::GetStats()
     for (const auto &dataPair : ssrcData)
     {
         const SsrcData &data = dataPair.second;
-        stats.PacketsReceived += data.NackQueue.GetReceivedCount();
-        stats.PacketsNacked += data.NackQueue.GetNackCount();
-        stats.PacketsLost += data.NackQueue.GetLostCount();
+        stats.PacketsReceived += data.Tracker.GetReceivedCount();
+        stats.PacketsNacked += data.Tracker.GetNackCount();
+        stats.PacketsLost += data.Tracker.GetLostCount();
         for (const auto &bytesPair : dataPair.second.RollingBytesReceivedByTime)
         {
             rollingBytesReceived += bytesPair.second;
         }
         
-        spdlog::trace("GetStats {}", data.NackQueue);
+        spdlog::trace("GetStats {}", data.Tracker);
     }
     stats.RollingAverageBitrateBps = (rollingBytesReceived * 8) / (rollingSizeAvgMs / 1000.0f);
 
@@ -197,7 +197,6 @@ void FtlMediaConnection::handleMediaPacket(const std::vector<std::byte>& packetB
     const RtpHeader* rtpHeader = RtpPacket::GetRtpHeader(packetBytes);
     const rtp_ssrc_t ssrc = ntohl(rtpHeader->Ssrc);
     const rtp_sequence_num_t seqNum = ntohs(rtpHeader->SequenceNumber);
-    const rtp_timestamp_t timestamp = ntohs(rtpHeader->Timestamp);
 
     if (ssrcData.count(ssrc) <= 0)
     {
@@ -218,20 +217,20 @@ void FtlMediaConnection::handleMediaPacket(const std::vector<std::byte>& packetB
         return;
     }
 
-    auto extendedSeq = data.NackQueue.Track(seqNum, timestamp);
+    auto extendedSeq = data.Tracker.Track(seqNum);
 
     // Keep the sending of NACKs behind a feature toggle for now
     // https://github.com/Glimesh/janus-ftl-plugin/issues/95
     if (nackLostPackets)
     {
-        auto missing = data.NackQueue.GetMissing();
+        auto missing = data.Tracker.GetNackList();
 
         for (auto it = missing.rbegin(); it != missing.rend();)
         {
             // TODO do better than cheat and just send one packet per NACK
             rtp_extended_sequence_num_t seq = *it;
             sendNack(ssrc, seq, 0);
-            data.NackQueue.MarkNackSent(seq);
+            data.Tracker.MarkNackSent(seq);
             ++it;
         }
     }

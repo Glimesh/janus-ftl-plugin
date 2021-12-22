@@ -22,7 +22,7 @@ bool track(
     bool expectValid = true)
 {
     CAPTURE(seq, tracker);
-    REQUIRE(tracker.Track(seq, 0) == seq);
+    REQUIRE(tracker.Track(seq) == seq);
     return true;
 }
 
@@ -49,7 +49,7 @@ TEST_CASE("Sequence from zero with no missing packets")
         seq++;
     }
     CAPTURE(seq, tracker);
-    CHECK(tracker.GetMissing().size() == 0);
+    CHECK(tracker.GetNackList().size() == 0);
     CHECK(tracker.GetReceivedCount() == 100);
     CHECK(tracker.GetMissedCount() == 0);
 }
@@ -64,7 +64,7 @@ TEST_CASE("Sequence that wraps with no missing packets")
         seq++;
     }
     CAPTURE(seq, tracker);
-    CHECK(tracker.GetMissing().size() == 0);
+    CHECK(tracker.GetNackList().size() == 0);
     CHECK(tracker.GetReceivedCount() == 100);
     CHECK(tracker.GetMissedCount() == 0);
 }
@@ -82,7 +82,7 @@ TEST_CASE("Every other packet is missing")
     auto flushedPackets = flushReorderBuffer(tracker, seq);
 
     CAPTURE(seq, tracker);
-    CHECK(tracker.GetMissing().size() == 20);
+    CHECK(tracker.GetNackList().size() == 20);
     CHECK(tracker.GetReceivedCount() == 20 + flushedPackets);
     CHECK(tracker.GetMissedCount() == 20);
 }
@@ -105,7 +105,7 @@ TEST_CASE("Two consecutive skipped packets, nack, then retransmit")
     skipped.emplace_back(seq++);
     skipped.emplace_back(seq++);
 
-    // Reverse skipped list, later methods like GetMissing sort higher (most recent) numbers first
+    // Reverse skipped list, later methods like GetNackList sort higher (most recent) numbers first
     std::reverse(skipped.begin(), skipped.end());
 
     INFO("Send a few more packets");
@@ -115,7 +115,7 @@ TEST_CASE("Two consecutive skipped packets, nack, then retransmit")
         seq++;
     }
 
-    REQUIRE_THAT(tracker.GetMissing(), Equals(skipped));
+    REQUIRE_THAT(tracker.GetNackList(), Equals(skipped));
     CHECK(tracker.GetMissedCount() == 2);
 
     INFO("Simulate sending NACKs");
@@ -123,7 +123,7 @@ TEST_CASE("Two consecutive skipped packets, nack, then retransmit")
         tracker.MarkNackSent(s);
     }
 
-    CHECK(tracker.GetMissing().size() == 0);
+    CHECK(tracker.GetNackList().size() == 0);
     CHECK(tracker.GetMissedCount() == 2);
 
     INFO("Receive skipped packets to simulate re-transmits due to the NACKs");
@@ -133,7 +133,7 @@ TEST_CASE("Two consecutive skipped packets, nack, then retransmit")
         track(tracker, s);
     }
 
-    CHECK(tracker.GetMissing().size() == 0);
+    CHECK(tracker.GetNackList().size() == 0);
     CHECK(tracker.GetLostCount() == 0);
 }
 
@@ -153,7 +153,7 @@ TEST_CASE("Skip second packet")
     flushReorderBuffer(tracker, seq);
 
     std::reverse(skipped.begin(), skipped.end());
-    REQUIRE_THAT(tracker.GetMissing(), Equals(skipped));
+    REQUIRE_THAT(tracker.GetNackList(), Equals(skipped));
 }
 
 TEST_CASE("Many outstanding NACKs")
@@ -177,7 +177,7 @@ TEST_CASE("Many outstanding NACKs")
     flushReorderBuffer(tracker, seq);
 
     INFO("Send NACKs, but don't retransmit packet to simulate many outstanding NACKs");
-    for (auto missing : tracker.GetMissing())
+    for (auto missing : tracker.GetNackList())
     {
         tracker.MarkNackSent(missing);
     }
@@ -201,5 +201,5 @@ TEST_CASE("Many outstanding NACKs")
 
     std::reverse(skipped.begin(), skipped.end());
     std::vector<rtp_extended_sequence_num_t> expected(skipped.begin(), skipped.begin() + SequenceTracker::MAX_OUTSTANDING_NACKS);
-    REQUIRE_THAT(tracker.GetMissing(), Equals(expected));
+    REQUIRE_THAT(tracker.GetNackList(), Equals(expected));
 }

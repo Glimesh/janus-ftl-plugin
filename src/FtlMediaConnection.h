@@ -74,7 +74,7 @@ private:
             RollingBytesReceivedByTime;
         Frame CurrentKeyframe;
         Frame PendingKeyframe;
-        SequenceTracker NackQueue;
+        SequenceTracker Tracker;
     };
 
     /* Constants */

@@ -11,7 +11,7 @@
 
 #pragma region Public methods
 
-rtp_extended_sequence_num_t SequenceTracker::Track(rtp_sequence_num_t seqNum, rtp_timestamp_t timestamp)
+rtp_extended_sequence_num_t SequenceTracker::Track(rtp_sequence_num_t seqNum)
 {
     // Check if this is a re-transmitted packet
     auto it = nacks.find(seqNum);
@@ -19,11 +19,11 @@ rtp_extended_sequence_num_t SequenceTracker::Track(rtp_sequence_num_t seqNum, rt
     {
         OutstandingNack nack = it->second;
         nacks.erase(it);
-        trackRetransmit(nack, timestamp);
+        trackRetransmit(nack);
         return nack.extendedSeq;
     }
 
-    return trackNewPacket(seqNum, timestamp);
+    return trackNewPacket(seqNum);
 }
 
 void SequenceTracker::MarkNackSent(rtp_extended_sequence_num_t extendedSeq)
@@ -35,7 +35,7 @@ void SequenceTracker::MarkNackSent(rtp_extended_sequence_num_t extendedSeq)
     });
 }
 
-std::vector<rtp_extended_sequence_num_t> SequenceTracker::GetMissing()
+std::vector<rtp_extended_sequence_num_t> SequenceTracker::GetNackList()
 {
     // If we might exceed the maximum number of outstanding NACKs
     if (missing.size() + nacks.size() >= MAX_OUTSTANDING_NACKS) {
@@ -93,8 +93,8 @@ std::ostream &operator<<(std::ostream &os, const SequenceTracker &self)
 {
     os << "SequenceTracker { "
        << "initialized:" << self.initialized << ", "
-       << "maxSeq:" << self.maxSeq << ", "
-       << "checkForMissingWatermark:" << self.checkForMissingWatermark << ", "
+       << "highestReceived:" << self.highestReceived << ", "
+       << "highestChecked:" << self.highestChecked << ", "
        << "buffer.size:" << self.buffer.size() << ", "
        << "missing.size:" << self.missing.size() << ", "
        << "nacks.size:" << self.nacks.size() << ", "
@@ -110,7 +110,7 @@ std::ostream &operator<<(std::ostream &os, const SequenceTracker &self)
 
 #pragma region Private methods
 
-void SequenceTracker::trackRetransmit(OutstandingNack nack, rtp_timestamp_t timestamp)
+void SequenceTracker::trackRetransmit(OutstandingNack nack)
 {
     auto now = std::chrono::steady_clock::now();
     auto delay = std::chrono::duration_cast<std::chrono::milliseconds>(now - nack.sent_at);
@@ -119,10 +119,10 @@ void SequenceTracker::trackRetransmit(OutstandingNack nack, rtp_timestamp_t time
                   nack.extendedSeq, delay.count());
 
     lostCount--;
-    insert(nack.extendedSeq, timestamp);
+    insert(nack.extendedSeq);
 }
 
-rtp_extended_sequence_num_t SequenceTracker::trackNewPacket(rtp_sequence_num_t seqNum, rtp_timestamp_t timestamp)
+rtp_extended_sequence_num_t SequenceTracker::trackNewPacket(rtp_sequence_num_t seqNum)
 {
     auto extendResult = counter.Extend(seqNum);
 
@@ -139,13 +139,13 @@ rtp_extended_sequence_num_t SequenceTracker::trackNewPacket(rtp_sequence_num_t s
                       seqNum, extendResult.extendedSeq);
     }
 
-    insert(extendResult.extendedSeq, timestamp);
-    checkForMissing(extendResult.extendedSeq, timestamp);
+    insert(extendResult.extendedSeq);
+    checkForMissing(extendResult.extendedSeq);
 
     return extendResult.extendedSeq;
 }
 
-void SequenceTracker::insert(rtp_extended_sequence_num_t extendedSeq, rtp_timestamp_t timestamp)
+void SequenceTracker::insert(rtp_extended_sequence_num_t extendedSeq)
 {
     if (buffer.contains(extendedSeq))
     {
@@ -171,29 +171,25 @@ void SequenceTracker::insert(rtp_extended_sequence_num_t extendedSeq, rtp_timest
     buffer.emplace(extendedSeq, Entry{
                                     .extendedSeq = extendedSeq,
                                     .received_at = now,
-                                    .timestamp = timestamp,
                                 });
     receivedCount++;
 }
 
-void SequenceTracker::checkForMissing(rtp_extended_sequence_num_t extendedSeq, rtp_timestamp_t timestamp)
+void SequenceTracker::checkForMissing(rtp_extended_sequence_num_t extendedSeq)
 {
     if (!initialized)
     {
-        maxSeq = extendedSeq;
-        checkForMissingWatermark = extendedSeq;
+        highestChecked = extendedSeq;
         initialized = true;
     }
 
-    if (extendedSeq > maxSeq)
+    if (extendedSeq > highestReceived)
     {
-        maxSeq = extendedSeq;
+        highestReceived = extendedSeq;
     }
 
-    rtp_extended_sequence_num_t lowerBound = checkForMissingWatermark + 1;
-    rtp_extended_sequence_num_t upperBound = maxSeq > REORDER_DELTA ? maxSeq - REORDER_DELTA : 0;
-
-    // TODO upper bound should also depend on time based timeout
+    rtp_extended_sequence_num_t lowerBound = highestChecked + 1;
+    rtp_extended_sequence_num_t upperBound = highestReceived > REORDER_DELTA ? highestReceived - REORDER_DELTA : 0;
 
     if (upperBound <= lowerBound)
     {
@@ -202,7 +198,7 @@ void SequenceTracker::checkForMissing(rtp_extended_sequence_num_t extendedSeq, r
     }
 
     // Check items that just came out of the reorder "buffer"
-    rtp_extended_sequence_num_t lastExtendedSeq = checkForMissingWatermark;
+    rtp_extended_sequence_num_t lastExtendedSeq = highestChecked;
     for (auto it = buffer.lower_bound(lowerBound); it != buffer.upper_bound(upperBound); ++it)
     {
         checkGap(lastExtendedSeq, it->second.extendedSeq);
@@ -212,7 +208,7 @@ void SequenceTracker::checkForMissing(rtp_extended_sequence_num_t extendedSeq, r
     // Final gap check
     checkGap(lastExtendedSeq, upperBound);
     
-    checkForMissingWatermark = upperBound - 1;
+    highestChecked = upperBound - 1;
 }
 
 void SequenceTracker::checkGap(rtp_extended_sequence_num_t begin, rtp_extended_sequence_num_t end)
@@ -225,13 +221,13 @@ void SequenceTracker::checkGap(rtp_extended_sequence_num_t begin, rtp_extended_s
     }
     else if (delta < 0)
     {
-        spdlog::trace("Out of order packet with gap of {}, no NACKing; begin:{}, checkForMissingWatermark:{}",
-                      delta, begin, checkForMissingWatermark);
+        spdlog::trace("Out of order packet with gap of {}, no NACKing; begin:{}, highestChecked:{}",
+                      delta, begin, highestChecked);
     }
     else if (delta > MAX_DROPOUT)
     {
-        spdlog::warn("Missed {} packets, not NACKing; begin:{}, checkForMissingWatermark:{}",
-                     delta, begin, checkForMissingWatermark);
+        spdlog::warn("Missed {} packets, not NACKing; begin:{}, highestChecked:{}",
+                     delta, begin, highestChecked);
     }
     else
     {
@@ -257,8 +253,8 @@ void SequenceTracker::resync()
     buffer.clear();
     missing.clear();
     nacks.clear();
-    maxSeq = 0;
-    checkForMissingWatermark = 0;
+    highestReceived = 0;
+    highestChecked = 0;
     sinceLastMissed = 0;
 }
 
