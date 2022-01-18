@@ -47,5 +47,4 @@ private:
 
     void initialize(rtp_sequence_num_t seq);
     void reset(rtp_sequence_num_t seq);
-    void resync(rtp_sequence_num_t seq);
 };

@@ -97,7 +97,7 @@ ExtendedSequenceCounter::ExtendResult ExtendedSequenceCounter::Extend(rtp_sequen
              * (i.e., pretend this was the first packet).
              */
             spdlog::trace("Sequence counter reset");
-            resync(seq);
+            reset(seq);
             return ExtendResult{
                 .extendedSeq = cycles | seq,
                 .valid = false,
@@ -156,11 +156,6 @@ void ExtendedSequenceCounter::reset(rtp_sequence_num_t seq)
     cycles = 0;
     receivedPrior = 0;
     expectedPrior = 0;
-}
-
-void ExtendedSequenceCounter::resync(rtp_sequence_num_t seq)
-{
-    reset(seq);
 }
 
 std::ostream &operator<<(std::ostream &os, const ExtendedSequenceCounter &self)
