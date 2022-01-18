@@ -38,7 +38,8 @@ void SequenceTracker::MarkNackSent(rtp_extended_sequence_num_t extendedSeq)
 std::vector<rtp_extended_sequence_num_t> SequenceTracker::GetNackList()
 {
     // If we might exceed the maximum number of outstanding NACKs
-    if (missing.size() + nacks.size() >= MAX_OUTSTANDING_NACKS) {
+    if (missing.size() + nacks.size() >= MAX_OUTSTANDING_NACKS)
+    {
         // Then timeout older NACKs the sender failed to retransmit. This gives us an accurate
         // count of how many more NACKs can be sent with the current limits.
         auto now = std::chrono::steady_clock::now();
@@ -58,7 +59,10 @@ std::vector<rtp_extended_sequence_num_t> SequenceTracker::GetNackList()
 
     // Build a list of missing packets not already NACK'd, starting with the latest missing
     std::vector<rtp_extended_sequence_num_t> toNack;
-    for (auto it = missing.rbegin(); it != missing.rend() && toNack.size() + nacks.size() < MAX_OUTSTANDING_NACKS; ++it)
+    for (
+        auto it = missing.rbegin();
+        it != missing.rend() && toNack.size() + nacks.size() < MAX_OUTSTANDING_NACKS;
+        ++it)
     {
         if (!nacks.contains(*it))
         {
@@ -189,7 +193,8 @@ void SequenceTracker::checkForMissing(rtp_extended_sequence_num_t extendedSeq)
     }
 
     rtp_extended_sequence_num_t lowerBound = highestChecked + 1;
-    rtp_extended_sequence_num_t upperBound = highestReceived > REORDER_DELTA ? highestReceived - REORDER_DELTA : 0;
+    rtp_extended_sequence_num_t upperBound =
+        highestReceived > REORDER_DELTA ? highestReceived - REORDER_DELTA : 0;
 
     if (upperBound <= lowerBound)
     {

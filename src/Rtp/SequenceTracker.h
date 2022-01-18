@@ -15,8 +15,6 @@
 #include <map>
 #include <set>
 
-using namespace std::literals;
-
 /**
  * @brief Tracks received packets and identifies any missing packets so they can be NACK'd.
  * 
@@ -95,7 +93,7 @@ public:
     // round trip time (RTT) and frame playout delay. We do not want re-transmitted packets arriving
     // after they are no longer being tracked, but also we do not want to be waiting on re-transmits
     // of packets for frames so old they have been skipped over and will never be rendered.  
-    static constexpr std::chrono::milliseconds NACK_TIMEOUT = 2s;
+    static constexpr std::chrono::milliseconds NACK_TIMEOUT = std::chrono::seconds(2);
 
     // Maximum number of sequentially missed packets we will sendend NACKs for. If there is a larger
     // gap, it was probably a severe network issue and we should not impose additional bandwidth

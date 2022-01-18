@@ -11,6 +11,7 @@
 
 #include <thread>
 
+using namespace std::literals;
 using Catch::Matchers::Equals;
 
 static const rtp_sequence_num_t MIN_SEQ_NUM = std::numeric_limits<rtp_sequence_num_t>::min();
@@ -197,7 +198,7 @@ TEST_CASE("Many outstanding NACKs")
     flushReorderBuffer(tracker, seq);
 
     INFO("Wait for outstanding NACKs to timeout");
-    std::this_thread::sleep_for(2000ms);
+    std::this_thread::sleep_for(2s);
 
     std::reverse(skipped.begin(), skipped.end());
     std::vector<rtp_extended_sequence_num_t> expected(skipped.begin(), skipped.begin() + SequenceTracker::MAX_OUTSTANDING_NACKS);
