@@ -40,9 +40,9 @@ struct RtpHeader
     uint16_t Type:7;
     uint16_t MarkerBit:1;
 #endif
-    uint16_t SequenceNumber;
-    uint32_t Timestamp;
-    uint32_t Ssrc;
+    rtp_sequence_num_t SequenceNumber;
+    rtp_timestamp_t Timestamp;
+    rtp_ssrc_t Ssrc;
     uint32_t Csrc[16];
 };
 

@@ -9,8 +9,8 @@
  */
 #pragma once
 
-#include "Rtp/ExtendedSequenceCounter.h"
 #include "Rtp/RtpPacket.h"
+#include "Rtp/SequenceTracker.h"
 #include "Utilities/FtlTypes.h"
 #include "Utilities/Result.h"
 
@@ -59,30 +59,27 @@ public:
 
 private:
     /* Private types */
+    struct Frame
+    {
+        std::list<RtpPacket> Packets;
+        rtp_timestamp_t Timestamp;
+        
+        bool IsComplete() const;
+        void InsertPacketInSequenceOrder(const RtpPacket &rtpPacket);
+    };
     struct SsrcData
     {
         uint32_t PacketsReceived = 0;
-        uint32_t PacketsNacked = 0;
-        uint32_t PacketsLost = 0;
-        size_t PacketsSinceLastMissedSequence = 0;
-        std::list<RtpPacket> CircularPacketBuffer;
-        std::map<std::chrono::time_point<std::chrono::steady_clock>, uint16_t> 
+        std::map<std::chrono::time_point<std::chrono::steady_clock>, uint16_t>
             RollingBytesReceivedByTime;
-        std::set<rtp_extended_sequence_num_t> NackQueue;
-        std::set<rtp_extended_sequence_num_t> NackedSequences;
-        std::list<RtpPacket> CurrentKeyframePackets;
-        std::list<RtpPacket> PendingKeyframePackets;
-        ExtendedSequenceCounter SequenceCounter;
+        Frame CurrentKeyframe;
+        Frame PendingKeyframe;
+        SequenceTracker Tracker;
     };
 
     /* Constants */
-    static constexpr uint64_t            MICROSECONDS_PER_SECOND        = 1000000;
-    static constexpr float               MICROSECONDS_PER_MILLISECOND   = 1000.0f;
-    static constexpr rtp_payload_type_t  FTL_PAYLOAD_TYPE_SENDER_REPORT = 200;
-    static constexpr rtp_payload_type_t  FTL_PAYLOAD_TYPE_PING          = 250;
-    static constexpr size_t              PACKET_BUFFER_SIZE             = 128;
-    static constexpr size_t              MAX_PACKETS_BEFORE_NACK        = 16;
-    static constexpr size_t              NACK_TIMEOUT_SEQUENCE_DELTA    = 128;
+    static constexpr rtp_payload_type_t FTL_PAYLOAD_TYPE_SENDER_REPORT = 200;
+    static constexpr rtp_payload_type_t FTL_PAYLOAD_TYPE_PING          = 250;
     static constexpr std::chrono::milliseconds READ_TIMEOUT{200};
 
     /* Private members */
@@ -104,30 +101,42 @@ private:
 
     /* Private methods */
     void threadBody(std::stop_token stopToken);
-    void onBytesReceived(const std::vector<std::byte>& bytes);
-    // Packet processing
-    std::set<rtp_extended_sequence_num_t> insertPacketInSequenceOrder(
-        std::list<RtpPacket>& packetList, const RtpPacket& rtpPacket);
-    void processRtpPacketBytes(const std::vector<std::byte>& packetBytes);
-    std::optional<RtpPacket> parseMediaPacket(const std::vector<std::byte>& packetBytes,
+    void onBytesReceived(const std::vector<std::byte> &bytes);
+
+    // Packet handling
+    void handleRtpPacket(const std::vector<std::byte> &packetBytes);
+    void handleMediaPacket(const std::vector<std::byte> &packetBytes);
+    void handlePing(const std::vector<std::byte> &packetBytes);
+    void handleSenderReport(const std::vector<std::byte> &packetBytes);
+
+    // Helpers for handling media packets
+    void updateMediaPacketStats(
+        const RtpPacket &rtpPacket,
+        SsrcData &data,
         const std::unique_lock<std::shared_mutex>& dataLock);
-    void processRtpPacketSequencing(const RtpPacket& packet,
+    void processNacks(
+        const RtpPacket &packet,
+        SsrcData &data,
         const std::unique_lock<std::shared_mutex>& dataLock);
-    void processRtpPacketKeyframe(const RtpPacket& rtpPacket,
+    void captureVideoKeyframe(
+        const RtpPacket &rtpPacket,
+        SsrcData &data,
         const std::unique_lock<std::shared_mutex>& dataLock);
-    void processRtpH264PacketKeyframe(const RtpPacket& rtpPacket,
+    void captureH264VideoKeyframe(
+        const RtpPacket &rtpPacket,
+        SsrcData &data,
+        const std::unique_lock<std::shared_mutex>& dataLock);
+    void sendQueuedNacks(
+        const rtp_ssrc_t ssrc,
+        SsrcData &data,
         const std::unique_lock<std::shared_mutex>& dataLock);
     void updateNackQueue(
-        SsrcData& data,
         const rtp_extended_sequence_num_t extendedSeqNum,
-        const std::set<rtp_extended_sequence_num_t>& missingSequences,
+        const std::set<rtp_extended_sequence_num_t> &missingSequences,
+        SsrcData &data,
         const std::unique_lock<std::shared_mutex>& dataLock);
-    void processNacks(const rtp_ssrc_t ssrc, const std::unique_lock<std::shared_mutex>& dataLock);
-    void sendNack(const rtp_ssrc_t ssrc, const rtp_sequence_num_t packetId,
-        const uint16_t followingLostPacketsBitmask,
-        const std::unique_lock<std::shared_mutex>& dataLock);
-    void processAudioVideoRtpPacket(const RtpPacket& rtpPacket,
-        std::unique_lock<std::shared_mutex>& dataLock);
-    void handlePing(const std::vector<std::byte>& packetBytes);
-    void handleSenderReport(const std::vector<std::byte>& packetBytes);
+    void sendNack(
+        const rtp_ssrc_t ssrc,
+        const rtp_extended_sequence_num_t seq,
+        const uint16_t followingLostPacketsBitmask);
 };

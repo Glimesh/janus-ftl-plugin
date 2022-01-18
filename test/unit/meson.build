@@ -5,6 +5,7 @@ sources = files([
     'ConnectionTransports/NetworkSocketConnectionTransportTests.cpp',
     'FtlControlConnectionUnitTests.cpp',
     'Rtp/ExtendedSequenceCounterTests.cpp',
+    'Rtp/SequenceTrackerTests.cpp',
     'Utilities/UtilTest.cpp',
     # Project sources
     '../../src/ConnectionTransports/NetworkSocketConnectionTransport.cpp',
@@ -13,6 +14,7 @@ sources = files([
     '../../src/FtlStream.cpp',
     '../../src/Rtp/ExtendedSequenceCounter.cpp',
     '../../src/Rtp/RtpPacket.cpp',
+    '../../src/Rtp/SequenceTracker.cpp',
 ])
 
 incdirs = include_directories(

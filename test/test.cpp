@@ -11,10 +11,15 @@
 #define CATCH_CONFIG_IMPL_ONLY
 #define CATCH_CONFIG_RUNNER
 #include <catch2/catch.hpp>
+#include <spdlog/spdlog.h>
 
 int main(int argc, char* argv[])
 {
+    // Enable verbose logging
+    spdlog::set_level(spdlog::level::debug);
+
     // Test!
     int result = Catch::Session().run(argc, argv);
+    
     return result;
 }
