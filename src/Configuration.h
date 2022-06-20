@@ -22,6 +22,7 @@ enum class NodeKind
     Ingest = 1,
     // Relay = 2,
     Edge = 3,
+    Combo = 4,
 };
 
 enum class ServiceConnectionKind

@@ -70,6 +70,10 @@ void Configuration::Load()
         {
             nodeKind = NodeKind::Edge;
         }
+        else if (nodeKindStr.compare("combo") == 0)
+        {
+            nodeKind = NodeKind::Combo;
+        }
     }
 
     // FTL_ORCHESTRATOR_HOSTNAME -> OrchestratorHostname
