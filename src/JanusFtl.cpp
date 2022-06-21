@@ -451,7 +451,7 @@ void JanusFtl::initOrchestratorConnection()
 void JanusFtl::initServiceConnection()
 {
     // If we are configured to be an edge node, we *must* use the EdgeNodeServiceConnection
-    if (configuration->GetNodeKind() == NodeKind::Edge || configuration->GetNodeKind() == NodeKind::Combo)
+    if (configuration->GetNodeKind() == NodeKind::Edge)
     {
         serviceConnection = std::make_shared<EdgeNodeServiceConnection>();
     }
