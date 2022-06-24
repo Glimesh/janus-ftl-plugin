@@ -96,8 +96,10 @@ private:
     janus_callbacks* janusCore;
     std::unique_ptr<FtlServer> ftlServer;
     std::unique_ptr<Configuration> configuration;
+    bool orchestrationEnabled = false;
     std::shared_ptr<FtlConnection> orchestrationClient;
     std::shared_ptr<ServiceConnection> serviceConnection;
+    std::shared_ptr<EdgeNodeServiceConnection> edgeServiceConnection;
     std::unordered_map<VideoCodecKind, std::unique_ptr<VideoDecoder>> videoDecoders;
     uint32_t maxAllowedBitsPerSecond = 0;
     uint32_t rollingSizeAvgMs = 2000;
@@ -124,7 +126,7 @@ private:
     // Initialization
     void initVideoDecoders();
     void initOrchestratorConnection();
-    void initServiceConnection();
+    void initServiceConnections();
     void initServiceReportThread();
     // Service report thread body
     void serviceReportThreadBody(std::promise<void>&& threadEndedPromise);
