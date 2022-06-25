@@ -40,6 +40,7 @@ void GlimeshServiceConnection::Init()
 
 Result<std::vector<std::byte>> GlimeshServiceConnection::GetHmacKey(uint32_t channelId)
 {
+    spdlog::debug("GlimeshServiceConnection::GetHmacKey...");
     std::stringstream query;
     query << "query { channel(id: \"" << channelId << "\") { hmacKey } }";
 
@@ -68,6 +69,7 @@ Result<std::vector<std::byte>> GlimeshServiceConnection::GetHmacKey(uint32_t cha
 
 Result<ftl_stream_id_t> GlimeshServiceConnection::StartStream(ftl_channel_id_t channelId)
 {
+    spdlog::debug("GlimeshServiceConnection::StartStream...");
     std::stringstream query;
     query << "mutation { startStream(channelId: " << channelId << ") { id } }";
 

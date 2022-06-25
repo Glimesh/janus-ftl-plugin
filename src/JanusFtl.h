@@ -16,6 +16,7 @@
 #include "JanusSession.h"
 #include "JanusStream.h"
 #include "ServiceConnections/ServiceConnection.h"
+#include "ServiceConnections/EdgeNodeServiceConnection.h"
 #include "Utilities/FtlTypes.h"
 #include "Utilities/JanssonPtr.h"
 #include "Utilities/Result.h"
@@ -116,6 +117,7 @@ private:
     std::unordered_map<ftl_channel_id_t, std::shared_ptr<JanusStream>> streams;
     std::unordered_map<janus_plugin_session*, ActiveSession> sessions;
     std::unordered_map<ftl_channel_id_t, std::unordered_set<JanusSession*>> pendingViewerSessions;
+    std::unordered_set<ftl_channel_id_t> pendingEdgeChannels;
 
     /* Private methods */
     // FtlServer Callbacks
@@ -148,4 +150,6 @@ private:
     ConnectionResult onOrchestratorIntro(ConnectionIntroPayload payload);
     ConnectionResult onOrchestratorOutro(ConnectionOutroPayload payload);
     ConnectionResult onOrchestratorStreamRelay(ConnectionRelayPayload payload);
+    // Helper functions
+    std::shared_ptr<ServiceConnection> getServiceConnection(ftl_channel_id_t channelId);
 };

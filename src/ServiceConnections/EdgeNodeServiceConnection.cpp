@@ -19,6 +19,8 @@ EdgeNodeServiceConnection::EdgeNodeServiceConnection()
 #pragma region Public methods
 std::vector<std::byte> EdgeNodeServiceConnection::ProvisionStreamKey(ftl_channel_id_t channelId)
 {
+    spdlog::debug(
+        "EdgeNodeServiceConnection::ProvisionStreamKey called...");
     // If a stream key already exists for the given channel, just return the existing one
     if (streamKeys.count(channelId) > 0)
     {
@@ -41,6 +43,7 @@ void EdgeNodeServiceConnection::Init()
 
 Result<std::vector<std::byte>> EdgeNodeServiceConnection::GetHmacKey(ftl_channel_id_t channelId)
 {
+
     if (streamKeys.count(channelId) > 0)
     {
         const auto& key = streamKeys[channelId];
