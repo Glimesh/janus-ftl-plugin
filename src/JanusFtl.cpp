@@ -305,7 +305,9 @@ void JanusFtl::DestroySession(janus_plugin_session* handle, int* error)
                 throw std::runtime_error(
                     "Unexpected service connection type - expected EdgeNodeServiceConnection.");
             }
+
             edgeService->ClearStreamKey(channelId);
+            orchestratorRelayChannels.erase(channelId);
 
             spdlog::info("Last viewer for channel {} has disconnected - unsubscribing...",
                 channelId);
@@ -337,7 +339,7 @@ Result<std::vector<std::byte>> JanusFtl::ftlServerRequestKey(ftl_channel_id_t ch
 
 std::shared_ptr<ServiceConnection> JanusFtl::getServiceConnection(ftl_channel_id_t channelId) 
 {
-    if (pendingEdgeChannels.count(channelId) > 0) {
+    if (orchestratorRelayChannels.count(channelId) > 0) {
         // This stream is coming from another ingest
         return edgeServiceConnection;
     } else {
@@ -387,7 +389,7 @@ Result<FtlServer::StartedStreamInfo> JanusFtl::ftlServerStreamStarted(
     // TODO: Notify viewer sessions
 
     // If we are configured as an Ingest node, notify the Orchestrator that a stream has started.
-    if (orchestrationEnabled && orchestrationClient != nullptr && pendingEdgeChannels.count(channelId) == 0)
+    if (orchestrationEnabled && orchestrationClient != nullptr && orchestratorRelayChannels.count(channelId) == 0)
     {
         spdlog::info("Publishing channel {} / stream {} to Orchestrator...", channelId,
             streamId);
@@ -779,7 +781,7 @@ janus_plugin_result* JanusFtl::handleWatchMessage(ActiveSession& session, JsonPt
                     "Unexpected service connection type - expected EdgeNodeServiceConnection.");
             }
 
-            pendingEdgeChannels.insert(channelId);
+            orchestratorRelayChannels.insert(channelId);
             
             std::vector<std::byte> streamKey = edgeService->ProvisionStreamKey(channelId);
 

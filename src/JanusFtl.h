@@ -117,7 +117,7 @@ private:
     std::unordered_map<ftl_channel_id_t, std::shared_ptr<JanusStream>> streams;
     std::unordered_map<janus_plugin_session*, ActiveSession> sessions;
     std::unordered_map<ftl_channel_id_t, std::unordered_set<JanusSession*>> pendingViewerSessions;
-    std::unordered_set<ftl_channel_id_t> pendingEdgeChannels;
+    std::unordered_set<ftl_channel_id_t> orchestratorRelayChannels;
 
     /* Private methods */
     // FtlServer Callbacks
