@@ -333,7 +333,8 @@ json_t* JanusFtl::QuerySession(janus_plugin_session* handle)
 #pragma region Private methods
 Result<std::vector<std::byte>> JanusFtl::ftlServerRequestKey(ftl_channel_id_t channelId)
 {
-    std::shared_ptr<ServiceConnection> connection = getServiceConnection(channelId);
+    std::unique_lock lock(streamDataMutex);
+    std::shared_ptr<ServiceConnection> connection = getServiceConnection(channelId, lock);
     return connection->GetHmacKey(channelId);
 }
 
@@ -543,6 +544,7 @@ void JanusFtl::serviceReportThreadBody(std::promise<void>&& threadEndedPromise)
                 ftlServer->GetAllStatsAndKeyframes();
         std::unordered_map<ftl_channel_id_t, MediaMetadata> metadataByChannel;
         std::unordered_map<ftl_channel_id_t, uint32_t> viewersByChannel;
+        std::unordered_map<ftl_channel_id_t, std::shared_ptr<ServiceConnection>> servicesByChannel;
         std::unique_lock lock(streamDataMutex);
         for (const auto& streamInfo : statsAndKeyframes)
         {
@@ -553,6 +555,7 @@ void JanusFtl::serviceReportThreadBody(std::promise<void>&& threadEndedPromise)
             }
             metadataByChannel.try_emplace(channelId, streams.at(channelId)->GetMetadata());
             viewersByChannel.try_emplace(channelId, streams.at(channelId)->GetViewerCount());
+            servicesByChannel.try_emplace(channelId, getServiceConnection(channelId, lock));
         }
         lock.unlock();
 
@@ -578,7 +581,8 @@ void JanusFtl::serviceReportThreadBody(std::promise<void>&& threadEndedPromise)
             }
 
             if ((viewersByChannel.count(channelId) <= 0) ||
-                (metadataByChannel.count(channelId) <= 0))
+                (metadataByChannel.count(channelId) <= 0) || 
+                (servicesByChannel.count(channelId) <= 0))
             {
                 continue;
             }
@@ -626,7 +630,8 @@ void JanusFtl::serviceReportThreadBody(std::promise<void>&& threadEndedPromise)
                 .videoHeight = videoHeight,
             };
 
-            std::shared_ptr<ServiceConnection> connection = getServiceConnection(channelId);
+
+            const std::shared_ptr<ServiceConnection> connection = servicesByChannel.at(channelId);
             Result<ServiceConnection::ServiceResponse> updateResult =
                 connection->UpdateStreamMetadata(streamId, metadata);
             // Check if the request failed, or the service wants to end this stream
