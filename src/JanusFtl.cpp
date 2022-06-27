@@ -60,7 +60,7 @@ JanusFtl::JanusFtl(
 
     initOrchestratorConnection();
 
-    initServiceConnection();
+    initServiceConnections();
     
     ftlServer = std::make_unique<FtlServer>(std::move(ingestControlListener),
         std::move(mediaConnectionCreator),
@@ -271,8 +271,7 @@ void JanusFtl::DestroySession(janus_plugin_session* handle, int* error)
 
             // If we're an Edge node and there are no more viewers for this channel, we can
             // unsubscribe.
-            if ((configuration->GetNodeKind() == NodeKind::Edge) &&
-                (watchingStream->GetViewerCount() == 0))
+            if (orchestrationEnabled && (watchingStream->GetViewerCount() == 0))
             {
                 orchestratorUnsubscribe = true;
             }
@@ -287,7 +286,7 @@ void JanusFtl::DestroySession(janus_plugin_session* handle, int* error)
             // If this was the last pending viewer for this channel, unsubscribe.
             if (pendingViewerSessions[channelId].size() == 0)
             {
-                if (configuration->GetNodeKind() == NodeKind::Edge)
+                if (orchestrationEnabled)
                 {
                     orchestratorUnsubscribe = true;
                 }
@@ -299,14 +298,16 @@ void JanusFtl::DestroySession(janus_plugin_session* handle, int* error)
         if (orchestratorUnsubscribe)
         {
             // Remove temporary stream key
-            const auto& edgeServiceConnection = 
-                std::dynamic_pointer_cast<EdgeNodeServiceConnection>(serviceConnection);
-            if (edgeServiceConnection == nullptr)
+            const auto& edgeService = 
+                std::dynamic_pointer_cast<EdgeNodeServiceConnection>(edgeServiceConnection);
+            if (edgeService == nullptr)
             {
                 throw std::runtime_error(
                     "Unexpected service connection type - expected EdgeNodeServiceConnection.");
             }
-            edgeServiceConnection->ClearStreamKey(channelId);
+
+            edgeService->ClearStreamKey(channelId);
+            orchestratorRelayChannels.erase(channelId);
 
             spdlog::info("Last viewer for channel {} has disconnected - unsubscribing...",
                 channelId);
@@ -332,7 +333,21 @@ json_t* JanusFtl::QuerySession(janus_plugin_session* handle)
 #pragma region Private methods
 Result<std::vector<std::byte>> JanusFtl::ftlServerRequestKey(ftl_channel_id_t channelId)
 {
-    return serviceConnection->GetHmacKey(channelId);
+    std::unique_lock lock(streamDataMutex);
+    std::shared_ptr<ServiceConnection> connection = getServiceConnection(channelId, lock);
+    return connection->GetHmacKey(channelId);
+}
+
+std::shared_ptr<ServiceConnection> JanusFtl::getServiceConnection(ftl_channel_id_t channelId,
+    const std::unique_lock<std::shared_mutex>& streamDataLock
+) 
+{
+    if (orchestratorRelayChannels.count(channelId) > 0) {
+        // This stream is coming from another ingest
+        return edgeServiceConnection;
+    } else {
+        return serviceConnection;
+    }
 }
 
 Result<FtlServer::StartedStreamInfo> JanusFtl::ftlServerStreamStarted(
@@ -342,7 +357,8 @@ Result<FtlServer::StartedStreamInfo> JanusFtl::ftlServerStreamStarted(
     std::unique_lock lock(streamDataMutex);
 
     // Attempt to start the stream on the service connection
-    Result<ftl_stream_id_t> startResult = serviceConnection->StartStream(channelId);
+    std::shared_ptr<ServiceConnection> connection = getServiceConnection(channelId, lock);
+    Result<ftl_stream_id_t> startResult = connection->StartStream(channelId);
     if (startResult.IsError)
     {
         return Result<FtlServer::StartedStreamInfo>::Error(startResult.ErrorMessage);
@@ -376,7 +392,7 @@ Result<FtlServer::StartedStreamInfo> JanusFtl::ftlServerStreamStarted(
     // TODO: Notify viewer sessions
 
     // If we are configured as an Ingest node, notify the Orchestrator that a stream has started.
-    if ((configuration->GetNodeKind() == NodeKind::Ingest) && (orchestrationClient != nullptr))
+    if (orchestrationEnabled && orchestrationClient != nullptr && orchestratorRelayChannels.count(channelId) == 0)
     {
         spdlog::info("Publishing channel {} / stream {} to Orchestrator...", channelId,
             streamId);
@@ -410,7 +426,7 @@ void JanusFtl::initVideoDecoders()
 
 void JanusFtl::initOrchestratorConnection()
 {
-    if (configuration->GetNodeKind() != NodeKind::Standalone)
+    if (configuration->GetOrchestratorHostname().empty() == false)
     {
         spdlog::info(
             "Connecting to Orchestration service @ {}:{}...",
@@ -445,17 +461,24 @@ void JanusFtl::initOrchestratorConnection()
                 .RegionCode = configuration->GetOrchestratorRegionCode(),
                 .Hostname = configuration->GetMyHostname(),
             });
+
+        orchestrationEnabled = true;
     }
 }
 
-void JanusFtl::initServiceConnection()
+void JanusFtl::initServiceConnections()
 {
-    // If we are configured to be an edge node, we *must* use the EdgeNodeServiceConnection
-    if (configuration->GetNodeKind() == NodeKind::Edge)
+    // If we are configured to be an standalone or edge node, 
+    // we need to setup an edge service connection
+    if (configuration->GetNodeKind() == NodeKind::Standalone || 
+        configuration->GetNodeKind() == NodeKind::Edge)
     {
-        serviceConnection = std::make_shared<EdgeNodeServiceConnection>();
+        edgeServiceConnection = std::make_shared<EdgeNodeServiceConnection>();
+        edgeServiceConnection->Init();
     }
-    else
+
+    // If we're not an edge, setup a service connection as well
+    if (configuration->GetNodeKind() != NodeKind::Edge)
     {
         switch (configuration->GetServiceConnectionKind())
         {
@@ -482,9 +505,9 @@ void JanusFtl::initServiceConnection()
                 configuration->GetDummyPreviewImagePath());
             break;
         }
-    }
 
-    serviceConnection->Init();
+        serviceConnection->Init();
+    }
 }
 
 void JanusFtl::initServiceReportThread()
@@ -521,6 +544,7 @@ void JanusFtl::serviceReportThreadBody(std::promise<void>&& threadEndedPromise)
                 ftlServer->GetAllStatsAndKeyframes();
         std::unordered_map<ftl_channel_id_t, MediaMetadata> metadataByChannel;
         std::unordered_map<ftl_channel_id_t, uint32_t> viewersByChannel;
+        std::unordered_map<ftl_channel_id_t, std::shared_ptr<ServiceConnection>> servicesByChannel;
         std::unique_lock lock(streamDataMutex);
         for (const auto& streamInfo : statsAndKeyframes)
         {
@@ -531,6 +555,7 @@ void JanusFtl::serviceReportThreadBody(std::promise<void>&& threadEndedPromise)
             }
             metadataByChannel.try_emplace(channelId, streams.at(channelId)->GetMetadata());
             viewersByChannel.try_emplace(channelId, streams.at(channelId)->GetViewerCount());
+            servicesByChannel.try_emplace(channelId, getServiceConnection(channelId, lock));
         }
         lock.unlock();
 
@@ -556,7 +581,8 @@ void JanusFtl::serviceReportThreadBody(std::promise<void>&& threadEndedPromise)
             }
 
             if ((viewersByChannel.count(channelId) <= 0) ||
-                (metadataByChannel.count(channelId) <= 0))
+                (metadataByChannel.count(channelId) <= 0) || 
+                (servicesByChannel.count(channelId) <= 0))
             {
                 continue;
             }
@@ -603,8 +629,11 @@ void JanusFtl::serviceReportThreadBody(std::promise<void>&& threadEndedPromise)
                 .videoWidth = videoWidth,
                 .videoHeight = videoHeight,
             };
+
+
+            const std::shared_ptr<ServiceConnection> connection = servicesByChannel.at(channelId);
             Result<ServiceConnection::ServiceResponse> updateResult =
-                serviceConnection->UpdateStreamMetadata(streamId, metadata);
+                connection->UpdateStreamMetadata(streamId, metadata);
             // Check if the request failed, or the service wants to end this stream
             if (updateResult.IsError || 
                 (updateResult.Value == ServiceConnection::ServiceResponse::EndStream))
@@ -632,7 +661,7 @@ void JanusFtl::serviceReportThreadBody(std::promise<void>&& threadEndedPromise)
                 {
                     std::vector<uint8_t> jpegBytes =
                         videoDecoders.at(keyframe.Codec)->GenerateJpegImage(keyframe.Packets);
-                    serviceConnection->SendJpegPreviewImage(streamId, jpegBytes);
+                    connection->SendJpegPreviewImage(streamId, jpegBytes);
                 }
                 catch (const PreviewGenerationFailedException& e)
                 {
@@ -677,7 +706,7 @@ void JanusFtl::endStream(ftl_channel_id_t channelId, ftl_stream_id_t streamId,
     // TODO: Tell viewers stream is offline.
 
     // If we are configured as an Ingest node, notify the Orchestrator that a stream has ended.
-    if ((configuration->GetNodeKind() == NodeKind::Ingest) && (orchestrationClient != nullptr))
+    if (orchestrationEnabled && (orchestrationClient != nullptr))
     {
         spdlog::info("Unpublishing channel {} / stream {} from Orchestrator",
             stream->GetChannelId(), stream->GetStreamId());
@@ -694,7 +723,8 @@ void JanusFtl::endStream(ftl_channel_id_t channelId, ftl_stream_id_t streamId,
     spdlog::info("Stream ended. Channel {} / stream {}",
         stream->GetChannelId(), stream->GetStreamId());
 
-    serviceConnection->EndStream(streamId);
+    std::shared_ptr<ServiceConnection> connection = getServiceConnection(channelId, streamDataLock);
+    connection->EndStream(streamId);
     streams.erase(channelId);
 }
 
@@ -749,17 +779,20 @@ janus_plugin_result* JanusFtl::handleWatchMessage(ActiveSession& session, JsonPt
 
         // If we're an Edge node and this is a first viewer for a given channel,
         // request that this channel be relayed to us.
-        if ((configuration->GetNodeKind() == NodeKind::Edge) && (pendingViewers == 0))
+        if (orchestrationEnabled && (pendingViewers == 0))
         {
             // Generate a new stream key for incoming relay of this channel
-            const auto& edgeServiceConnection = 
-                std::dynamic_pointer_cast<EdgeNodeServiceConnection>(serviceConnection);
-            if (edgeServiceConnection == nullptr)
+            const auto& edgeService = 
+                std::dynamic_pointer_cast<EdgeNodeServiceConnection>(edgeServiceConnection);
+            if (edgeService == nullptr)
             {
                 throw std::runtime_error(
                     "Unexpected service connection type - expected EdgeNodeServiceConnection.");
             }
-            std::vector<std::byte> streamKey = edgeServiceConnection->ProvisionStreamKey(channelId);
+
+            orchestratorRelayChannels.insert(channelId);
+            
+            std::vector<std::byte> streamKey = edgeService->ProvisionStreamKey(channelId);
 
             // Subscribe for relay of this stream
             spdlog::info("First viewer for channel {} - subscribing...",

@@ -16,6 +16,7 @@
 #include "JanusSession.h"
 #include "JanusStream.h"
 #include "ServiceConnections/ServiceConnection.h"
+#include "ServiceConnections/EdgeNodeServiceConnection.h"
 #include "Utilities/FtlTypes.h"
 #include "Utilities/JanssonPtr.h"
 #include "Utilities/Result.h"
@@ -96,8 +97,10 @@ private:
     janus_callbacks* janusCore;
     std::unique_ptr<FtlServer> ftlServer;
     std::unique_ptr<Configuration> configuration;
+    bool orchestrationEnabled = false;
     std::shared_ptr<FtlConnection> orchestrationClient;
     std::shared_ptr<ServiceConnection> serviceConnection;
+    std::shared_ptr<EdgeNodeServiceConnection> edgeServiceConnection;
     std::unordered_map<VideoCodecKind, std::unique_ptr<VideoDecoder>> videoDecoders;
     uint32_t maxAllowedBitsPerSecond = 0;
     uint32_t rollingSizeAvgMs = 2000;
@@ -114,6 +117,7 @@ private:
     std::unordered_map<ftl_channel_id_t, std::shared_ptr<JanusStream>> streams;
     std::unordered_map<janus_plugin_session*, ActiveSession> sessions;
     std::unordered_map<ftl_channel_id_t, std::unordered_set<JanusSession*>> pendingViewerSessions;
+    std::unordered_set<ftl_channel_id_t> orchestratorRelayChannels;
 
     /* Private methods */
     // FtlServer Callbacks
@@ -124,7 +128,7 @@ private:
     // Initialization
     void initVideoDecoders();
     void initOrchestratorConnection();
-    void initServiceConnection();
+    void initServiceConnections();
     void initServiceReportThread();
     // Service report thread body
     void serviceReportThreadBody(std::promise<void>&& threadEndedPromise);
@@ -146,4 +150,7 @@ private:
     ConnectionResult onOrchestratorIntro(ConnectionIntroPayload payload);
     ConnectionResult onOrchestratorOutro(ConnectionOutroPayload payload);
     ConnectionResult onOrchestratorStreamRelay(ConnectionRelayPayload payload);
+    // Helper functions
+    std::shared_ptr<ServiceConnection> getServiceConnection(ftl_channel_id_t channelId,
+        const std::unique_lock<std::shared_mutex>& streamDataLock);
 };
