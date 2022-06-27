@@ -337,7 +337,9 @@ Result<std::vector<std::byte>> JanusFtl::ftlServerRequestKey(ftl_channel_id_t ch
     return connection->GetHmacKey(channelId);
 }
 
-std::shared_ptr<ServiceConnection> JanusFtl::getServiceConnection(ftl_channel_id_t channelId) 
+std::shared_ptr<ServiceConnection> JanusFtl::getServiceConnection(ftl_channel_id_t channelId,
+    const std::unique_lock<std::shared_mutex>& streamDataLock
+) 
 {
     if (orchestratorRelayChannels.count(channelId) > 0) {
         // This stream is coming from another ingest
@@ -354,7 +356,7 @@ Result<FtlServer::StartedStreamInfo> JanusFtl::ftlServerStreamStarted(
     std::unique_lock lock(streamDataMutex);
 
     // Attempt to start the stream on the service connection
-    std::shared_ptr<ServiceConnection> connection = getServiceConnection(channelId);
+    std::shared_ptr<ServiceConnection> connection = getServiceConnection(channelId, lock);
     Result<ftl_stream_id_t> startResult = connection->StartStream(channelId);
     if (startResult.IsError)
     {
@@ -423,7 +425,7 @@ void JanusFtl::initVideoDecoders()
 
 void JanusFtl::initOrchestratorConnection()
 {
-    if (!empty(configuration->GetOrchestratorHostname()))
+    if (configuration->GetOrchestratorHostname().empty() == false)
     {
         spdlog::info(
             "Connecting to Orchestration service @ {}:{}...",
@@ -465,14 +467,16 @@ void JanusFtl::initOrchestratorConnection()
 
 void JanusFtl::initServiceConnections()
 {
-    // If we are configured to be an standalone or edge node, we need to setup the EdgeNodeServiceConnection
-    if (configuration->GetNodeKind() == NodeKind::Standalone || configuration->GetNodeKind() == NodeKind::Edge)
+    // If we are configured to be an standalone or edge node, 
+    // we need to setup an edge service connection
+    if (configuration->GetNodeKind() == NodeKind::Standalone || 
+        configuration->GetNodeKind() == NodeKind::Edge)
     {
         edgeServiceConnection = std::make_shared<EdgeNodeServiceConnection>();
         edgeServiceConnection->Init();
     }
 
-    // If we're only an edge, don't setup any service connection
+    // If we're not an edge, setup a service connection as well
     if (configuration->GetNodeKind() != NodeKind::Edge)
     {
         switch (configuration->GetServiceConnectionKind())
@@ -714,7 +718,7 @@ void JanusFtl::endStream(ftl_channel_id_t channelId, ftl_stream_id_t streamId,
     spdlog::info("Stream ended. Channel {} / stream {}",
         stream->GetChannelId(), stream->GetStreamId());
 
-    std::shared_ptr<ServiceConnection> connection = getServiceConnection(channelId);
+    std::shared_ptr<ServiceConnection> connection = getServiceConnection(channelId, streamDataLock);
     connection->EndStream(streamId);
     streams.erase(channelId);
 }

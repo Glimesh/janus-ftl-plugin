@@ -151,5 +151,6 @@ private:
     ConnectionResult onOrchestratorOutro(ConnectionOutroPayload payload);
     ConnectionResult onOrchestratorStreamRelay(ConnectionRelayPayload payload);
     // Helper functions
-    std::shared_ptr<ServiceConnection> getServiceConnection(ftl_channel_id_t channelId);
+    std::shared_ptr<ServiceConnection> getServiceConnection(ftl_channel_id_t channelId,
+        const std::unique_lock<std::shared_mutex>& streamDataLock);
 };
